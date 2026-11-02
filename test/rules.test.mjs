@@ -12,3 +12,25 @@ test("depsOk rejects old versions and missing libs", () => {
 test("depsOk treats null version as missing", () => {
   assert.equal(depsOk({ dnd5e: null, midi: "14.6.5", libWrapper: true, socketlib: true }).ok, false);
 });
+
+import { MIDI_PRESET, mergePreset } from "../scripts/rules.js";
+test("MIDI_PRESET has the spec values", () => {
+  assert.equal(MIDI_PRESET.autoRollAttack, true);
+  assert.equal(MIDI_PRESET.gmAutoAttack, true);
+  assert.equal(MIDI_PRESET.autoRollDamage, "onHit");
+  assert.equal(MIDI_PRESET.gmAutoDamage, "onHit");
+  assert.deepEqual(MIDI_PRESET.autoFastForward, ["attack", "damage", "check", "save", "skill", "tool"]);
+  assert.deepEqual(MIDI_PRESET.gmAutoFastForward, ["attack", "damage", "check", "save", "skill", "tool"]);
+  assert.equal(MIDI_PRESET.autoCheckHit, "all");
+  assert.equal(MIDI_PRESET.autoCheckSaves, "allShow");
+  assert.equal(MIDI_PRESET.autoApplyDamage, "yes");
+  assert.equal(MIDI_PRESET.playerRollSaves, "nonePublic");
+  assert.equal(MIDI_PRESET.rollNPCSaves, "auto");
+  assert.equal(MIDI_PRESET.autoTarget, "wallsBlock");
+  assert.equal(MIDI_PRESET.hideRollDetails, "none");
+});
+test("applyPreset keeps unknown keys", () => {
+  const merged = mergePreset({ weird: 1, autoTarget: "none" }, MIDI_PRESET);
+  assert.equal(merged.weird, 1);
+  assert.equal(merged.autoTarget, "wallsBlock");
+});
