@@ -10,7 +10,7 @@ Pick one:
   `https://github.com/godofred2/bg3-flow/releases/latest/download/module.json`, Install.
 - **Zip**: unzip `module.zip` so that `Data/modules/bg3-flow/module.json` exists, then restart Foundry or reload the setup page.
 
-Confirm versions on the setup screen: Foundry 14.x, dnd5e 6.0.x, Midi QOL 14.6 or newer. If Midi is older, update it first (Update All) and note the version before and after.
+Confirm versions on the setup screen: Foundry 14.x, dnd5e 6.0.x, Midi QOL 14.6 or newer. If Midi is older, update it first (Update All) and note the version before and after. Midi 14.6 needs DAE 14.6 or newer; if DAE is on 14.0.x, reinstall it from `https://github.com/tposney/dae/releases/download/latest-dnd6/module.json`, since the old manifest never offers the update.
 
 ## 1. Scratch world
 

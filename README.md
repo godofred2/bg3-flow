@@ -13,6 +13,7 @@ Makes D&D 5e combat in Foundry VTT play like Baldur's Gate 3. Three features, ea
 | Foundry VTT | 14 |
 | dnd5e system | 6.0.x |
 | Midi QOL | 14.6 or newer |
+| DAE | 14.6 or newer (Midi 14.6 needs it; install from the `latest-dnd6` manifest: https://github.com/tposney/dae/releases/download/latest-dnd6/module.json, the old `latest-v14` manifest stays at 14.0.x and reports itself up to date) |
 | libWrapper | any |
 | socketlib | any |
 

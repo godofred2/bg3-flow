@@ -2,7 +2,7 @@
   "id": "bg3-flow",
   "title": "BG3 Flow",
   "description": "Baldur's Gate 3 style combat flow for dnd5e: fully automatic Midi QOL preset, friend-or-foe area targeting, shared ally turns, movement lock and budget, stealth-based encounters.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "authors": [{ "name": "Emilio Nava" }],
   "compatibility": { "minimum": "14", "verified": "14" },
   "esmodules": ["scripts/main.js"],
@@ -11,7 +11,7 @@
     { "lang": "es", "name": "Español", "path": "lang/es.json" }
   ],
   "relationships": {
-    "systems": [{ "id": "dnd5e", "type": "system", "compatibility": { "minimum": "6.0", "maximum": "6" } }],
+    "systems": [{ "id": "dnd5e", "type": "system", "compatibility": { "minimum": "6.0", "maximum": "6.0.999" } }],
     "requires": [
       { "id": "midi-qol", "type": "module", "compatibility": { "minimum": "14.6" } },
       { "id": "lib-wrapper", "type": "module" },
