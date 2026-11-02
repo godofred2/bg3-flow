@@ -65,3 +65,12 @@ test("dispositionFilterFor maps to Midi numeric filter", () => {
   assert.equal(dispositionFilterFor("everyone"), 0);
   assert.equal(dispositionFilterFor("checked"), null);
 });
+
+import { presetUnknownKeys } from "../scripts/rules.js";
+test("mergePreset skips keys Midi does not know", () => {
+  const merged = mergePreset({ autoTarget: "none" }, { autoTarget: "wallsBlock", bogus: 1 });
+  assert.deepEqual(merged, { autoTarget: "wallsBlock" });
+});
+test("presetUnknownKeys lists keys missing from current", () => {
+  assert.deepEqual(presetUnknownKeys({ autoTarget: "none" }, { autoTarget: "wallsBlock", bogus: 1 }), ["bogus"]);
+});

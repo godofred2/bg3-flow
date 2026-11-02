@@ -44,11 +44,18 @@ export const MIDI_PRESET = Object.freeze({
   hideRollDetails: "none"
 });
 
-/** Shallow copy of `current` with `preset` keys overriding; unknown keys in `current` survive. */
+/** Copy of `current` with `preset` keys overriding. Keys Midi does not know (absent from `current`) are skipped. */
 export function mergePreset(current, preset) {
   const out = { ...current };
-  for (const [k, v] of Object.entries(preset)) out[k] = Array.isArray(v) ? [...v] : v;
+  for (const [k, v] of Object.entries(preset)) {
+    if (k in current) out[k] = Array.isArray(v) ? [...v] : v;
+  }
   return out;
+}
+
+/** Preset keys that the installed Midi config does not have. */
+export function presetUnknownKeys(current, preset) {
+  return Object.keys(preset).filter((k) => !(k in current));
 }
 
 // ---- Friend-or-foe prompt (Feature 1) ----

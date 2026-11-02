@@ -60,8 +60,11 @@ Record pass or fail for each line. "Console" means the browser developer console
 - [ ] C10. Press **Enemies only**. Expected: the villager is untargeted, the goblins remain, console logs `[bg3-flow] friend-or-foe: enemies, keeping 2/3 targets`. A region (ongoing area) now exists on the scene attached to the Cleric.
 - [ ] C11. As GM, start a combat with everyone, roll initiative. Advance turns until a goblin's turn starts while it stands inside the area. Expected: the goblin makes a Wis save and takes radiant damage automatically, no prompts, dice visible.
 - [ ] C12. On the Villager's turn, standing inside the area: expected no save and no damage (the region's disposition filter is Enemies).
+- [ ] C12b. As GM, open the Spirit Guardians region (Regions layer, double-click it), Behaviours tab, open the Midi behaviour. Expected: Disposition Filter reads **Enemies**. Then in the console run `canvas.scene.regions.contents.at(-1).behaviors.contents[0].system.dispositionFilter` and expect `-1`.
 - [ ] C13. Move Goblin 2 out of the area and back in during its own turn. Expected: on re-entry, it takes damage at most once that turn.
-- [ ] C14. Repeat C9 but press **Everyone**. Expected: all three targeted, villager takes the save too.
+- [ ] C14. End concentration, repeat C9 but press **Everyone**. Expected: all three targeted, villager takes the save too, and the console value from C12b now reads `0`.
+- [ ] C14b. Advance to the Villager's next turn while still inside the area. Expected: the villager saves and takes damage this time (filter is All). This is the check that proves later rounds respect the choice.
+- [ ] C14c. Repeat C9 from the Player1 window specifically (not the GM) and press **Enemies only**. Expected: console in the GM window shows no permission error, and C12b's value is `-1`. This proves the player-to-GM relay works.
 
 ### 3.6 Dice visibility
 

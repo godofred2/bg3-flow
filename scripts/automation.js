@@ -1,12 +1,14 @@
 // Feature 1: Midi automation preset and friend-or-foe target prompt.
-import { MODULE_ID, log, safe } from "./main.js";
-import { MIDI_PRESET, mergePreset, shouldPrompt, splitTargets, applyChoice, dispositionFilterFor } from "./rules.js";
+import { log, safe, socket, setRegionFilter } from "./main.js";
+import { MIDI_PRESET, mergePreset, presetUnknownKeys, shouldPrompt, splitTargets, applyChoice, dispositionFilterFor } from "./rules.js";
 
 const L = (key) => game.i18n.localize(`BG3FLOW.${key}`);
 
 /** Write the BG3 preset into Midi QOL, Midi target confirmation and dnd5e grouping. */
 export async function applyPreset() {
   const current = game.settings.get("midi-qol", "ConfigSettings") ?? {};
+  const unknown = presetUnknownKeys(current, MIDI_PRESET);
+  if (unknown.length) log("preset keys not found in this Midi version, skipped:", unknown);
   await game.settings.set("midi-qol", "ConfigSettings", mergePreset(current, MIDI_PRESET));
 
   if (game.settings.settings.has("midi-qol.TargetConfirmation")) {
@@ -40,7 +42,7 @@ async function promptFriendOrFoe(friends) {
   ).join("");
   const content = `<p>${L("Targets.Hint")}</p><div class="form-group stacked">${boxes}</div>`;
   const read = (btn) => ({
-    choice: btn,
+    choice: "checked",
     checkedIds: Array.from(btn.form?.querySelectorAll?.('input[name="keep"]:checked') ?? [], (i) => i.value)
   });
   const result = await foundry.applications.api.DialogV2.wait({
@@ -59,16 +61,16 @@ async function promptFriendOrFoe(friends) {
   return { choice: "checked", checkedIds: result.checkedIds ?? [] };
 }
 
-/** Write the chosen filter onto the Midi region behaviour created by this cast, if any. */
+/** Write the chosen filter onto the Midi region behaviour created by this cast, if any. Players relay through the GM. */
 async function updateRegionFilter(region, choice) {
   const filter = dispositionFilterFor(choice);
   if (filter === null || !(region instanceof RegionDocument)) return;
-  const behaviour = region.behaviors.find((b) => b.type === "midi-qol.regionActivity");
-  if (!behaviour) return;
-  await behaviour.update({ "system.dispositionFilter": filter });
+  if (game.user.isGM) await setRegionFilter(region.uuid, filter);
+  else if (socket) await socket.executeAsGM("setRegionFilter", region.uuid, filter);
+  else log("socketlib not ready, region filter not written");
 }
 
-async function onTargetingComplete(workflow) {
+export async function onTargetingComplete(workflow) {
   const tokens = Array.from(workflow.targets ?? []);
   const targets = tokens.map((t) => ({ id: t.id, name: t.name, disposition: t.document.disposition }));
   const casterDisposition = workflow.token?.document?.disposition ?? null;
@@ -80,9 +82,9 @@ async function onTargetingComplete(workflow) {
   const keepIds = new Set(applyChoice({ choice, friends, foes, checkedIds }).map((t) => t.id));
   const kept = tokens.filter((t) => keepIds.has(t.id));
 
-  workflow.setTargets(new Set(kept));            // resets Midi's derived sets too
-  game.user.updateTokenTargets(kept.map((t) => t.id));
-  await updateRegionFilter(workflow.template, choice);
+  await updateRegionFilter(workflow.template, choice);   // first: a targeting failure must not skip it
+  workflow.setTargets(new Set(kept));                     // resets Midi's derived sets too
+  canvas.tokens.setTargets(kept.map((t) => t.id));
   log(`friend-or-foe: ${choice}, keeping ${kept.length}/${tokens.length} targets`);
 }
 
