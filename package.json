@@ -1,0 +1,6 @@
+{
+  "name": "bg3-flow",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test" }
+}

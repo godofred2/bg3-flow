@@ -1,0 +1,27 @@
+{
+  "BG3FLOW": {
+    "DepsMissing": "BG3 Flow is disabled. Missing or outdated:",
+    "Settings": {
+      "enableAutomation": { "Name": "Full automation", "Hint": "Friend-or-foe prompt for areas that allow choosing targets. The Midi preset button is below." },
+      "enableTurns": { "Name": "BG3 turn flow", "Hint": "Consecutive allies share one turn; movement locked off-turn and budgeted on-turn." },
+      "enableEncounters": { "Name": "Encounters and stealth", "Hint": "Preset enemy groups that start combat when they spot or hurt a player." },
+      "lockGmMovement": { "Name": "Lock GM movement too", "Hint": "If on, the GM is also blocked from moving tokens outside their turn." },
+      "defaultEncounterRadius": { "Name": "Default encounter radius (ft)", "Hint": "Detection distance proposed when marking an encounter." },
+      "obscuredDarkness": { "Name": "Obscured darkness threshold", "Hint": "Darkness level (0 to 1) at or above which a position counts as obscured for stealth." }
+    },
+    "Preset": {
+      "Menu": "Apply BG3 automation preset",
+      "Hint": "Configure Midi QOL for fully automatic attacks, damage and saves with public dice.",
+      "Title": "BG3 automation preset",
+      "Confirm": "<p>This overwrites Midi QOL's workflow settings so attacks, damage and saves resolve with no prompts, all dice public, and templates auto-target everyone inside. It also turns off dnd5e's own initiative grouping.</p><p>You can tweak any setting afterwards. Apply?</p>",
+      "Done": "BG3 automation preset applied."
+    },
+    "Targets": {
+      "Title": "Who does it affect?",
+      "Hint": "This spell lets you choose. These allies are inside the area:",
+      "EnemiesOnly": "Enemies only",
+      "Everyone": "Everyone",
+      "OnlyChecked": "Only checked"
+    }
+  }
+}

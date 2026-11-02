@@ -1,0 +1,27 @@
+{
+  "BG3FLOW": {
+    "DepsMissing": "BG3 Flow está desactivado. Falta o está desactualizado:",
+    "Settings": {
+      "enableAutomation": { "Name": "Automatización completa", "Hint": "Pregunta aliados/enemigos en áreas que permiten elegir objetivos. El botón del preset de Midi está abajo." },
+      "enableTurns": { "Name": "Turnos estilo BG3", "Hint": "Los aliados consecutivos comparten un turno; movimiento bloqueado fuera del turno y limitado durante él." },
+      "enableEncounters": { "Name": "Encuentros y sigilo", "Hint": "Grupos de enemigos predefinidos que inician el combate al ver o herir a un jugador." },
+      "lockGmMovement": { "Name": "Bloquear también al GM", "Hint": "Si está activo, el GM tampoco puede mover fichas fuera de su turno." },
+      "defaultEncounterRadius": { "Name": "Radio de encuentro por defecto (pies)", "Hint": "Distancia de detección propuesta al marcar un encuentro." },
+      "obscuredDarkness": { "Name": "Umbral de oscuridad", "Hint": "Nivel de oscuridad (0 a 1) a partir del cual una posición cuenta como oculta para el sigilo." }
+    },
+    "Preset": {
+      "Menu": "Aplicar preset de automatización BG3",
+      "Hint": "Configura Midi QOL para ataques, daño y salvaciones automáticos con dados públicos.",
+      "Title": "Preset de automatización BG3",
+      "Confirm": "<p>Esto sobrescribe la configuración de flujo de Midi QOL para que ataques, daño y salvaciones se resuelvan sin preguntas, con todos los dados públicos y las plantillas apuntando a todos los que estén dentro. También desactiva la agrupación de iniciativa propia de dnd5e.</p><p>Puedes ajustar cualquier opción después. ¿Aplicar?</p>",
+      "Done": "Preset de automatización BG3 aplicado."
+    },
+    "Targets": {
+      "Title": "¿A quién afecta?",
+      "Hint": "Este conjuro permite elegir. Estos aliados están dentro del área:",
+      "EnemiesOnly": "Solo enemigos",
+      "Everyone": "Todos",
+      "OnlyChecked": "Solo los marcados"
+    }
+  }
+}
