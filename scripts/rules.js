@@ -50,3 +50,32 @@ export function mergePreset(current, preset) {
   for (const [k, v] of Object.entries(preset)) out[k] = Array.isArray(v) ? [...v] : v;
   return out;
 }
+
+// ---- Friend-or-foe prompt (Feature 1) ----
+// A "target" here is {id, name, disposition}; disposition is the token's CONST.TOKEN_DISPOSITIONS number.
+
+/** Prompt only for choice-enabled areas cast from a token, when at least one target shares the caster's side. */
+export function shouldPrompt({ choice, casterDisposition, targets }) {
+  if (choice !== true || typeof casterDisposition !== "number") return false;
+  return targets.some((t) => t.disposition === casterDisposition);
+}
+
+export function splitTargets(casterDisposition, targets) {
+  const friends = [], foes = [];
+  for (const t of targets) (t.disposition === casterDisposition ? friends : foes).push(t);
+  return { friends, foes };
+}
+
+/** @param {{choice: "enemies"|"everyone"|"checked", friends, foes, checkedIds?: string[]}} _ @returns targets to keep */
+export function applyChoice({ choice, friends, foes, checkedIds = [] }) {
+  if (choice === "enemies") return [...foes];
+  if (choice === "checked") return [...foes, ...friends.filter((f) => checkedIds.includes(f.id))];
+  return [...foes, ...friends];
+}
+
+/** Midi regionActivity dispositionFilter: -1 enemies, 0 all, 1 allies. null = leave untouched. */
+export function dispositionFilterFor(choice) {
+  if (choice === "enemies") return -1;
+  if (choice === "everyone") return 0;
+  return null;
+}

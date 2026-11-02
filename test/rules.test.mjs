@@ -34,3 +34,34 @@ test("applyPreset keeps unknown keys", () => {
   assert.equal(merged.weird, 1);
   assert.equal(merged.autoTarget, "wallsBlock");
 });
+
+import { shouldPrompt, splitTargets, applyChoice, dispositionFilterFor } from "../scripts/rules.js";
+const pc = { id: "a", name: "Cleric", disposition: 1 }, ally = { id: "b", name: "Rogue", disposition: 1 };
+const gob = { id: "c", name: "Goblin", disposition: -1 };
+test("shouldPrompt only with choice flag and a friend", () => {
+  assert.equal(shouldPrompt({ choice: true, casterDisposition: 1, targets: [ally, gob] }), true);
+  assert.equal(shouldPrompt({ choice: false, casterDisposition: 1, targets: [ally, gob] }), false);
+  assert.equal(shouldPrompt({ choice: true, casterDisposition: 1, targets: [gob] }), false);
+});
+test("shouldPrompt no caster token", () => {
+  assert.equal(shouldPrompt({ choice: true, casterDisposition: null, targets: [ally] }), false);
+});
+test("splitTargets hostile caster", () => {
+  const r = splitTargets(-1, [pc, gob]);
+  assert.deepEqual(r.friends, [gob]); assert.deepEqual(r.foes, [pc]);
+});
+test("applyChoice variants", () => {
+  const friends = [ally], foes = [gob];
+  assert.deepEqual(applyChoice({ choice: "enemies", friends, foes }), [gob]);
+  assert.deepEqual(applyChoice({ choice: "everyone", friends, foes }), [gob, ally]);
+  assert.deepEqual(applyChoice({ choice: "checked", friends, foes, checkedIds: [] }), [gob]);
+  assert.deepEqual(applyChoice({ choice: "checked", friends, foes, checkedIds: ["b"] }), [gob, ally]);
+});
+test("applyChoice enemies with no foes", () => {
+  assert.deepEqual(applyChoice({ choice: "enemies", friends: [ally], foes: [] }), []);
+});
+test("dispositionFilterFor maps to Midi numeric filter", () => {
+  assert.equal(dispositionFilterFor("enemies"), -1);
+  assert.equal(dispositionFilterFor("everyone"), 0);
+  assert.equal(dispositionFilterFor("checked"), null);
+});

@@ -1,6 +1,6 @@
 // Feature 1: Midi automation preset and friend-or-foe target prompt.
 import { MODULE_ID, log, safe } from "./main.js";
-import { MIDI_PRESET, mergePreset } from "./rules.js";
+import { MIDI_PRESET, mergePreset, shouldPrompt, splitTargets, applyChoice, dispositionFilterFor } from "./rules.js";
 
 const L = (key) => game.i18n.localize(`BG3FLOW.${key}`);
 
@@ -33,6 +33,59 @@ export class PresetMenu extends foundry.applications.api.ApplicationV2 {
   }
 }
 
+/** Ask the caster which allies inside a choice-enabled area to spare. Returns {choice, checkedIds}. */
+async function promptFriendOrFoe(friends) {
+  const boxes = friends.map((f) =>
+    `<label class="checkbox"><input type="checkbox" name="keep" value="${f.id}" checked> ${foundry.utils.escapeHTML(f.name)}</label>`
+  ).join("");
+  const content = `<p>${L("Targets.Hint")}</p><div class="form-group stacked">${boxes}</div>`;
+  const read = (btn) => ({
+    choice: btn,
+    checkedIds: Array.from(btn.form?.querySelectorAll?.('input[name="keep"]:checked') ?? [], (i) => i.value)
+  });
+  const result = await foundry.applications.api.DialogV2.wait({
+    window: { title: L("Targets.Title") },
+    content,
+    rejectClose: false,
+    buttons: [
+      { action: "enemies", label: L("Targets.EnemiesOnly"), icon: "fas fa-skull" },
+      { action: "everyone", label: L("Targets.Everyone"), icon: "fas fa-users", default: true },
+      { action: "checked", label: L("Targets.OnlyChecked"), icon: "fas fa-check-square",
+        callback: (event, button) => read(button) }
+    ]
+  });
+  if (result === null || result === undefined) return { choice: "everyone", checkedIds: [] };
+  if (typeof result === "string") return { choice: result, checkedIds: [] };
+  return { choice: "checked", checkedIds: result.checkedIds ?? [] };
+}
+
+/** Write the chosen filter onto the Midi region behaviour created by this cast, if any. */
+async function updateRegionFilter(region, choice) {
+  const filter = dispositionFilterFor(choice);
+  if (filter === null || !(region instanceof RegionDocument)) return;
+  const behaviour = region.behaviors.find((b) => b.type === "midi-qol.regionActivity");
+  if (!behaviour) return;
+  await behaviour.update({ "system.dispositionFilter": filter });
+}
+
+async function onTargetingComplete(workflow) {
+  const tokens = Array.from(workflow.targets ?? []);
+  const targets = tokens.map((t) => ({ id: t.id, name: t.name, disposition: t.document.disposition }));
+  const casterDisposition = workflow.token?.document?.disposition ?? null;
+  const choiceFlag = workflow.activity?.target?.affects?.choice === true;
+  if (!shouldPrompt({ choice: choiceFlag, casterDisposition, targets })) return;
+
+  const { friends, foes } = splitTargets(casterDisposition, targets);
+  const { choice, checkedIds } = await promptFriendOrFoe(friends);
+  const keepIds = new Set(applyChoice({ choice, friends, foes, checkedIds }).map((t) => t.id));
+  const kept = tokens.filter((t) => keepIds.has(t.id));
+
+  workflow.setTargets(new Set(kept));            // resets Midi's derived sets too
+  game.user.updateTokenTargets(kept.map((t) => t.id));
+  await updateRegionFilter(workflow.template, choice);
+  log(`friend-or-foe: ${choice}, keeping ${kept.length}/${tokens.length} targets`);
+}
+
 export function registerAutomation() {
-  // Task 3 registers the friend-or-foe hook here.
+  Hooks.on("midi-qol.targetingComplete", safe(onTargetingComplete));
 }
