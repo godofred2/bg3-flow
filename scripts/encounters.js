@@ -1,7 +1,7 @@
 // Feature 3: encounters and stealth. Marked enemy groups watch for player tokens; a spot or a hit starts combat.
 import { MODULE_ID, log, safe, safeSync } from "./main.js";
 import { encounterGroups, isObscured, passiveSpots, activeSpots, withinRadius } from "./rules.js";
-import { rollOrType, promptSkill, promptInitiative, askGmToStart, activeOwner, awaitOrGm } from "./prompts.js";
+import { rollOrType, promptSkill, promptInitiative, askGmToStart, activeOwner, awaitOrGm, closePrompt } from "./prompts.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 const encounterOf = (doc) => doc.getFlag(MODULE_ID, "encounter");
@@ -114,7 +114,7 @@ const hasLineOfSight = (a, b) => !CONFIG.Canvas.polygonBackends.sight.testCollis
 const rollPerception = async (enemy) => (await enemy.actor.rollSkill({ skill: "prc" }, { configure: false }, { rollMode: "publicroll" }))?.[0]?.total ?? 0;
 
 /** The token's stored Stealth value, else ask its owner (GM can take over), else the GM rolls. null when nobody answered. */
-async function stealthFor(doc, { ask, roll }) {
+async function stealthFor(doc, { ask, roll, dismiss }) {
   const existing = stealthOf(doc);
   if (typeof existing?.value === "number") return existing.value;
   const owner = activeOwner(doc);
@@ -122,20 +122,23 @@ async function stealthFor(doc, { ask, roll }) {
   const value = owner
     ? await awaitOrGm(ask(owner.id, { tokenUuid: doc.uuid, skill: "ste" }), { title, label: L("Prompt.RollForThem") }, () => roll({ actor: doc.actor, skill: "ste" }))
     : await roll({ actor: doc.actor, skill: "ste" });
+  if (owner) await dismiss(owner.id); // the GM may have answered first: close the player's prompt
   if (typeof value !== "number") return null;
   await doc.setFlag(MODULE_ID, "stealth", { value, hidden: false, checked: [] });
   return value;
 }
 
-const busy = new Set();
+const busy = new Set(), queued = new Map();
 /** moveToken: enemies of each group near the moved player token try to spot it. First spotter starts the encounter. */
 export async function onMoveToken(doc, movement, operation, user, deps = {}) {
-  const { start = startEncounter, ask = promptSkill, roll = rollOrType } = deps;
-  if (!leadGm() || game.combat?.started || !isPc(doc) || busy.has(doc.id)) return;
+  const { start = startEncounter, ask = promptSkill, roll = rollOrType, dismiss = closePrompt } = deps;
+  if (!leadGm() || game.combat?.started || !isPc(doc)) return;
   if (doc.parent?.id !== canvas?.scene?.id) return; // measured against the GM's canvas: only its scene
+  if (busy.has(doc.id)) { queued.set(doc.id, movement); return; } // checked again once the open prompt resolves
   busy.add(doc.id);
   try {
-    const center = doc.getCenterPoint();
+    // The hook fires before the document position changes: measure where the token is going.
+    const center = doc.getCenterPoint(movement?.destination ?? {});
     const obscured = isObscured({
       hidden: !!stealthOf(doc)?.hidden, darkness: canvas.effects.getDarknessLevel(center),
       threshold: game.settings.get(MODULE_ID, "obscuredDarkness")
@@ -146,7 +149,7 @@ export async function onMoveToken(doc, movement, operation, user, deps = {}) {
       let stealth = stealthOf(doc)?.value ?? null;
       let spotter = null;
       if (obscured && !stealthOf(doc)?.checked?.includes(groupId)) {
-        stealth = await stealthFor(doc, { ask, roll });
+        stealth = await stealthFor(doc, { ask, roll, dismiss });
         // A dismissed prompt is remembered too (value null): no re-prompt for this group, seen on line of sight.
         const cur = stealthOf(doc) ?? { value: null, hidden: false, checked: [] };
         await doc.setFlag(MODULE_ID, "stealth", { ...cur, checked: [...(cur.checked ?? []), groupId] });
@@ -164,7 +167,11 @@ export async function onMoveToken(doc, movement, operation, user, deps = {}) {
       await start(canvas.scene.id, groupId);
       return;
     }
-  } finally { busy.delete(doc.id); }
+  } finally {
+    busy.delete(doc.id);
+    const next = queued.get(doc.id);
+    if (next) { queued.delete(doc.id); await onMoveToken(doc, next, operation, user, deps); }
+  }
 }
 
 // ---- Starting combat ----
@@ -240,5 +247,6 @@ export function registerEncounters() {
   Hooks.on("midi-qol.RollComplete", safe((workflow) => onRollComplete(workflow)));
   Hooks.on("combatStart", safe(revealAll));
   for (const h of ["canvasReady", "createToken", "updateToken", "deleteToken"]) Hooks.on(h, safe(drawEncounters));
+  ui.controls?.render({ reset: true }); // the controls were drawn before this hook existed: add the skull button now
   log("encounters on");
 }

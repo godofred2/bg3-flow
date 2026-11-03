@@ -20,11 +20,11 @@ class DialogStub {
   async close() { this.closed = true; this.listeners.close?.(); }
   dismiss() { return this.close(); } // the header X
   async press(action) { const b = this.config.buttons.find((b) => b.action === action); return b.callback({}, { form: { elements: { value: { value: DialogStub.typed } } } }, this); }
-  static async wait(config) { const d = new DialogStub(config); return d.press(DialogStub.next); }
+  static async wait(config) { const d = new DialogStub(config); config.render?.({}, d); return d.press(DialogStub.next); }
 }
 globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: DialogStub } }, utils: { escapeHTML: (s) => s } };
 
-const { rollOrType, registerSockets, awaitOrGm, activeOwner } = await import("../scripts/prompts.js");
+const { rollOrType, registerSockets, awaitOrGm, activeOwner, closeOpenPrompt } = await import("../scripts/prompts.js");
 
 test("awaitOrGm resolves with the player's answer and closes the waiting dialog", async () => {
   const v = await awaitOrGm(Promise.resolve(17), { title: "t", label: "Roll for them" }, async () => 3);
@@ -64,7 +64,7 @@ test("rollOrType: roll button returns the skill roll total, use button the typed
 test("registerSockets registers the three handlers and promptInitiative rolls on the player's client", async () => {
   const handlers = {};
   registerSockets({ register: (n, fn) => { handlers[n] = fn; } }, { startEncounter: async (s, g) => ["started", s, g] });
-  assert.deepEqual(Object.keys(handlers).sort(), ["promptInitiative", "promptSkill", "startEncounter"]);
+  assert.deepEqual(Object.keys(handlers).sort(), ["closePrompt", "promptInitiative", "promptSkill", "startEncounter"]);
   assert.deepEqual(await handlers.startEncounter("scene", "g"), ["started", "scene", "g"]);
   const rolled = [];
   const combat = { combatants: new Map([["c1", { initiative: 12 }]]), rollInitiative: async (ids, o) => rolled.push([ids, o]) };
@@ -87,4 +87,18 @@ test("awaitOrGm does not run the fallback when it closes the dialog itself after
   let ran = 0;
   await awaitOrGm(Promise.resolve(1), { title: "t", label: "l" }, async () => { ran++; return 5; });
   assert.equal(ran, 0);
+});
+
+test("closeOpenPrompt closes the roll-or-type dialog still open on this client", async () => {
+  class Hanging extends DialogStub { static async wait(config) { const d = new Hanging(config); config.render?.({}, d); return new Promise(() => {}); } }
+  globalThis.foundry.applications.api.DialogV2 = Hanging;
+  const actor = { rollSkill: async () => [{ total: 1 }] };
+  rollOrType({ actor, skill: "ste" });
+  await new Promise((r) => setTimeout(r, 0));
+  const open = dialogs.at(-1);
+  assert.equal(open.closed, false);
+  closeOpenPrompt();
+  assert.equal(open.closed, true);
+  closeOpenPrompt(); // nothing open: no throw
+  globalThis.foundry.applications.api.DialogV2 = DialogStub;
 });

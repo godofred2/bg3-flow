@@ -17,11 +17,17 @@ export function registerSockets(s, { startEncounter }) {
     return c.initiative ?? null;
   });
   s.register("startEncounter", (sceneId, groupId) => startEncounter(sceneId, groupId));
+  s.register("closePrompt", () => closeOpenPrompt());
 }
 
 export const promptSkill = (userId, args) => socket.executeAsUser("promptSkill", userId, args);
 export const promptInitiative = (userId, combatId, combatantId) => socket.executeAsUser("promptInitiative", userId, combatId, combatantId);
 export const askGmToStart = (sceneId, groupId) => socket.executeAsGM("startEncounter", sceneId, groupId);
+/** Tell a player's client to close its roll-or-type prompt (the GM answered for them). Never throws. */
+export const closePrompt = (userId) => Promise.resolve(socket?.executeAsUser("closePrompt", userId)).catch(() => {});
+
+let openPrompt = null;
+export function closeOpenPrompt() { openPrompt?.close(); openPrompt = null; }
 
 /** First connected non-GM owner of a document, or null. */
 export const activeOwner = (doc) => game.users.find((u) => u.active && !u.isGM && doc.testUserPermission(u, "OWNER")) ?? null;
@@ -39,8 +45,10 @@ export async function rollOrType({ actor, skill }) {
       { action: "use", label: L("Hide.Use"),
         callback: (ev, button) => { const raw = button.form.elements.value.value; return raw === "" ? null : Number(raw); } }
     ],
-    rejectClose: false
+    rejectClose: false,
+    render: (event, dialog) => { openPrompt = dialog; }
   });
+  openPrompt = null;
   return typeof r === "number" && Number.isFinite(r) ? r : null;
 }
 

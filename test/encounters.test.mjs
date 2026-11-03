@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 
 const calls = { flags: [], status: [], warn: [], chat: [], gm: [] };
 globalThis.Hooks = { once() {}, on() {}, callAll() {} };
-globalThis.ui = { notifications: { info() {}, warn: (m) => calls.warn.push(m) } };
+globalThis.ui = { notifications: { info() {}, warn: (m) => calls.warn.push(m) }, controls: { render: (o) => calls.render.push(o) } };
+calls.render = [];
 globalThis.ChatMessage = { create: async (d) => calls.chat.push(d) };
 globalThis.CONFIG = { DND5E: { skills: { ste: { label: "Stealth" }, prc: { label: "Perception" } } }, Canvas: { polygonBackends: { sight: { testCollision: () => false } } } };
 let nextId = 0;
@@ -22,7 +23,7 @@ function tokenDoc(id, { flags = {}, owner = true, hp = 10, passive = 10, hidden 
   const doc = {
     id, name: id, uuid: `Scene.scene.Token.${id}`, isOwner: owner, hidden, flags: f, actorId: `act-${id}`,
     parent: { id: "scene" },
-    getCenterPoint: () => at,
+    getCenterPoint: (d) => (d && d.x !== undefined) ? { x: d.x, y: d.y } : at,
     testUserPermission: () => playerOwner,
     getFlag: (m, k) => f[m]?.[k],
     setFlag: async (m, k, v) => { f[m][k] = v; calls.flags.push([id, k, v]); },
@@ -194,15 +195,35 @@ test("outside the radius, behind a wall, defeated or hidden enemies: nothing hap
   assert.deepEqual(started, []);
 });
 
-test("a token with a prompt still open is skipped", async () => {
-  reset(); const pc = player("pc"); let asked = 0; let release;
-  scene([enemy("g1", { passive: 1 }), pc], { darkness: 0.6 });
+test("a move made while a prompt is open is checked once the prompt resolves, without a second prompt", async () => {
+  reset(); const pc = player("pc"); let asked = 0, rolls = 0; let release;
+  scene([enemy("g1", { passive: 1, roll: async () => { rolls++; return [{ total: 2 }]; } }), pc], { darkness: 0.6 });
   const slow = { ...deps(), ask: () => { asked++; return new Promise((r) => { release = r; }); } };
-  const first = onMoveToken(pc, {}, {}, null, slow);
+  const first = onMoveToken(pc, { destination: { x: 100, y: 0 } }, {}, null, slow);
   await new Promise((r) => setTimeout(r, 0));
-  await onMoveToken(pc, {}, {}, null, slow);
+  await onMoveToken(pc, { destination: { x: 200, y: 0 } }, {}, null, slow);
   assert.equal(asked, 1);
+  assert.equal(rolls, 0);
   release(12); await first;
+  assert.equal(asked, 1);
+  assert.equal(rolls, 2); // the first move's Perception roll, then the queued move's
+});
+
+test("detection measures from the move's destination, not the position the hook still shows", async () => {
+  reset(); const pc = player("pc"); // sits at x=0, 20 ft from the goblin; the move takes it out of the radius
+  scene([enemy("g1"), pc]);
+  await onMoveToken(pc, { destination: { x: 1500, y: 0 } }, {}, null, deps());
+  assert.deepEqual(started, []);
+  const far = player("pc2", { at: { x: 1500, y: 0 } }); // the move brings it into sight
+  await onMoveToken(far, { destination: { x: 100, y: 0 } }, {}, null, deps());
+  assert.deepEqual(started, [["scene", "g"]]);
+});
+
+test("the player's Stealth prompt is told to close after the GM answered for them", async () => {
+  reset(); const pc = player("pc"); const dismissed = [];
+  scene([enemy("g1", { passive: 1 })], { darkness: 0.6, wall: true });
+  await onMoveToken(pc, {}, {}, null, { ...deps(), ask: async () => 11, dismiss: async (u) => dismissed.push(u) });
+  assert.deepEqual(dismissed, ["p1"]);
 });
 
 test("non-GM client, running combat, or NPC mover: ignored", async () => {
@@ -292,7 +313,9 @@ test("RollComplete by an encounter enemy with hits, or hitting one, starts; with
 test("registerEncounters hooks the events it needs", () => {
   const names = [];
   globalThis.Hooks.on = (n) => names.push(n);
+  calls.render = [];
   registerEncounters();
+  assert.deepEqual(calls.render, [{ reset: true }]); // the controls rendered before the hook existed
   for (const h of ["getSceneControlButtons", "renderTokenHUD", "moveToken", "dnd5e.postUseActivity", "dnd5e.applyDamage", "midi-qol.RollComplete", "combatStart", "canvasReady"]) assert.ok(names.includes(h), h);
   globalThis.Hooks.on = () => {};
 });
