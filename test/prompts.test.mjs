@@ -1,0 +1,72 @@
+// Feature 3 prompts against stubbed Foundry globals.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+globalThis.Hooks = { once() {}, on() {}, callAll() {} };
+globalThis.ui = { notifications: { info() {}, warn() {} } };
+globalThis.CONFIG = { DND5E: { skills: { ste: { label: "Stealth" } } } };
+globalThis.game = {
+  i18n: { localize: (k) => k, format: (k, d) => `${k}:${JSON.stringify(d)}` },
+  user: { isGM: true }, users: [], combat: null,
+  settings: { get() {}, set() {}, register() {}, registerMenu() {} }
+};
+
+const dialogs = [];
+class DialogStub {
+  static next = "roll"; static typed = "";
+  constructor(config) { this.config = config; this.closed = false; dialogs.push(this); }
+  render() { this.rendered = true; return this; }
+  async close() { this.closed = true; }
+  async press(action) { const b = this.config.buttons.find((b) => b.action === action); return b.callback({}, { form: { elements: { value: { value: DialogStub.typed } } } }, this); }
+  static async wait(config) { const d = new DialogStub(config); return d.press(DialogStub.next); }
+}
+globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: DialogStub } }, utils: { escapeHTML: (s) => s } };
+
+const { rollOrType, registerSockets, awaitOrGm, activeOwner } = await import("../scripts/prompts.js");
+
+test("awaitOrGm resolves with the player's answer and closes the waiting dialog", async () => {
+  const v = await awaitOrGm(Promise.resolve(17), { title: "t", label: "Roll for them" }, async () => 3);
+  assert.equal(v, 17);
+  assert.equal(dialogs.at(-1).rendered, true);
+  assert.equal(dialogs.at(-1).closed, true);
+});
+
+test("awaitOrGm resolves with the GM fallback when the button is pressed first", async () => {
+  const never = new Promise(() => {});
+  const pending = awaitOrGm(never, { title: "t", label: "Roll for them" }, async () => 3);
+  await dialogs.at(-1).press("gm");
+  assert.equal(await pending, 3);
+});
+
+test("activeOwner picks an active non-GM owner, else null", () => {
+  game.users = [{ id: "gm", active: true, isGM: true }, { id: "p1", active: false, isGM: false }, { id: "p2", active: true, isGM: false }];
+  const doc = { testUserPermission: (u) => u.id !== "gm" };
+  assert.equal(activeOwner(doc)?.id, "p2");
+  game.users[2].active = false;
+  assert.equal(activeOwner(doc), null);
+});
+
+test("rollOrType: roll button returns the skill roll total, use button the typed value, close null", async () => {
+  const seen = [];
+  const actor = { rollSkill: async (c, d, m) => { seen.push([c, d, m]); return [{ total: 14 }]; } };
+  DialogStub.next = "roll";
+  assert.equal(await rollOrType({ actor, skill: "ste" }), 14);
+  assert.deepEqual(seen[0], [{ skill: "ste" }, { configure: false }, { rollMode: "publicroll" }]);
+  DialogStub.next = "use"; DialogStub.typed = "9";
+  assert.equal(await rollOrType({ actor, skill: "ste" }), 9);
+  DialogStub.typed = "";
+  assert.equal(await rollOrType({ actor, skill: "ste" }), null);
+  assert.equal(await rollOrType({ actor: null, skill: "ste" }), null);
+});
+
+test("registerSockets registers the three handlers and promptInitiative rolls on the player's client", async () => {
+  const handlers = {};
+  registerSockets({ register: (n, fn) => { handlers[n] = fn; } }, { startEncounter: async (s, g) => ["started", s, g] });
+  assert.deepEqual(Object.keys(handlers).sort(), ["promptInitiative", "promptSkill", "startEncounter"]);
+  assert.deepEqual(await handlers.startEncounter("scene", "g"), ["started", "scene", "g"]);
+  const rolled = [];
+  game.combat = { combatants: new Map([["c1", { initiative: 12, actor: { rollInitiative: async (o) => rolled.push(o) } }]]) };
+  assert.equal(await handlers.promptInitiative("c1"), 12);
+  assert.deepEqual(rolled, [{ createCombatants: false, initiativeOptions: { messageMode: "publicroll" } }]);
+  assert.equal(await handlers.promptInitiative("nope"), null);
+});

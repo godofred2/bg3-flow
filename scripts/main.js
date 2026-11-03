@@ -1,6 +1,8 @@
 import { depsOk } from "./rules.js";
 import { registerAutomation, PresetMenu } from "./automation.js";
 import { registerTurns, toggleDash } from "./turns.js";
+import { registerSockets } from "./prompts.js";
+import { startEncounter } from "./encounters.js";
 
 export const MODULE_ID = "bg3-flow";
 
@@ -26,7 +28,7 @@ const L = (key) => game.i18n.localize(`BG3FLOW.${key}`);
 
 /** socketlib socket for GM-side handlers (features 2 and 3 register theirs here). */
 export let socket = null;
-Hooks.once("socketlib.ready", () => { socket = socketlib.registerModule(MODULE_ID); });
+Hooks.once("socketlib.ready", () => { socket = socketlib.registerModule(MODULE_ID); registerSockets(socket, { startEncounter }); });
 
 Hooks.once("init", () => {
   const reg = (key, type, def) => game.settings.register(MODULE_ID, key, {
