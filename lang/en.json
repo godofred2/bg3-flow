@@ -48,6 +48,18 @@
       "NotYourTurn": "Not your turn.",
       "NoMovement": "Not enough movement: {spent} of {limit} ft already used.",
       "Shared": "<strong>Shared turn:</strong> {names}"
+    },
+    "Encounter": {
+      "Mark": "Mark as encounter",
+      "Radius": "Detection radius (ft)",
+      "NoTokens": "Select the enemy tokens first"
+    },
+    "Hide": {
+      "Button": "Hide",
+      "Title": "Stealth",
+      "Roll": "Roll Stealth",
+      "Use": "Use this value",
+      "Value": "Or type a value"
     }
   }
 }

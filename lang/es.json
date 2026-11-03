@@ -48,6 +48,18 @@
       "NotYourTurn": "No es tu turno.",
       "NoMovement": "No queda movimiento: {spent} de {limit} pies ya usados.",
       "Shared": "<strong>Turno compartido:</strong> {names}"
+    },
+    "Encounter": {
+      "Mark": "Marcar como encuentro",
+      "Radius": "Radio de detección (pies)",
+      "NoTokens": "Selecciona antes las fichas enemigas"
+    },
+    "Hide": {
+      "Button": "Esconderse",
+      "Title": "Sigilo",
+      "Roll": "Tirar Sigilo",
+      "Use": "Usar este valor",
+      "Value": "O escribe un valor"
     }
   }
 }
