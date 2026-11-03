@@ -1,5 +1,6 @@
 import { depsOk } from "./rules.js";
 import { registerAutomation, PresetMenu } from "./automation.js";
+import { registerTurns, toggleDash } from "./turns.js";
 
 export const MODULE_ID = "bg3-flow";
 
@@ -9,6 +10,14 @@ export function log(...args) { console.log(`[${MODULE_ID}]`, ...args); }
 export function safe(fn) {
   return async function (...args) {
     try { return await fn.apply(this, args); }
+    catch (err) { console.error(`[${MODULE_ID}]`, err); }
+  };
+}
+
+/** Same, for hooks whose return value matters synchronously (preMoveToken veto, combatTurn mutation). */
+export function safeSync(fn) {
+  return function (...args) {
+    try { return fn.apply(this, args); }
     catch (err) { console.error(`[${MODULE_ID}]`, err); }
   };
 }
@@ -30,6 +39,7 @@ Hooks.once("init", () => {
   reg("lockGmMovement", Boolean, false);
   reg("defaultEncounterRadius", Number, 60);
   reg("obscuredDarkness", Number, 0.5);
+  reg("dashNames", String, "Dash, Carrera, Correr");
   game.settings.registerMenu(MODULE_ID, "preset", {
     name: L("Preset.Menu"), label: L("Preset.Menu"), hint: L("Preset.Hint"),
     icon: "fas fa-bolt", type: PresetMenu, restricted: true
@@ -49,5 +59,7 @@ Hooks.once("ready", () => {
     return;
   }
   if (game.settings.get(MODULE_ID, "enableAutomation")) registerAutomation();
+  if (game.settings.get(MODULE_ID, "enableTurns")) registerTurns();
+  game.modules.get(MODULE_ID).api = { toggleDash };
   log("ready");
 });

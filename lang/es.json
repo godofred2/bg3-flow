@@ -2,12 +2,34 @@
   "BG3FLOW": {
     "DepsMissing": "BG3 Flow está desactivado. Falta o está desactualizado:",
     "Settings": {
-      "enableAutomation": { "Name": "Automatización completa", "Hint": "Pregunta aliados/enemigos en áreas que permiten elegir objetivos. Usa el botón del preset de esta sección para configurar Midi QOL." },
-      "enableTurns": { "Name": "Turnos estilo BG3", "Hint": "Los aliados consecutivos comparten un turno; movimiento bloqueado fuera del turno y limitado durante él." },
-      "enableEncounters": { "Name": "Encuentros y sigilo", "Hint": "Grupos de enemigos predefinidos que inician el combate al ver o herir a un jugador." },
-      "lockGmMovement": { "Name": "Bloquear también al GM", "Hint": "Si está activo, el GM tampoco puede mover fichas fuera de su turno." },
-      "defaultEncounterRadius": { "Name": "Radio de encuentro por defecto (pies)", "Hint": "Distancia de detección propuesta al marcar un encuentro." },
-      "obscuredDarkness": { "Name": "Umbral de oscuridad", "Hint": "Nivel de oscuridad (0 a 1) a partir del cual una posición cuenta como oculta para el sigilo." }
+      "enableAutomation": {
+        "Name": "Automatización completa",
+        "Hint": "Pregunta aliados/enemigos en áreas que permiten elegir objetivos. Usa el botón del preset de esta sección para configurar Midi QOL."
+      },
+      "enableTurns": {
+        "Name": "Turnos estilo BG3",
+        "Hint": "Los aliados consecutivos comparten un turno; movimiento bloqueado fuera del turno y limitado durante él."
+      },
+      "enableEncounters": {
+        "Name": "Encuentros y sigilo",
+        "Hint": "Grupos de enemigos predefinidos que inician el combate al ver o herir a un jugador."
+      },
+      "lockGmMovement": {
+        "Name": "Bloquear también al GM",
+        "Hint": "Si está activo, el GM tampoco puede mover fichas fuera de su turno."
+      },
+      "defaultEncounterRadius": {
+        "Name": "Radio de encuentro por defecto (pies)",
+        "Hint": "Distancia de detección propuesta al marcar un encuentro."
+      },
+      "obscuredDarkness": {
+        "Name": "Umbral de oscuridad",
+        "Hint": "Nivel de oscuridad (0 a 1) a partir del cual una posición cuenta como oculta para el sigilo."
+      },
+      "dashNames": {
+        "Name": "Nombres del objeto Carrera",
+        "Hint": "Nombres de objeto, separados por comas, que duplican el movimiento del turno al usarse."
+      }
     },
     "Preset": {
       "Menu": "Aplicar preset de automatización BG3",
@@ -21,6 +43,11 @@
       "Hint": "Este conjuro permite salvar a tus aliados. ¿A quién debe dañar el área?",
       "EnemiesOnly": "Solo enemigos",
       "Everyone": "Todos"
+    },
+    "Turns": {
+      "NotYourTurn": "No es tu turno.",
+      "NoMovement": "No queda movimiento: {spent} de {limit} pies ya usados.",
+      "Shared": "<strong>Turno compartido:</strong> {names}"
     }
   }
 }

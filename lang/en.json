@@ -2,12 +2,34 @@
   "BG3FLOW": {
     "DepsMissing": "BG3 Flow is disabled. Missing or outdated:",
     "Settings": {
-      "enableAutomation": { "Name": "Full automation", "Hint": "Friend-or-foe prompt for areas that allow choosing targets. Use the preset button in this section to set up Midi QOL." },
-      "enableTurns": { "Name": "BG3 turn flow", "Hint": "Consecutive allies share one turn; movement locked off-turn and budgeted on-turn." },
-      "enableEncounters": { "Name": "Encounters and stealth", "Hint": "Preset enemy groups that start combat when they spot or hurt a player." },
-      "lockGmMovement": { "Name": "Lock GM movement too", "Hint": "If on, the GM is also blocked from moving tokens outside their turn." },
-      "defaultEncounterRadius": { "Name": "Default encounter radius (ft)", "Hint": "Detection distance proposed when marking an encounter." },
-      "obscuredDarkness": { "Name": "Obscured darkness threshold", "Hint": "Darkness level (0 to 1) at or above which a position counts as obscured for stealth." }
+      "enableAutomation": {
+        "Name": "Full automation",
+        "Hint": "Friend-or-foe prompt for areas that allow choosing targets. Use the preset button in this section to set up Midi QOL."
+      },
+      "enableTurns": {
+        "Name": "BG3 turn flow",
+        "Hint": "Consecutive allies share one turn; movement locked off-turn and budgeted on-turn."
+      },
+      "enableEncounters": {
+        "Name": "Encounters and stealth",
+        "Hint": "Preset enemy groups that start combat when they spot or hurt a player."
+      },
+      "lockGmMovement": {
+        "Name": "Lock GM movement too",
+        "Hint": "If on, the GM is also blocked from moving tokens outside their turn."
+      },
+      "defaultEncounterRadius": {
+        "Name": "Default encounter radius (ft)",
+        "Hint": "Detection distance proposed when marking an encounter."
+      },
+      "obscuredDarkness": {
+        "Name": "Obscured darkness threshold",
+        "Hint": "Darkness level (0 to 1) at or above which a position counts as obscured for stealth."
+      },
+      "dashNames": {
+        "Name": "Dash item names",
+        "Hint": "Comma-separated item names that double the movement budget for the turn when used."
+      }
     },
     "Preset": {
       "Menu": "Apply BG3 automation preset",
@@ -21,6 +43,11 @@
       "Hint": "This spell lets you spare your allies. Who should the area hurt?",
       "EnemiesOnly": "Enemies only",
       "Everyone": "Everyone"
+    },
+    "Turns": {
+      "NotYourTurn": "Not your turn.",
+      "NoMovement": "Not enough movement: {spent} of {limit} ft already used.",
+      "Shared": "<strong>Shared turn:</strong> {names}"
     }
   }
 }
