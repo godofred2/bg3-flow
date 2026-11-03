@@ -161,3 +161,31 @@ test("isGroupStart uses the first live member when skipDefeated", () => {
   assert.equal(isGroupStart(groups, t, 1, false), false);
   assert.equal(isGroupStart(groups, t, 0, false), true);
 });
+
+import { isObscured, passiveSpots, activeSpots, encounterGroups, withinRadius } from "../scripts/rules.js";
+test("isObscured: hidden or dark enough", () => {
+  assert.equal(isObscured({ hidden: true, darkness: 0, threshold: 0.5 }), true);
+  assert.equal(isObscured({ hidden: false, darkness: 0.5, threshold: 0.5 }), true);
+  assert.equal(isObscured({ hidden: false, darkness: 0.49, threshold: 0.5 }), false);
+});
+test("passiveSpots only when obscured and passive meets stealth", () => {
+  assert.equal(passiveSpots({ obscured: true, passive: 12, stealth: 12 }), true);
+  assert.equal(passiveSpots({ obscured: true, passive: 11, stealth: 12 }), false);
+  assert.equal(passiveSpots({ obscured: false, passive: 20, stealth: 1 }), false);
+});
+test("activeSpots: line of sight spots unless obscured, then perception vs stealth", () => {
+  assert.equal(activeSpots({ obscured: false, los: true }), true);
+  assert.equal(activeSpots({ obscured: false, los: false }), false);
+  assert.equal(activeSpots({ obscured: true, los: true, perception: 15, stealth: 15 }), true);
+  assert.equal(activeSpots({ obscured: true, los: true, perception: 14, stealth: 15 }), false);
+});
+test("encounterGroups groups marked tokens by id and skips unmarked", () => {
+  const f = (id) => ({ flags: { "bg3-flow": { encounter: { id, radius: 60 } } } });
+  const g = encounterGroups([{ ...f("a"), name: "g1" }, { ...f("a"), name: "g2" }, { ...f("b"), name: "w" }, { name: "pc", flags: {} }]);
+  assert.deepEqual([...g.keys()], ["a", "b"]);
+  assert.deepEqual(g.get("a").map((t) => t.name), ["g1", "g2"]);
+});
+test("withinRadius is inclusive", () => {
+  assert.equal(withinRadius(60, 60), true);
+  assert.equal(withinRadius(60.1, 60), false);
+});

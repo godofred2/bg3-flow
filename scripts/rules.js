@@ -163,3 +163,26 @@ export function canMove({ spent, cost, limit }) {
   if (limit > 0 && spent + cost > limit + 1e-6) return { ok: false, reason: "budget" };
   return { ok: true, reason: null };
 }
+
+// ---- Feature 3: encounters and stealth ----
+
+/** A creature is obscured when hidden or standing where the scene is dark enough. */
+export const isObscured = ({ hidden, darkness, threshold }) => !!hidden || darkness >= threshold;
+
+/** Passive Perception only matters against an obscured creature. */
+export const passiveSpots = ({ obscured, passive, stealth }) => !!obscured && passive >= stealth;
+
+/** Line of sight spots an unobscured creature outright; an obscured one needs a Perception roll to meet its Stealth. */
+export const activeSpots = ({ obscured, los, perception, stealth }) => !!los && (!obscured || perception >= stealth);
+
+/** Marked tokens grouped by encounter id (unmarked tokens skipped). */
+export function encounterGroups(tokens) {
+  const groups = new Map();
+  for (const t of tokens) {
+    const id = t.flags?.["bg3-flow"]?.encounter?.id;
+    if (id) (groups.get(id) ?? groups.set(id, []).get(id)).push(t);
+  }
+  return groups;
+}
+
+export const withinRadius = (distance, radius) => distance <= radius;
