@@ -141,3 +141,22 @@ test("canMove: ok within budget, budget reason when over, zero limit allows", ()
   assert.deepEqual(canMove({ spent: 10, cost: 25, limit: 30 }), { ok: false, reason: "budget" });
   assert.deepEqual(canMove({ spent: 50, cost: 5, limit: 0 }), { ok: true, reason: null });
 });
+
+test("jumpTurn skips defeated combatants when skipDefeated, forward and backward", () => {
+  const t = [T("g1", -1), T("g2", -1), { id: "c", side: 1, defeated: true }, T("r", 1), T("v", 0)];
+  const groups = groupBySide(t);
+  assert.deepEqual(jumpTurn({ turns: t, groups, turn: 1, direction: 1, skipDefeated: true }), { turn: 3, roundDelta: 0 });
+  assert.deepEqual(jumpTurn({ turns: t, groups, turn: 1, direction: 1, skipDefeated: false }), { turn: 2, roundDelta: 0 });
+  assert.deepEqual(jumpTurn({ turns: t, groups, turn: 4, direction: -1, skipDefeated: true }), { turn: 3, roundDelta: 0 });
+});
+test("jumpTurn wrap lands on the first live combatant of the next round", () => {
+  const t = [{ id: "g1", side: -1, defeated: true }, T("g2", -1), T("c", 1), T("r", 1)];
+  assert.deepEqual(jumpTurn({ turns: t, groups: groupBySide(t), turn: 2, direction: 1, skipDefeated: true }), { turn: 1, roundDelta: 1 });
+});
+test("isGroupStart uses the first live member when skipDefeated", () => {
+  const t = [{ id: "c", side: 1, defeated: true }, T("r", 1), T("g1", -1)];
+  const groups = groupBySide(t);
+  assert.equal(isGroupStart(groups, t, 1, true), true);
+  assert.equal(isGroupStart(groups, t, 1, false), false);
+  assert.equal(isGroupStart(groups, t, 0, false), true);
+});

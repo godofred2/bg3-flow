@@ -115,26 +115,38 @@ export function groupOf(groups, id) {
   return groups.find((g) => g.ids.includes(id)) ?? null;
 }
 
+/** First index at or after `from` (wrapping once) whose combatant is live, honouring Foundry's skipDefeated. */
+function firstLive(turns, from, skipDefeated) {
+  for (let i = from; i < turns.length; i++) if (!skipDefeated || !turns[i].defeated) return i;
+  return null;
+}
+
 /**
  * Where the turn pointer should land instead of turn±1, or null to leave Foundry's choice alone.
- * Forward: first index after the current combatant's group (wrapping to turn 0 of the next round).
- * Backward: first member of the group that contains turn-1.
+ * Forward: first live index after the current combatant's group (wrapping to the next round's first live index).
+ * Backward: first live member of the group that contains turn-1.
  */
-export function jumpTurn({ turns, groups, turn, direction }) {
+export function jumpTurn({ turns, groups, turn, direction, skipDefeated = false }) {
   if (direction > 0) {
     const g = groupOf(groups, turns[turn]?.id);
     if (!g) return null;
     const last = turns.findIndex((t) => t.id === g.ids.at(-1));
-    return last + 1 < turns.length ? { turn: last + 1, roundDelta: 0 } : { turn: 0, roundDelta: 1 };
+    const next = firstLive(turns, last + 1, skipDefeated);
+    return next !== null ? { turn: next, roundDelta: 0 } : { turn: firstLive(turns, 0, skipDefeated) ?? 0, roundDelta: 1 };
   }
   const g = groupOf(groups, turns[turn - 1]?.id);
   if (!g) return null;
-  return { turn: turns.findIndex((t) => t.id === g.ids[0]), roundDelta: 0 };
+  const first = turns.findIndex((t) => t.id === g.ids[0]);
+  return { turn: firstLive(turns, first, skipDefeated) ?? first, roundDelta: 0 };
 }
 
-export function isGroupStart(groups, turns, turn) {
+/** True when turns[turn] is the member of its group that acts first (the first live one when skipDefeated). */
+export function isGroupStart(groups, turns, turn, skipDefeated = false) {
   const id = turns[turn]?.id;
-  return !!id && groups.some((g) => g.ids[0] === id);
+  const g = id ? groupOf(groups, id) : null;
+  if (!g) return false;
+  const first = turns.findIndex((t) => t.id === g.ids[0]);
+  return (firstLive(turns, first, skipDefeated) ?? first) === turn;
 }
 
 /** dnd5e ruler rule: the action's speed, walk as floor when the action falls back to walk; doubled by Dash. */

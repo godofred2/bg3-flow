@@ -5,7 +5,8 @@ import { groupBySide, groupOf, jumpTurn, isGroupStart, speedLimit, canMove } fro
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 
-const turnsOf = (combat) => combat.turns.map((c) => ({ id: c.id, side: c.token?.disposition ?? 0 }));
+const turnsOf = (combat) => combat.turns.map((c) => ({ id: c.id, side: c.token?.disposition ?? 0, defeated: !!c.isDefeated }));
+const skipDefeated = (combat) => !!combat.settings?.skipDefeated;
 const groupsOf = (combat) => groupBySide(turnsOf(combat));
 const combatantFor = (combat, tokenId, sceneId) =>
   combat?.started ? combat.combatants.find((c) => c.tokenId === tokenId && c.sceneId === sceneId) ?? null : null;
@@ -29,18 +30,22 @@ function limitFor(doc, combatant, action) {
 
 /** combatTurn (initiating client): move the pointer past the whole group, or back to a group's first member. */
 export function onCombatTurn(combat, updateData, updateOptions) {
-  const jump = jumpTurn({ turns: turnsOf(combat), groups: groupsOf(combat), turn: combat.turn, direction: updateOptions?.direction ?? 1 });
+  const jump = jumpTurn({ turns: turnsOf(combat), groups: groupsOf(combat), turn: combat.turn, direction: updateOptions?.direction ?? 1, skipDefeated: skipDefeated(combat) });
   if (!jump) return;
-  // ponytail: a defeated combatant at the landing index is skipped by Foundry on the next click, not here.
   updateData.turn = jump.turn;
-  if (jump.roundDelta) updateData.round = combat.round + jump.roundDelta;
+  if (jump.roundDelta) {
+    // Foundry would have gone through nextRound(): mirror what it does so round listeners and world time stay right.
+    updateData.round = combat.round + jump.roundDelta;
+    if (updateOptions?.worldTime) updateOptions.worldTime.delta = CONFIG.time?.roundTime ?? updateOptions.worldTime.delta;
+    Hooks.callAll("combatRound", combat, updateData, updateOptions);
+  }
 }
 
 /** combatTurnChange (GM only acts): at a group's first member, reset members' movement and Dash, announce the shared turn. */
 export async function onCombatTurnChange(combat, prior, current) {
   if (!game.user.isGM || !combat?.started) return;
   const turns = turnsOf(combat), groups = groupsOf(combat);
-  if (!isGroupStart(groups, turns, current.turn)) return;
+  if (!isGroupStart(groups, turns, current.turn, skipDefeated(combat))) return;
   const members = groupOf(groups, turns[current.turn].id).ids.map((id) => combat.combatants.find((c) => c.id === id)).filter(Boolean);
   for (const c of members) {
     await c.token?.clearMovementHistory?.();
@@ -55,10 +60,10 @@ export function onPreMoveToken(doc, movement) {
   const combatant = combatantFor(combat, doc.id, doc.parent?.id);
   if (!combatant) return;
   const waypoints = [...(movement.passed?.waypoints ?? []), ...(movement.pending?.waypoints ?? [])];
-  if (waypoints.length && waypoints.every((w) => CONFIG.Token.movement.actions[w.action]?.teleport)) return;
+  const action = waypoints.at(-1)?.action ?? doc.movementAction ?? "walk"; // the last waypoint carries this move's action
+  if (CONFIG.Token.movement.actions[action]?.teleport) return;
   if (game.user.isGM && !game.settings.get(MODULE_ID, "lockGmMovement")) return;
   if (!activeIds(combat).has(combatant.id)) { ui.notifications.warn(L("Turns.NotYourTurn")); return false; }
-  const action = waypoints.at(-1)?.action ?? doc.movementAction ?? "walk";
   const limit = limitFor(doc, combatant, action);
   const spent = movement.history?.cost ?? 0;
   const cost = (movement.passed?.cost ?? 0) + (movement.pending?.cost ?? 0);
@@ -70,7 +75,8 @@ export function onPreMoveToken(doc, movement) {
 export async function onPostUseActivity(activity) {
   const names = String(game.settings.get(MODULE_ID, "dashNames") ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
   if (!names.includes(String(activity?.item?.name ?? "").trim().toLowerCase())) return;
-  const combatant = game.combat?.started ? game.combat.combatants.find((c) => c.actor?.id === activity.actor?.id) : null;
+  // Same object, not same id: unlinked tokens' synthetic actors all share the base actor's id.
+  const combatant = game.combat?.started ? game.combat.combatants.find((c) => c.actor === activity.actor) : null;
   if (combatant) await combatant.setFlag(MODULE_ID, "dash", true);
 }
 
@@ -85,7 +91,8 @@ let reach = null;
 /** Plain circle of remaining movement around controlled tokens that may act now. */
 export function drawReach() {
   if (!canvas?.ready) return;
-  reach?.destroy(); reach = null;
+  if (reach && !reach.destroyed) reach.destroy();
+  reach = null;
   const combat = game.combat;
   if (!combat?.started) return;
   const active = activeIds(combat);
