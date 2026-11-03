@@ -126,7 +126,7 @@ export function drawReach() {
     const remaining = limit - spent;
     if (remaining <= 0) continue;
     const px = remaining / canvas.dimensions.distance * canvas.dimensions.size;
-    const { x, y } = doc.getCenterPoint?.() ?? token.center; // the sprite may still be animating towards doc.x/y
+    const { x, y } = token.center; // live sprite position: refreshToken redraws while it animates
     if (typeof g.circle === "function") g.circle(x, y, px).fill({ color: 0x44aaff, alpha: 0.08 }).stroke({ width: 2, color: 0x44aaff, alpha: 0.8 }); // PIXI 8
     else g.lineStyle(2, 0x44aaff, 0.8).beginFill(0x44aaff, 0.08).drawCircle(x, y, px).endFill(); // PIXI 7
   }
@@ -140,7 +140,9 @@ export function registerTurns() {
   Hooks.on("preMoveToken", safeSync(onPreMoveToken)); // sync: a Promise would never veto
   Hooks.on("dnd5e.postUseActivity", safe(onPostUseActivity));
   Hooks.on("midi-qol.preTargetingV2", safe(onPreTargetingTurns));
-  for (const h of ["controlToken", "moveToken", "combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady"]) {
+  // moveToken fires before the sprite moves; follow the animation instead.
+  Hooks.on("refreshToken", safeSync((token, flags) => { if (flags?.refreshPosition && token.controlled) drawReach(); }));
+  for (const h of ["controlToken", "combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady"]) {
     Hooks.on(h, safe(drawReach));
   }
   log("turns on");
