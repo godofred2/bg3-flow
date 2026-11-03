@@ -2,7 +2,7 @@
   "BG3FLOW": {
     "DepsMissing": "BG3 Flow is disabled. Missing or outdated:",
     "Settings": {
-      "enableAutomation": { "Name": "Full automation", "Hint": "Friend-or-foe prompt for areas that allow choosing targets. The Midi preset button is below." },
+      "enableAutomation": { "Name": "Full automation", "Hint": "Friend-or-foe prompt for areas that allow choosing targets. Use the preset button in this section to set up Midi QOL." },
       "enableTurns": { "Name": "BG3 turn flow", "Hint": "Consecutive allies share one turn; movement locked off-turn and budgeted on-turn." },
       "enableEncounters": { "Name": "Encounters and stealth", "Hint": "Preset enemy groups that start combat when they spot or hurt a player." },
       "lockGmMovement": { "Name": "Lock GM movement too", "Hint": "If on, the GM is also blocked from moving tokens outside their turn." },
@@ -18,10 +18,9 @@
     },
     "Targets": {
       "Title": "Who does it affect?",
-      "Hint": "This spell lets you choose. These allies are inside the area:",
+      "Hint": "This spell lets you spare your allies. Who should the area hurt?",
       "EnemiesOnly": "Enemies only",
-      "Everyone": "Everyone",
-      "OnlyChecked": "Only checked"
+      "Everyone": "Everyone"
     }
   }
 }

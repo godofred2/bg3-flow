@@ -43,23 +43,24 @@ What it writes into Midi QOL:
 | Auto fast forward (player and GM) | attack, damage, check, save, skill, tool | no roll dialogs at all |
 | Auto check hits | Check, all see result | hit or miss computed and shown |
 | Auto check saves | Result + Rolls | saves computed, everyone sees the dice |
-| Auto apply damage | Yes, no damage card confirmation | HP changes immediately |
-| Player saves | Auto roll, public | players' saves roll by themselves |
+| Auto apply damage | Yes | HP changes immediately |
+| Player saves | None (public roll) | players' saves roll by themselves, dice shown |
 | NPC saves | Auto | GM's monsters save by themselves |
 | Template auto target | Walls Block | everyone inside the area is targeted, walls respected |
-| Hide roll details | none | nothing hidden |
+| GM attack and damage display, GM 3D dice | Full, Show | nothing hidden from players |
 
 It also turns off Midi's target confirmation and dnd5e's own initiative grouping. Every value can be changed afterwards in Midi's settings. Dice So Nice keeps animating every roll because the rolls stay public.
 
 ## Friend-or-foe prompt
 
-When you cast an area spell whose activity has **Allow choosing targets** on (the checkbox in the activity's Targeting section, next to the area settings) and at least one ally stands inside, a dialog appears for the caster:
+For area spells that let the caster spare allies (Spirit Guardians is the classic one), the caster is asked **before the area is placed**:
 
-- **Enemies only**: allies are removed from the targets.
-- **Everyone**: nothing removed.
-- **Only checked**: tick the allies you still want to hit.
+- **Enemies only** (default, also what you get by closing the dialog): allies are never hit, at cast time or in later rounds.
+- **Everyone**: nothing spared.
 
-Spells without that checkbox, such as Fireball, hit everyone inside with no prompt. If the cast created a Midi region (an ongoing area), the choice is written onto the region's disposition filter so later rounds respect it.
+The answer is written into the Midi region behaviour created by that cast (its disposition filter), so the region's own entry and turn triggers respect it from the first second. The cast's own targets are filtered the same way. Midi's own target confirmation dialog is skipped for these spells.
+
+**Setup, once per spell:** open the activity that places the area, Targeting section, tick **Override Target**, then tick **Allow choosing targets**. Leave the target type blank. Spells without that checkbox, such as Fireball, hit everyone inside with no prompt.
 
 ## Ongoing areas with Midi 14
 

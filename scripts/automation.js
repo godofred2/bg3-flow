@@ -1,5 +1,5 @@
 // Feature 1: Midi automation preset and friend-or-foe target prompt.
-import { log, safe, socket, setRegionFilter } from "./main.js";
+import { log, safe } from "./main.js";
 import { MIDI_PRESET, mergePreset, presetUnknownKeys, shouldPrompt, splitTargets, applyChoice, dispositionFilterFor } from "./rules.js";
 
 const L = (key) => game.i18n.localize(`BG3FLOW.${key}`);
@@ -35,59 +35,55 @@ export class PresetMenu extends foundry.applications.api.ApplicationV2 {
   }
 }
 
-/** Ask the caster which allies inside a choice-enabled area to spare. Returns {choice, checkedIds}. */
-async function promptFriendOrFoe(friends) {
-  const boxes = friends.map((f) =>
-    `<label class="checkbox"><input type="checkbox" name="keep" value="${f.id}" checked> ${foundry.utils.escapeHTML(f.name)}</label>`
-  ).join("");
-  const content = `<p>${L("Targets.Hint")}</p><div class="form-group stacked">${boxes}</div>`;
-  const read = (btn) => ({
-    choice: "checked",
-    checkedIds: Array.from(btn.form?.querySelectorAll?.('input[name="keep"]:checked') ?? [], (i) => i.value)
-  });
+/** Ask the caster before the area is placed. Closing the dialog counts as "enemies", like BG3. */
+async function promptFriendOrFoe() {
   const result = await foundry.applications.api.DialogV2.wait({
     window: { title: L("Targets.Title") },
-    content,
+    content: `<p>${L("Targets.Hint")}</p>`,
     rejectClose: false,
     buttons: [
-      { action: "enemies", label: L("Targets.EnemiesOnly"), icon: "fas fa-skull" },
-      { action: "everyone", label: L("Targets.Everyone"), icon: "fas fa-users", default: true },
-      { action: "checked", label: L("Targets.OnlyChecked"), icon: "fas fa-check-square",
-        callback: (event, button) => read(button) }
+      { action: "enemies", label: L("Targets.EnemiesOnly"), icon: "fas fa-skull", default: true },
+      { action: "everyone", label: L("Targets.Everyone"), icon: "fas fa-users" }
     ]
   });
-  if (result === null || result === undefined) return { choice: "everyone", checkedIds: [] };
-  if (typeof result === "string") return { choice: result, checkedIds: [] };
-  return { choice: "checked", checkedIds: result.checkedIds ?? [] };
+  return result === "everyone" ? "everyone" : "enemies";
 }
 
-/** Write the chosen filter onto the Midi region behaviour created by this cast, if any. Players relay through the GM. */
-async function updateRegionFilter(region, choice) {
+/**
+ * midi-qol.preTargetingV2: runs before Midi's target confirmation and before the template (region) exists,
+ * so the Midi region behaviour is created with the chosen disposition filter and its entry triggers respect it.
+ */
+export async function onPreTargeting({ workflow, usage }) {
+  const activity = workflow?.activity;
+  if (!shouldPrompt({ choice: activity?.target?.affects?.choice, templateType: activity?.target?.template?.type })) return;
+  // Midi forces its own confirmation dialog for "Allow choosing targets"; this is the documented way to skip it.
+  workflow.workflowOptions.targetConfirmation = "none";
+  if (usage?.midiOptions?.workflowOptions) usage.midiOptions.workflowOptions.targetConfirmation = "none";
+
+  const choice = await promptFriendOrFoe();
+  workflow.bg3flowChoice = choice;
   const filter = dispositionFilterFor(choice);
-  if (filter === null || !(region instanceof RegionDocument)) return;
-  if (game.user.isGM) await setRegionFilter(region.uuid, filter);
-  else if (socket) await socket.executeAsGM("setRegionFilter", region.uuid, filter);
-  else log("socketlib not ready, region filter not written");
+  // This activity is Midi's per-use clone; Midi reads its regionBehavior when it attaches the region behaviour.
+  activity.updateSource({ "regionBehavior.dispositionFilter": filter });
+  if (activity.regionBehavior) activity.regionBehavior.dispositionFilter = filter; // ponytail: in case updateSource does not re-initialise
+  log(`friend-or-foe: ${choice}, region filter ${filter}`);
 }
 
+/** midi-qol.targetingComplete: apply the choice to the cast's own targets (saves rolled at cast time). */
 export async function onTargetingComplete(workflow) {
+  const choice = workflow.bg3flowChoice;
+  if (!choice) return;
   const tokens = Array.from(workflow.targets ?? []);
   const targets = tokens.map((t) => ({ id: t.id, name: t.name, disposition: t.document.disposition }));
-  const casterDisposition = workflow.token?.document?.disposition ?? null;
-  const choiceFlag = workflow.activity?.target?.affects?.choice === true;
-  if (!shouldPrompt({ choice: choiceFlag, casterDisposition, targets })) return;
-
-  const { friends, foes } = splitTargets(casterDisposition, targets);
-  const { choice, checkedIds } = await promptFriendOrFoe(friends);
-  const keepIds = new Set(applyChoice({ choice, friends, foes, checkedIds }).map((t) => t.id));
+  const { friends, foes } = splitTargets(workflow.token?.document?.disposition ?? null, targets, workflow.token?.id ?? null);
+  const keepIds = new Set(applyChoice({ choice, friends, foes }).map((t) => t.id));
   const kept = tokens.filter((t) => keepIds.has(t.id));
-
-  await updateRegionFilter(workflow.template, choice);   // first: a targeting failure must not skip it
   workflow.setTargets(new Set(kept));                     // resets Midi's derived sets too
   canvas.tokens.setTargets(kept.map((t) => t.id));
   log(`friend-or-foe: ${choice}, keeping ${kept.length}/${tokens.length} targets`);
 }
 
 export function registerAutomation() {
+  Hooks.on("midi-qol.preTargetingV2", safe(onPreTargeting));
   Hooks.on("midi-qol.targetingComplete", safe(onTargetingComplete));
 }

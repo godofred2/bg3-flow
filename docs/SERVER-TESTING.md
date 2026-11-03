@@ -28,7 +28,7 @@ Confirm versions on the setup screen: Foundry 14.x, dnd5e 6.0.x, Midi QOL 14.6 o
    - `Villager` (npc, any commoner). Disposition friendly.
 3. Place one token for each on the scene. Put the two goblins and the villager adjacent to each other, the cleric 20 ft away, the rogue next to the cleric.
 4. On the cleric's Spirit Guardians, open the activity that places the area and confirm it has the Midi Region behaviour (Token Enters + Turn Start, Use Activity, Attach to caster). If it doesn't, follow README section "Ongoing areas with Midi 14" step by step and note that the sample item lacked it.
-5. On that same activity, tick **Allow choosing targets** in the Targeting section.
+5. On that same activity, Targeting section: tick **Override Target**, then **Allow choosing targets**. Leave the target type blank.
 
 ## 3. Checks
 
@@ -42,7 +42,7 @@ Record pass or fail for each line. "Console" means the browser developer console
 ### 3.2 Preset
 
 - [ ] C3. Press the preset button, confirm. A notification "BG3 automation preset applied." appears.
-- [ ] C4. Open Midi QOL, Workflow Settings and read back: Auto roll attack on (player and GM tabs); Auto roll damage "Damage Roll Needed" (both tabs); Auto fast forward has all six boxes (attack, damage, check, save, skill, tool) ticked on both tabs; Auto check hits "Check, all see result"; Auto check saves "Result + Rolls"; Auto apply damage "Yes, no damage card confirmation"; Player saves "Auto roll, public"; NPC saves "Auto"; Template auto target "Walls Block"; Hide roll details none. Note any setting whose value differs.
+- [ ] C4. Open Midi QOL, Workflow Settings and read back: Auto roll attack on (player and GM tabs); Auto roll damage "Damage Roll Needed" (both tabs); Auto fast forward has all six boxes (attack, damage, check, save, skill, tool) ticked on both tabs; Auto check hits "Check, all see result"; Auto check saves "Result + Rolls"; Auto apply damage "Yes"; Player saves "None (public roll)"; NPC saves "Auto"; Template auto target "Walls Block"; GM attack display and GM damage display "Full", GM 3D dice for attack and damage "Show". Note any setting whose value differs.
 - [ ] C5. dnd5e system settings: "Group combatants by initiative" (or similarly named initiative grouping option) is off.
 
 ### 3.3 Attacks resolve with no prompts
@@ -54,17 +54,19 @@ Record pass or fail for each line. "Console" means the browser developer console
 
 - [ ] C8. As Player1 with the Cleric, cast Fireball and place the template over the two goblins and the villager. Expected: no friend-or-foe dialog (Fireball has no "Allow choosing targets"), all three are targeted automatically, three Dex saves roll (goblins by GM side, villager by GM side), damage applies to all three including the friendly villager.
 
-### 3.5 Spirit Guardians: prompt and ongoing damage
+### 3.5 Spirit Guardians: prompt before placement, ongoing damage
 
-- [ ] C9. Move the Cleric so the goblins and the villager are within 15 ft. As Player1, cast Spirit Guardians. Expected: the dialog **Who does it affect?** appears listing the Villager as an ally inside the area, with buttons Enemies only, Everyone, Only checked.
-- [ ] C10. Press **Enemies only**. Expected: the villager is untargeted, the goblins remain, console logs `[bg3-flow] friend-or-foe: enemies, keeping 2/3 targets`. A region (ongoing area) now exists on the scene attached to the Cleric.
-- [ ] C11. As GM, start a combat with everyone, roll initiative. Advance turns until a goblin's turn starts while it stands inside the area. Expected: the goblin makes a Wis save and takes radiant damage automatically, no prompts, dice visible.
-- [ ] C12. On the Villager's turn, standing inside the area: expected no save and no damage (the region's disposition filter is Enemies).
-- [ ] C12b. As GM, open the Spirit Guardians region (Regions layer, double-click it), Behaviours tab, open the Midi behaviour. Expected: Disposition Filter reads **Enemies**. Then in the console run `canvas.scene.regions.contents.at(-1).behaviors.contents[0].system.dispositionFilter` and expect `-1`.
+The Midi sample Spirit Guardians uses entry + **turn end** triggers, so ongoing damage lands at the end of a turn, not the start.
+
+- [ ] C9. Move the Cleric so the goblins and the villager are within 15 ft. As Player1, cast Spirit Guardians. Expected: the dialog **Who does it affect?** appears immediately, before dnd5e's slot dialog and before any area is placed, with buttons Enemies only and Everyone. Midi's own Target Confirmation dialog must NOT appear.
+- [ ] C10. Press **Enemies only**, then go through the slot dialog. Expected: console logs `[bg3-flow] friend-or-foe: enemies, region filter -1`; a region attached to the Cleric exists; both goblins took radiant damage on creation (entry), the villager took none and rolled no save.
+- [ ] C11. As GM, start a combat with everyone, roll initiative. Advance turns until a goblin's turn ends while it stands inside the area. Expected: Wis save and radiant damage automatically, no prompts, dice visible.
+- [ ] C12. End of the Villager's turn inside the area: no save and no damage.
+- [ ] C12b. In the console run `canvas.scene.regions.contents.at(-1).behaviors.find(b => b.type === "midi-qol.regionActivity").system.dispositionFilter` and expect `-1`.
 - [ ] C13. Move Goblin 2 out of the area and back in during its own turn. Expected: on re-entry, it takes damage at most once that turn.
-- [ ] C14. End concentration, repeat C9 but press **Everyone**. Expected: all three targeted, villager takes the save too, and the console value from C12b now reads `0`.
-- [ ] C14b. Advance to the Villager's next turn while still inside the area. Expected: the villager saves and takes damage this time (filter is All). This is the check that proves later rounds respect the choice.
-- [ ] C14c. Repeat C9 from the Player1 window specifically (not the GM) and press **Enemies only**. Expected: console in the GM window shows no permission error, and C12b's value is `-1`. This proves the player-to-GM relay works.
+- [ ] C14. End concentration, repeat C9 but press **Everyone**. Expected: on creation the villager also saves and takes damage, and the C12b value reads `0`.
+- [ ] C14b. End of the Villager's next turn inside the area: it saves and takes damage this time. This proves later rounds respect the choice.
+- [ ] C14c. End concentration, cast again as GM (select the Cleric token first) and press **Enemies only**. Expected: same dialog, same log line, C12b reads `-1`, no errors in either console.
 
 ### 3.6 Dice visibility
 
@@ -72,7 +74,7 @@ Record pass or fail for each line. "Console" means the browser developer console
 
 ### 3.7 Disable toggle
 
-- [ ] C16. Turn off **Full automation** in BG3 Flow settings, reload, repeat C9. Expected: no friend-or-foe dialog, all three targeted.
+- [ ] C16. Turn off **Full automation** in BG3 Flow settings, reload, repeat C9. Expected: no BG3 dialog; Midi's own Target Confirmation appears instead (because the checkbox is ticked) and the villager is damaged on creation only if the Midi behaviour filter on the item says so.
 
 ## 4. Report template
 

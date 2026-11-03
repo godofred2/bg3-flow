@@ -41,7 +41,10 @@ export const MIDI_PRESET = Object.freeze({
   playerRollSaves: "nonePublic",
   rollNPCSaves: "auto",
   autoTarget: "wallsBlock",
-  hideRollDetails: "none"
+  gmAttackDisplay: "full",
+  gmDamageDisplay: "full",
+  gmAttackDsn: "show",
+  gmDamageDsn: "show"
 });
 
 /** Copy of `current` with `preset` keys overriding. Keys Midi does not know (absent from `current`) are skipped. */
@@ -61,23 +64,21 @@ export function presetUnknownKeys(current, preset) {
 // ---- Friend-or-foe prompt (Feature 1) ----
 // A "target" here is {id, name, disposition}; disposition is the token's CONST.TOKEN_DISPOSITIONS number.
 
-/** Prompt only for choice-enabled areas cast from a token, when at least one target shares the caster's side. */
-export function shouldPrompt({ choice, casterDisposition, targets }) {
-  if (choice !== true || typeof casterDisposition !== "number") return false;
-  return targets.some((t) => t.disposition === casterDisposition);
+/** Prompt for choice-enabled areas only; Midi honours the flag only when the activity also has a template. */
+export function shouldPrompt({ choice, templateType }) {
+  return choice === true && !!templateType;
 }
 
-export function splitTargets(casterDisposition, targets) {
+/** Allies share the caster's disposition. The caster's own token is never an ally here: self effects must stay. */
+export function splitTargets(casterDisposition, targets, casterId = null) {
   const friends = [], foes = [];
-  for (const t of targets) (t.disposition === casterDisposition ? friends : foes).push(t);
+  for (const t of targets) (t.disposition === casterDisposition && t.id !== casterId ? friends : foes).push(t);
   return { friends, foes };
 }
 
-/** @param {{choice: "enemies"|"everyone"|"checked", friends, foes, checkedIds?: string[]}} _ @returns targets to keep */
-export function applyChoice({ choice, friends, foes, checkedIds = [] }) {
-  if (choice === "enemies") return [...foes];
-  if (choice === "checked") return [...foes, ...friends.filter((f) => checkedIds.includes(f.id))];
-  return [...foes, ...friends];
+/** @param {{choice: "enemies"|"everyone", friends, foes}} _ @returns targets to keep */
+export function applyChoice({ choice, friends, foes }) {
+  return choice === "enemies" ? [...foes] : [...foes, ...friends];
 }
 
 /** Midi regionActivity dispositionFilter: -1 enemies, 0 all, 1 allies. null = leave untouched. */

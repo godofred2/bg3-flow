@@ -227,3 +227,8 @@ All settings are world scope, configured from the GM account.
 - Monster autopilot (piece 4): nearest-enemy pathing with Foundry's `findMovementPath` plus a
   Midi attack, per-combatant toggle, pause before attacking. Nothing in this spec blocks it.
 - Wall-aware reach fill, darkvision in detection, surprise rounds, Argon/Monk's patches.
+
+
+## Amendment 2026-11-02 (after first server run, v0.2.0)
+
+Midi 14 creates the ongoing-area region, with its own disposition filter, before `midi-qol.targetingComplete` fires, and its entry triggers damage everyone inside at once. Asking after placement was therefore too late, and Midi forces its own confirmation dialog whenever "Allow choosing targets" is ticked. The prompt now runs in `midi-qol.preTargetingV2`, before the area is placed: two buttons (Enemies only, Everyone; the checkbox list is dropped because nobody is inside yet), Midi's confirmation is silenced for that use, and the choice is written into the per-use activity clone's `regionBehavior.dispositionFilter`, which Midi copies onto the region. No GM relay is needed, so the socket handler was removed.

@@ -2,7 +2,7 @@
   "BG3FLOW": {
     "DepsMissing": "BG3 Flow está desactivado. Falta o está desactualizado:",
     "Settings": {
-      "enableAutomation": { "Name": "Automatización completa", "Hint": "Pregunta aliados/enemigos en áreas que permiten elegir objetivos. El botón del preset de Midi está abajo." },
+      "enableAutomation": { "Name": "Automatización completa", "Hint": "Pregunta aliados/enemigos en áreas que permiten elegir objetivos. Usa el botón del preset de esta sección para configurar Midi QOL." },
       "enableTurns": { "Name": "Turnos estilo BG3", "Hint": "Los aliados consecutivos comparten un turno; movimiento bloqueado fuera del turno y limitado durante él." },
       "enableEncounters": { "Name": "Encuentros y sigilo", "Hint": "Grupos de enemigos predefinidos que inician el combate al ver o herir a un jugador." },
       "lockGmMovement": { "Name": "Bloquear también al GM", "Hint": "Si está activo, el GM tampoco puede mover fichas fuera de su turno." },
@@ -18,10 +18,9 @@
     },
     "Targets": {
       "Title": "¿A quién afecta?",
-      "Hint": "Este conjuro permite elegir. Estos aliados están dentro del área:",
+      "Hint": "Este conjuro permite salvar a tus aliados. ¿A quién debe dañar el área?",
       "EnemiesOnly": "Solo enemigos",
-      "Everyone": "Todos",
-      "OnlyChecked": "Solo los marcados"
+      "Everyone": "Todos"
     }
   }
 }

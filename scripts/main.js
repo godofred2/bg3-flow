@@ -15,21 +15,9 @@ export function safe(fn) {
 
 const L = (key) => game.i18n.localize(`BG3FLOW.${key}`);
 
-/** socketlib socket, set once socketlib is ready. GM-side handlers register here. */
+/** socketlib socket for GM-side handlers (features 2 and 3 register theirs here). */
 export let socket = null;
-Hooks.once("socketlib.ready", () => {
-  socket = socketlib.registerModule(MODULE_ID);
-  socket.register("setRegionFilter", setRegionFilter);
-});
-
-/** GM-side: write a Midi regionActivity disposition filter (-1 enemies, 0 all, 1 allies) on a region. */
-export async function setRegionFilter(regionUuid, filter) {
-  const region = await fromUuid(regionUuid);
-  const behaviour = region?.behaviors?.find((b) => b.type === "midi-qol.regionActivity");
-  if (!behaviour) return false;
-  await behaviour.update({ "system.dispositionFilter": filter });
-  return true;
-}
+Hooks.once("socketlib.ready", () => { socket = socketlib.registerModule(MODULE_ID); });
 
 Hooks.once("init", () => {
   const reg = (key, type, def) => game.settings.register(MODULE_ID, key, {
