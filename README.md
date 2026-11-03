@@ -49,6 +49,7 @@ What it writes into Midi QOL:
 | Template auto target | Walls Block | everyone inside the area is targeted, walls respected |
 | GM attack and damage display, GM 3D dice | Full, Show | nothing hidden from players |
 | Reactions (player and GM) | On, 30 s timeout, enforce once per round, record opportunity attacks | reaction prompts, see below |
+| Auto-apply item effects | Apply and remove | Shield's +5 AC and Uncanny Dodge's half damage apply themselves |
 
 It also turns off Midi's target confirmation and dnd5e's own initiative grouping. Every value can be changed afterwards in Midi's settings. Dice So Nice keeps animating every roll because the rolls stay public.
 
@@ -96,6 +97,8 @@ With **BG3 turn flow** on:
 - **Movement budget.** Each move is measured by Foundry (difficult terrain counts) and compared with the token's speed for the chosen movement action, walk as a floor like the dnd5e ruler. Over the limit: "Not enough movement: 20 of 30 ft already used" and the move is refused. Budgets reset when the group's turn starts.
 - **Dash.** Using an item whose name is in **Dash item names** (default `Dash, Carrera, Correr`) doubles the budget until the group's next turn. For a monster without that item, a macro can call `game.modules.get("bg3-flow").api.toggleDash(combatant)`.
 - **Reach circle.** A blue circle around a controlled token that may act shows how far it can still go. It is a plain circle, not a wall-aware fill; the dnd5e ruler colours stay the exact indicator.
+
+Midi records an attack made off-turn as an opportunity attack and spends the attacker's reaction. During a shared turn the module tells Midi that every member of the acting group is on turn, so their attacks are normal attacks.
 
 Argon Combat HUD and Monk's Combat Marker only know Foundry's single current combatant, so they will say "not your turn" to other members of the group. Ignore them; the module decides.
 

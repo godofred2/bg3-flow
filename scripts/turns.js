@@ -11,6 +11,14 @@ const groupsOf = (combat) => groupBySide(turnsOf(combat));
 const combatantFor = (combat, tokenId, sceneId) =>
   combat?.started ? combat.combatants.find((c) => c.tokenId === tokenId && c.sceneId === sceneId) ?? null : null;
 const isDash = (combatant) => !!combatant.getFlag(MODULE_ID, "dash");
+// ponytail: Foundry 14 runs preMoveToken twice on a player client for one vetoed move(); drop the echo.
+let lastWarn = { msg: "", at: 0 };
+function warn(msg) {
+  const now = Date.now();
+  if (msg === lastWarn.msg && now - lastWarn.at < 500) return;
+  lastWarn = { msg, at: now };
+  ui.notifications.warn(msg);
+}
 
 /** Ids of the combatants that may act right now: the current one's group, or just the current one. */
 export function activeIds(combat) {
@@ -63,12 +71,24 @@ export function onPreMoveToken(doc, movement) {
   const action = waypoints.at(-1)?.action ?? doc.movementAction ?? "walk"; // the last waypoint carries this move's action
   if (CONFIG.Token.movement.actions[action]?.teleport) return;
   if (game.user.isGM && !game.settings.get(MODULE_ID, "lockGmMovement")) return;
-  if (!activeIds(combat).has(combatant.id)) { ui.notifications.warn(L("Turns.NotYourTurn")); return false; }
+  if (!activeIds(combat).has(combatant.id)) { warn(L("Turns.NotYourTurn")); return false; }
   const limit = limitFor(doc, combatant, action);
   const spent = movement.history?.cost ?? 0;
   const cost = (movement.passed?.cost ?? 0) + (movement.pending?.cost ?? 0);
   const { ok } = canMove({ spent, cost, limit });
-  if (!ok) { ui.notifications.warn(L("Turns.NoMovement", { spent: Math.round(spent), limit })); return false; }
+  if (!ok) { warn(L("Turns.NoMovement", { spent: Math.round(spent), limit })); return false; }
+}
+
+/**
+ * midi-qol.preTargetingV2: Midi marks any attack by someone other than Foundry's current combatant as an
+ * opportunity attack and spends their reaction. A shared-turn member is on turn, so skip that check for them.
+ */
+export async function onPreTargetingTurns({ workflow, usage }) {
+  const combat = game.combat;
+  if (!combat?.started || !usage?.midiOptions) return;
+  const combatant = combat.combatants.find((c) => c.actor === workflow?.actor);
+  if (!combatant || !activeIds(combat).has(combatant.id)) return;
+  usage.midiOptions.proceedChecks = { ...usage.midiOptions.proceedChecks, checkAoO: false };
 }
 
 /** dnd5e.postUseActivity: using an item named like Dash flags the combatant until its group's next turn. */
@@ -106,7 +126,7 @@ export function drawReach() {
     const remaining = limit - spent;
     if (remaining <= 0) continue;
     const px = remaining / canvas.dimensions.distance * canvas.dimensions.size;
-    const { x, y } = token.center;
+    const { x, y } = doc.getCenterPoint?.() ?? token.center; // the sprite may still be animating towards doc.x/y
     if (typeof g.circle === "function") g.circle(x, y, px).fill({ color: 0x44aaff, alpha: 0.08 }).stroke({ width: 2, color: 0x44aaff, alpha: 0.8 }); // PIXI 8
     else g.lineStyle(2, 0x44aaff, 0.8).beginFill(0x44aaff, 0.08).drawCircle(x, y, px).endFill(); // PIXI 7
   }
@@ -119,6 +139,7 @@ export function registerTurns() {
   Hooks.on("combatTurnChange", safe(onCombatTurnChange));
   Hooks.on("preMoveToken", safeSync(onPreMoveToken)); // sync: a Promise would never veto
   Hooks.on("dnd5e.postUseActivity", safe(onPostUseActivity));
+  Hooks.on("midi-qol.preTargetingV2", safe(onPreTargetingTurns));
   for (const h of ["controlToken", "moveToken", "combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady"]) {
     Hooks.on(h, safe(drawReach));
   }

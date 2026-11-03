@@ -82,8 +82,8 @@ Setup: combat with Cleric, Rogue (Player1), Goblin 1, Goblin 2, Villager. Set in
 
 - [ ] T1. Before starting combat (or with no combat), Player1 moves the Rogue freely. Expected: allowed, no warning.
 - [ ] T2. GM starts combat (Begin Combat). Expected: chat shows **Shared turn: Cleric, Rogue** and the GM console shows no error. The tracker's current combatant is the Cleric.
-- [ ] T3. Player1 moves the Rogue 20 ft although the Cleric is the current combatant. Expected: allowed (shared turn). A blue circle is drawn around the Rogue when selected; after the move it is smaller.
-- [ ] T4. Player1 drags the Rogue another 15 ft (total 35 ft of a 30 ft speed). Expected: refused with "Not enough movement: 20 of 30 ft already used". A 10 ft move is still allowed.
+- [ ] T3. Player1 moves the Rogue 20 ft although the Cleric is the current combatant. Expected: allowed (shared turn). A blue circle is drawn around the Rogue when selected; after the move it is smaller and centred on the Rogue's new position without reselecting.
+- [ ] T4. Player1 drags the Rogue another 15 ft (total 35 ft of a 30 ft speed). Expected: refused with "Not enough movement: 20 of 30 ft already used", shown once on the Player1 client. A 10 ft move is still allowed.
 - [ ] T5. Player1 uses the `Dash` item on the Rogue, then moves 25 ft more. Expected: allowed (budget now 60 ft). Then move 10 ft more: refused.
 - [ ] T6. Player1 tries to move Goblin 1 (grant Player1 ownership of Goblin 1 for this check). Expected: refused with "Not your turn".
 - [ ] T7. GM presses next turn once. Expected: the tracker jumps straight to Goblin 1 (the Rogue's turn is skipped) and chat shows **Shared turn: Goblin 1, Goblin 2**. Goblin 1 and Goblin 2 can both be moved by the GM.
@@ -99,6 +99,7 @@ Setup: give the Cleric the spell **Shield** (reaction) and the Rogue the feature
 - [ ] R1. GM attacks the Cleric with Goblin 1 and hits. Expected: Player1 gets a Midi reaction prompt showing the attack roll with Shield as an option; choosing it adds +5 AC and may turn the hit into a miss. Not answering for 30 s ends the prompt with no reaction.
 - [ ] R2. GM attacks the Rogue with Goblin 2 and hits. Expected: Player1 gets a prompt offering Uncanny Dodge on damage; choosing it halves the damage applied.
 - [ ] R3. Player1 tries Shield twice in the same round. Expected: Midi warns the reaction is already used (enforce reactions).
+- [ ] R4. On the goblins' shared turn, with Goblin 1 as Foundry's current combatant, the GM attacks with Goblin 2 twice in a row. Expected: no "Reaction Used, proceed anyway?" dialog and no "Reaction used" effect on Goblin 2; both attacks are plain attacks. Then, on the Cleric and Rogue's turn, attack with Goblin 1: Midi treats it as an opportunity attack as before.
 
 ## 6. Report template
 
@@ -114,6 +115,7 @@ T11 ...
 R1 ...
 R2 ...
 R3 ...
+R4 ...
 Console lines containing [bg3-flow]:
 <paste>
 Other console errors during the run:

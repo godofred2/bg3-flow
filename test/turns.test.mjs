@@ -43,7 +43,7 @@ const move = ({ action = "walk", cost = 10, pending = 0, spent = 0 } = {}) => ({
   passed: { cost, waypoints: [{ action }] }, pending: { cost: pending, waypoints: [] }, history: { cost: spent }
 });
 
-const { onCombatTurn, onCombatTurnChange, onPreMoveToken, onPostUseActivity, drawReach } = await import("../scripts/turns.js");
+const { onCombatTurn, onCombatTurnChange, onPreMoveToken, onPostUseActivity, onPreTargetingTurns, drawReach } = await import("../scripts/turns.js");
 
 const cleric = combatant("c", 1), rogue = combatant("r", 1), g1 = combatant("g1", -1), g2 = combatant("g2", -1);
 
@@ -154,5 +154,37 @@ test("drawReach survives a circle already destroyed by a scene change", () => {
   made[0].destroyed = true; // the interface layer tore it down
   assert.doesNotThrow(() => drawReach());
   assert.equal(made.length, 2);
+  globalThis.canvas = null;
+});
+
+test("a refused move warns once even when Foundry asks twice", () => {
+  const fresh = combatant("f", 1); // the shared rogue still carries Dash from an earlier test
+  game.combat = combat([cleric, fresh, g1], 0);
+  calls.warn = [];
+  const mv = move({ cost: 15, spent: 25 });
+  onPreMoveToken(tokenDoc(fresh), mv);
+  onPreMoveToken(tokenDoc(fresh), mv);
+  assert.equal(calls.warn.length, 1);
+});
+
+test("preTargetingV2: a shared-turn member's attack is not an opportunity attack for Midi", async () => {
+  game.combat = combat([g1, g2, cleric], 0); // Goblin 1 is Foundry's current combatant, Goblin 2 shares the turn
+  const usage = { midiOptions: {} };
+  await onPreTargetingTurns({ workflow: { actor: g2.actor }, usage });
+  assert.equal(usage.midiOptions.proceedChecks.checkAoO, false);
+  const outside = { midiOptions: {} };
+  await onPreTargetingTurns({ workflow: { actor: cleric.actor }, usage: outside });
+  assert.equal(outside.midiOptions.proceedChecks, undefined);
+});
+
+test("drawReach centres the circle on the document position, not the still-animating sprite", () => {
+  const circles = [];
+  globalThis.PIXI = { Graphics: class { destroyed = false; destroy() { this.destroyed = true; } circle(x, y) { circles.push([x, y]); return this; } fill() { return this; } stroke() { return this; } } };
+  const doc = { ...tokenDoc(rogue), movementHistory: [], getCenterPoint: () => ({ x: 550, y: 650 }) };
+  const token = { id: rogue.tokenId, document: doc, center: { x: 550, y: 1050 } };
+  globalThis.canvas = { ready: true, tokens: { controlled: [token] }, scene: { id: "scene" }, interface: { addChild() {} }, dimensions: { distance: 5, size: 100 } };
+  game.combat = combat([cleric, rogue], 0);
+  drawReach();
+  assert.deepEqual(circles, [[550, 650]]);
   globalThis.canvas = null;
 });

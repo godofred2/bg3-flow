@@ -51,7 +51,8 @@ export const MIDI_PRESET = Object.freeze({
   reactionTimeout: 30,
   showReactionAttackRoll: "all",
   enforceReactions: "all",
-  recordAOO: "all"
+  recordAOO: "all",
+  autoItemEffects: "applyRemove" // a reaction's effect (Shield +5 AC, Uncanny Dodge half damage) applies itself
 });
 
 /** Copy of `current` with `preset` keys overriding. Keys Midi does not know (absent from `current`) are skipped. */

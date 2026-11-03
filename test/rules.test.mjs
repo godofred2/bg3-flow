@@ -39,6 +39,7 @@ test("MIDI_PRESET has the spec values", () => {
   assert.equal(MIDI_PRESET.showReactionAttackRoll, "all");
   assert.equal(MIDI_PRESET.enforceReactions, "all");
   assert.equal(MIDI_PRESET.recordAOO, "all");
+  assert.equal(MIDI_PRESET.autoItemEffects, "applyRemove"); // Shield's +5 AC and Uncanny Dodge's half damage apply themselves
 });
 test("applyPreset keeps unknown keys", () => {
   const merged = mergePreset({ weird: 1, autoTarget: "none" }, MIDI_PRESET);
