@@ -64,7 +64,8 @@
     },
     "Prompt": {
       "Waiting": "Waiting for {skill} from {name}",
-      "RollForThem": "Roll for them"
+      "RollForThem": "Roll for them",
+      "Initiative": "initiative"
     }
   }
 }

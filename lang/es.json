@@ -64,7 +64,8 @@
     },
     "Prompt": {
       "Waiting": "Esperando {skill} de {name}",
-      "RollForThem": "Tirar por ellos"
+      "RollForThem": "Tirar por ellos",
+      "Initiative": "iniciativa"
     }
   }
 }

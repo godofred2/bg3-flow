@@ -38,7 +38,7 @@ function tokenDoc(id, { flags = {}, owner = true, hp = 10, passive = 10, hidden 
   return doc;
 }
 
-const { markEncounter, onSceneControls, hideToken, revealToken, onPostUseActivityReveal, onRenderTokenHUD, onMoveToken } = await import("../scripts/encounters.js");
+const { markEncounter, onSceneControls, hideToken, revealToken, onPostUseActivityReveal, onRenderTokenHUD, onMoveToken, startEncounter, onApplyDamage, onRollComplete, registerEncounters } = await import("../scripts/encounters.js");
 
 test("markEncounter sets one shared id and the radius on every token, and clears when all are marked", async () => {
   const a = tokenDoc("g1"), b = tokenDoc("g2");
@@ -211,4 +211,88 @@ test("non-GM client, running combat, or NPC mover: ignored", async () => {
   game.user.isGM = true; game.combat = { started: true }; await onMoveToken(player("pc"), {}, {}, null, deps());
   game.combat = null; await onMoveToken(tokenDoc("npc"), {}, {}, null, deps());
   assert.deepEqual(started, []);
+});
+
+// ---- Starting combat and triggers ----
+function fakeCombat() {
+  const combat = {
+    combatants: [], init: [], npc: 0, started: 0,
+    createEmbeddedDocuments: async (name, data) => { data.forEach((d, i) => combat.combatants.push({ id: `c${i}`, ...d })); return combat.combatants; },
+    rollInitiative: async (ids) => combat.init.push(ids),
+    rollNPC: async () => combat.npc++,
+    startCombat: async () => combat.started++
+  };
+  return combat;
+}
+function world(tokens, { existing = [] } = {}) {
+  game.scenes = new Map([["scene", { id: "scene", tokens: { contents: tokens } }]]);
+  game.combats = existing;
+  const combat = fakeCombat();
+  globalThis.Combat = { create: async (d) => { combat.data = d; return combat; } };
+  return combat;
+}
+
+test("startEncounter builds the combat from the group and the player characters, PCs roll on their clients, NPCs on the GM, reveals and starts", async () => {
+  reset();
+  const pc1 = player("pc1", { flags: { stealth: { value: 15, hidden: true, checked: [] } } });
+  const pc2 = player("pc2"); pc2.testUserPermission = () => false; // owner offline
+  const combat = world([enemy("g1"), enemy("g2"), pc1, pc2, tokenDoc("villager")]);
+  const asked = [];
+  calls.status = [];
+  const out = await startEncounter("scene", "g", { askInit: async (u, c) => { asked.push([u, c]); return 12; } });
+  assert.equal(out, combat);
+  assert.deepEqual(combat.data, { scene: "scene", active: true });
+  assert.deepEqual(combat.combatants.map((c) => c.tokenId), ["g1", "g2", "pc1", "pc2"]);
+  assert.deepEqual(combat.combatants.map((c) => [c.sceneId, c.actorId]), [["scene", "act-g1"], ["scene", "act-g2"], ["scene", "act-pc1"], ["scene", "act-pc2"]]);
+  assert.deepEqual(asked, [["p1", "c2"]]);
+  assert.deepEqual(combat.init, [["c3"]]);
+  assert.equal(combat.npc, 1);
+  assert.equal(combat.started, 1);
+  assert.equal(pc1.getFlag("bg3-flow", "stealth"), undefined);
+  assert.deepEqual(calls.status, [["pc1", "hiding", false]]);
+});
+
+test("startEncounter is a no-op when a combat exists on the scene, while one is starting, or without live enemies", async () => {
+  reset();
+  world([enemy("g1"), player("pc")], { existing: [{ scene: { id: "scene" } }] });
+  assert.equal(await startEncounter("scene", "g"), null);
+  const combat = world([enemy("g1"), player("pc")]);
+  let release;
+  const first = startEncounter("scene", "g", { askInit: () => new Promise((r) => { release = r; }) });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(await startEncounter("scene", "g"), null);
+  release(9); assert.equal(await first, combat);
+  world([enemy("dead", { hp: 0 }), enemy("ghost", { hidden: true }), player("pc")]);
+  assert.equal(await startEncounter("scene", "g"), null);
+});
+
+test("applyDamage on an encounter enemy outside combat asks the GM to start that group", async () => {
+  reset(); const told = [];
+  const e = enemy("g1"); e.actor.token = e;
+  await onApplyDamage(e.actor, 5, {}, { tell: async (s, g) => told.push([s, g]) });
+  await onApplyDamage(e.actor, 0, {}, { tell: async (s, g) => told.push([s, g]) });
+  game.combat = { started: true };
+  await onApplyDamage(e.actor, 5, {}, { tell: async (s, g) => told.push([s, g]) });
+  game.combat = null;
+  await onApplyDamage(player("pc").actor, 5, {}, { tell: async (s, g) => told.push([s, g]) });
+  assert.deepEqual(told, [["scene", "g"]]);
+});
+
+test("RollComplete by an encounter enemy with hits, or hitting one, starts; with no hits does nothing", async () => {
+  reset(); const told = [];
+  const tell = async (s, g) => told.push([s, g]);
+  const e = enemy("g1"), pc = player("pc");
+  await onRollComplete({ token: { document: e }, hitTargets: new Set([{ document: pc }]) }, { tell });
+  await onRollComplete({ token: { document: pc }, hitTargets: new Set([{ document: e }]) }, { tell });
+  await onRollComplete({ token: { document: e }, hitTargets: new Set() }, { tell });
+  await onRollComplete({ token: { document: pc }, hitTargets: new Set([{ document: tokenDoc("villager") }]) }, { tell });
+  assert.deepEqual(told, [["scene", "g"], ["scene", "g"]]);
+});
+
+test("registerEncounters hooks the events it needs", () => {
+  const names = [];
+  globalThis.Hooks.on = (n) => names.push(n);
+  registerEncounters();
+  for (const h of ["getSceneControlButtons", "renderTokenHUD", "moveToken", "dnd5e.postUseActivity", "dnd5e.applyDamage", "midi-qol.RollComplete", "combatStart", "canvasReady"]) assert.ok(names.includes(h), h);
+  globalThis.Hooks.on = () => {};
 });

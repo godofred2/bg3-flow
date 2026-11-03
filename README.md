@@ -102,6 +102,21 @@ Midi records an attack made off-turn as an opportunity attack and spends the att
 
 Argon Combat HUD and Monk's Combat Marker only know Foundry's single current combatant, so they will say "not your turn" to other members of the group. Ignore them; the module decides.
 
+## Encounters and stealth
+
+With **Encounters and stealth** on, exploration is free movement until an enemy group notices the party or blood is drawn, like BG3.
+
+- **Marking.** Select the enemy tokens and press **Mark as encounter** in the token controls (GM only). A dialog asks the detection radius (default from settings). Every selected token gets the same group id; the GM sees a red circle of that radius around each. Press the button again with the same tokens selected to clear the mark.
+- **Hide.** Owned tokens get an eye-slash button in the token HUD. It opens a dialog: **Roll Stealth** rolls the skill publicly, or type a value. The token gets dnd5e's *Hiding* status and keeps the value until combat starts, the actor uses an attack or save activity, or Hide is pressed again.
+- **Detection** runs on the GM client whenever a player-owned token moves outside combat. For every group with a live enemy inside its radius:
+  1. The player is *obscured* if hidden or standing where the scene darkness is at or above **Obscured darkness threshold**.
+  2. Obscured: once per group, each enemy's passive Perception is compared with the player's Stealth. If the player has no Stealth value yet (walked into darkness), their client is asked to roll or type one; the GM sees "Waiting for Stealth from Name" with a **Roll for them** button. If nobody is online for that actor, the GM gets the dialog directly.
+  3. Enemies with line of sight (inside the radius, no sight-blocking wall between the two tokens) spot an unobscured player outright. An obscured one makes them roll Perception publicly against the Stealth value; meeting it spots.
+- **Damage** to an encounter enemy outside combat, or an enemy hitting someone, starts its group's combat too.
+- **Starting combat.** One combat with the group's live enemies and every player character on the scene. Each player rolls their own initiative on their client (3D dice show); the GM can take over with **Roll for them**, and rolls for anyone offline. NPCs roll on the GM. Stealth is cleared and the BG3 turn flow takes over.
+
+Simplifications: no darkvision or light rules (only darkness level and walls), the token's own vision range is ignored, no surprise round. A chat line says who spotted whom.
+
 ## Settings
 
 - **Full automation**, **BG3 turn flow**, **Encounters and stealth**: feature toggles.

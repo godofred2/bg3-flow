@@ -2,7 +2,7 @@ import { depsOk } from "./rules.js";
 import { registerAutomation, PresetMenu } from "./automation.js";
 import { registerTurns, toggleDash } from "./turns.js";
 import { registerSockets } from "./prompts.js";
-import { startEncounter } from "./encounters.js";
+import { startEncounter, registerEncounters, markEncounter } from "./encounters.js";
 
 export const MODULE_ID = "bg3-flow";
 
@@ -62,6 +62,7 @@ Hooks.once("ready", () => {
   }
   if (game.settings.get(MODULE_ID, "enableAutomation")) registerAutomation();
   if (game.settings.get(MODULE_ID, "enableTurns")) registerTurns();
-  game.modules.get(MODULE_ID).api = { toggleDash };
+  if (game.settings.get(MODULE_ID, "enableEncounters")) registerEncounters();
+  game.modules.get(MODULE_ID).api = { toggleDash, startEncounter, markEncounter };
   log("ready");
 });

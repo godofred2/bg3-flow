@@ -163,4 +163,70 @@ export async function onMoveToken(doc, movement, operation, user, deps = {}) {
   } finally { busy.delete(doc.id); }
 }
 
-export async function startEncounter() { return null; }
+// ---- Starting combat ----
+
+let starting = false;
+/** GM: one combat with the group's live enemies and every player character on the scene; PCs roll on their own clients. */
+export async function startEncounter(sceneId, groupId, deps = {}) {
+  const { askInit = promptInitiative } = deps;
+  if (!game.user.isGM || starting || game.combats.find((c) => c.scene?.id === sceneId)) return null;
+  starting = true;
+  try {
+    const tokens = game.scenes.get(sceneId)?.tokens?.contents ?? [];
+    const enemies = tokens.filter((t) => encounterOf(t)?.id === groupId && isLive(t));
+    const pcs = tokens.filter((t) => t.actor?.type === "character" && t.actor.hasPlayerOwner);
+    if (!enemies.length) return null;
+    const combat = await Combat.create({ scene: sceneId, active: true });
+    await combat.createEmbeddedDocuments("Combatant", [...enemies, ...pcs].map((t) => ({ tokenId: t.id, sceneId, actorId: t.actorId })));
+    for (const t of pcs) {
+      const c = combat.combatants.find((c) => c.tokenId === t.id);
+      if (!c) continue;
+      const owner = activeOwner(t);
+      const title = L("Prompt.Waiting", { name: t.name, skill: L("Prompt.Initiative") });
+      if (owner) await awaitOrGm(askInit(owner.id, c.id), { title, label: L("Prompt.RollForThem") }, () => combat.rollInitiative([c.id]));
+      else await combat.rollInitiative([c.id]);
+    }
+    await combat.rollNPC();
+    for (const t of pcs) await revealToken(t);
+    await combat.startCombat();
+    log(`encounter ${groupId} started: ${[...enemies, ...pcs].map((t) => t.name).join(", ")}`);
+    return combat;
+  } finally { starting = false; }
+}
+
+// ---- Damage triggers (any client; the GM starts) ----
+
+/** dnd5e.applyDamage: hurting an encounter enemy outside combat starts its group. */
+export async function onApplyDamage(actor, amount, options, deps = {}) {
+  const { tell = askGmToStart } = deps;
+  if (!(amount > 0) || game.combat?.started) return;
+  const token = actor?.token ?? actor?.getActiveTokens?.(true, true)?.[0];
+  const enc = token ? encounterOf(token) : null;
+  if (enc) await tell(token.parent?.id ?? canvas.scene.id, enc.id);
+}
+
+/** midi-qol.RollComplete: an encounter enemy that hits, or is hit, starts its group. */
+export async function onRollComplete(workflow, deps = {}) {
+  const { tell = askGmToStart } = deps;
+  if (game.combat?.started || !(workflow?.hitTargets?.size > 0)) return;
+  const docs = [workflow.token?.document, ...[...workflow.hitTargets].map((t) => t.document)].filter(Boolean);
+  const hit = docs.find((d) => encounterOf(d));
+  if (hit) await tell(hit.parent?.id ?? canvas.scene.id, encounterOf(hit).id);
+}
+
+async function revealAll() {
+  if (!game.user.isGM) return;
+  for (const t of canvas?.scene?.tokens?.contents ?? []) await revealToken(t);
+}
+
+export function registerEncounters() {
+  Hooks.on("getSceneControlButtons", safeSync(onSceneControls));
+  Hooks.on("renderTokenHUD", safeSync(onRenderTokenHUD));
+  Hooks.on("moveToken", safe((doc, movement, operation, user) => onMoveToken(doc, movement, operation, user)));
+  Hooks.on("dnd5e.postUseActivity", safe(onPostUseActivityReveal));
+  Hooks.on("dnd5e.applyDamage", safe((actor, amount, options) => onApplyDamage(actor, amount, options)));
+  Hooks.on("midi-qol.RollComplete", safe((workflow) => onRollComplete(workflow)));
+  Hooks.on("combatStart", safe(revealAll));
+  for (const h of ["canvasReady", "createToken", "updateToken", "deleteToken"]) Hooks.on(h, safe(drawEncounters));
+  log("encounters on");
+}
