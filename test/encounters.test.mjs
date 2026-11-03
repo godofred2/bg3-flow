@@ -209,6 +209,19 @@ test("a move made while a prompt is open is checked once the prompt resolves, wi
   assert.equal(rolls, 2); // the first move's Perception roll, then the queued move's
 });
 
+test("every move made while a prompt is open is checked, in order, not just the last one", async () => {
+  reset(); const pc = player("pc"); const seen = []; let release;
+  scene([enemy("g1", { passive: 1, roll: async () => { seen.push(pc.center.x); return [{ total: 2 }]; } }), pc], { darkness: 0.6 });
+  const slow = { ...deps(), ask: () => new Promise((r) => { release = r; }) };
+  pc.getCenterPoint = (d) => { pc.center = { x: d.x, y: 0 }; return pc.center; };
+  const first = onMoveToken(pc, { destination: { x: 100, y: 0 } }, {}, null, slow);
+  await new Promise((r) => setTimeout(r, 0));
+  onMoveToken(pc, { destination: { x: 200, y: 0 } }, {}, null, slow);
+  onMoveToken(pc, { destination: { x: 300, y: 0 } }, {}, null, slow);
+  release(12); await first;
+  assert.deepEqual(seen, [100, 200, 300]);
+});
+
 test("detection measures from the move's destination, not the position the hook still shows", async () => {
   reset(); const pc = player("pc"); // sits at x=0, 20 ft from the goblin; the move takes it out of the radius
   scene([enemy("g1"), pc]);
@@ -219,11 +232,15 @@ test("detection measures from the move's destination, not the position the hook 
   assert.deepEqual(started, [["scene", "g"]]);
 });
 
-test("the player's Stealth prompt is told to close after the GM answered for them", async () => {
-  reset(); const pc = player("pc"); const dismissed = [];
+test("the player's Stealth prompt is told to close the moment the GM presses Roll for them", async () => {
+  reset(); const pc = player("pc"); const order = [];
   scene([enemy("g1", { passive: 1 })], { darkness: 0.6, wall: true });
-  await onMoveToken(pc, {}, {}, null, { ...deps(), ask: async () => 11, dismiss: async (u) => dismissed.push(u) });
-  assert.deepEqual(dismissed, ["p1"]);
+  const Base = foundry.applications.api.DialogV2;
+  foundry.applications.api.DialogV2 = class extends Base { render() { this.config.buttons[0].callback(); return this; } };
+  try {
+    await onMoveToken(pc, {}, {}, null, { ...deps(), ask: () => new Promise(() => {}), roll: async () => { order.push("roll"); return 11; }, dismiss: async (u) => order.push(u) });
+  } finally { foundry.applications.api.DialogV2 = Base; }
+  assert.deepEqual(order, ["p1", "roll"]);
 });
 
 test("non-GM client, running combat, or NPC mover: ignored", async () => {

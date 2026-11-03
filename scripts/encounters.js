@@ -120,9 +120,9 @@ async function stealthFor(doc, { ask, roll, dismiss }) {
   const owner = activeOwner(doc);
   const title = L("Prompt.Waiting", { name: doc.name, skill: CONFIG.DND5E?.skills?.ste?.label ?? "Stealth" });
   const value = owner
-    ? await awaitOrGm(ask(owner.id, { tokenUuid: doc.uuid, skill: "ste" }), { title, label: L("Prompt.RollForThem") }, () => roll({ actor: doc.actor, skill: "ste" }))
+    ? await awaitOrGm(ask(owner.id, { tokenUuid: doc.uuid, skill: "ste" }), { title, label: L("Prompt.RollForThem") },
+        async () => { await dismiss(owner.id); return roll({ actor: doc.actor, skill: "ste" }); }) // GM takes over: close the player's prompt first
     : await roll({ actor: doc.actor, skill: "ste" });
-  if (owner) await dismiss(owner.id); // the GM may have answered first: close the player's prompt
   if (typeof value !== "number") return null;
   await doc.setFlag(MODULE_ID, "stealth", { value, hidden: false, checked: [] });
   return value;
@@ -134,7 +134,7 @@ export async function onMoveToken(doc, movement, operation, user, deps = {}) {
   const { start = startEncounter, ask = promptSkill, roll = rollOrType, dismiss = closePrompt } = deps;
   if (!leadGm() || game.combat?.started || !isPc(doc)) return;
   if (doc.parent?.id !== canvas?.scene?.id) return; // measured against the GM's canvas: only its scene
-  if (busy.has(doc.id)) { queued.set(doc.id, movement); return; } // checked again once the open prompt resolves
+  if (busy.has(doc.id)) { queued.set(doc.id, [...(queued.get(doc.id) ?? []), movement]); return; } // checked in order once the open prompt resolves
   busy.add(doc.id);
   try {
     // The hook fires before the document position changes: measure where the token is going.
@@ -169,8 +169,8 @@ export async function onMoveToken(doc, movement, operation, user, deps = {}) {
     }
   } finally {
     busy.delete(doc.id);
-    const next = queued.get(doc.id);
-    if (next) { queued.delete(doc.id); await onMoveToken(doc, next, operation, user, deps); }
+    const next = queued.get(doc.id)?.shift();
+    if (next) await onMoveToken(doc, next, operation, user, deps);
   }
 }
 
