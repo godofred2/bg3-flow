@@ -44,7 +44,14 @@ export const MIDI_PRESET = Object.freeze({
   gmAttackDisplay: "full",
   gmDamageDisplay: "full",
   gmAttackDsn: "show",
-  gmDamageDsn: "show"
+  gmDamageDsn: "show",
+  // Reactions: same keys as Midi's own "Turn on Reaction processing" quick setup.
+  doReactions: "all",
+  gmDoReactions: "all",
+  reactionTimeout: 30,
+  showReactionAttackRoll: "all",
+  enforceReactions: "all",
+  recordAOO: "all"
 });
 
 /** Copy of `current` with `preset` keys overriding. Keys Midi does not know (absent from `current`) are skipped. */

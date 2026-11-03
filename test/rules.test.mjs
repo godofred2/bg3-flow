@@ -32,6 +32,13 @@ test("MIDI_PRESET has the spec values", () => {
   assert.equal(MIDI_PRESET.gmDamageDisplay, "full");
   assert.equal(MIDI_PRESET.gmAttackDsn, "show");
   assert.equal(MIDI_PRESET.gmDamageDsn, "show");
+  // Reactions: Midi's own "Turn on Reaction processing" keys (Shield, Uncanny Dodge, Counterspell via premades).
+  assert.equal(MIDI_PRESET.doReactions, "all");
+  assert.equal(MIDI_PRESET.gmDoReactions, "all");
+  assert.equal(MIDI_PRESET.reactionTimeout, 30);
+  assert.equal(MIDI_PRESET.showReactionAttackRoll, "all");
+  assert.equal(MIDI_PRESET.enforceReactions, "all");
+  assert.equal(MIDI_PRESET.recordAOO, "all");
 });
 test("applyPreset keeps unknown keys", () => {
   const merged = mergePreset({ weird: 1, autoTarget: "none" }, MIDI_PRESET);

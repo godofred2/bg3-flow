@@ -76,7 +76,31 @@ The Midi sample Spirit Guardians uses entry + **turn end** triggers, so ongoing 
 
 - [ ] C16. Turn off **Full automation** in BG3 Flow settings, reload, repeat C9. Expected: no BG3 dialog; Midi's own Target Confirmation appears instead (because the checkbox is ticked) and the villager is damaged on creation only if the Midi behaviour filter on the item says so.
 
-## 4. Report template
+## 4. Turn flow (feature 2)
+
+Setup: combat with Cleric, Rogue (Player1), Goblin 1, Goblin 2, Villager. Set initiatives by hand so the order is Cleric 20, Rogue 18, Goblin 1 15, Goblin 2 12, Villager 5. Give the Rogue a feature item named exactly `Dash` (any activity, e.g. utility, no template). Keep the Player1 window open.
+
+- [ ] T1. Before starting combat (or with no combat), Player1 moves the Rogue freely. Expected: allowed, no warning.
+- [ ] T2. GM starts combat (Begin Combat). Expected: chat shows **Shared turn: Cleric, Rogue** and the GM console shows no error. The tracker's current combatant is the Cleric.
+- [ ] T3. Player1 moves the Rogue 20 ft although the Cleric is the current combatant. Expected: allowed (shared turn). A blue circle is drawn around the Rogue when selected; after the move it is smaller.
+- [ ] T4. Player1 drags the Rogue another 15 ft (total 35 ft of a 30 ft speed). Expected: refused with "Not enough movement: 20 of 30 ft already used". A 10 ft move is still allowed.
+- [ ] T5. Player1 uses the `Dash` item on the Rogue, then moves 25 ft more. Expected: allowed (budget now 60 ft). Then move 10 ft more: refused.
+- [ ] T6. Player1 tries to move Goblin 1 (grant Player1 ownership of Goblin 1 for this check). Expected: refused with "Not your turn".
+- [ ] T7. GM presses next turn once. Expected: the tracker jumps straight to Goblin 1 (the Rogue's turn is skipped) and chat shows **Shared turn: Goblin 1, Goblin 2**. Goblin 1 and Goblin 2 can both be moved by the GM.
+- [ ] T8. Still on the goblins' turn, GM moves the Cleric 10 ft. Expected: allowed (GM exempt). Turn on **Lock GM movement too**, retry: refused with "Not your turn". Use the token HUD movement action "Blink" or "Displace" (teleport) on the Cleric: allowed. Turn the setting back off.
+- [ ] T9. GM presses next turn. Expected: Villager (no group). Next turn again: round 2, **Shared turn: Cleric, Rogue** again, the Rogue's Dash is gone (a 35 ft move is refused again) and its movement budget is fresh (a 30 ft move is allowed).
+- [ ] T10. GM presses previous turn from the Villager. Expected: pointer lands on Goblin 1 (first of the previous group), not Goblin 2.
+- [ ] T11. Turn off **BG3 turn flow**, reload both windows, press next turn from the Cleric. Expected: pointer goes to the Rogue (Foundry default) and Player1 can move any owned token at any time. Turn it back on.
+
+## 5. Reactions
+
+Setup: give the Cleric the spell **Shield** (reaction) and the Rogue the feature **Uncanny Dodge** from Midi's sample items compendium if present (else SRD, and set the Midi use condition `reaction === "isDamaged"` on its activity). Both owned by Player1.
+
+- [ ] R1. GM attacks the Cleric with Goblin 1 and hits. Expected: Player1 gets a Midi reaction prompt showing the attack roll with Shield as an option; choosing it adds +5 AC and may turn the hit into a miss. Not answering for 30 s ends the prompt with no reaction.
+- [ ] R2. GM attacks the Rogue with Goblin 2 and hits. Expected: Player1 gets a prompt offering Uncanny Dodge on damage; choosing it halves the damage applied.
+- [ ] R3. Player1 tries Shield twice in the same round. Expected: Midi warns the reaction is already used (enforce reactions).
+
+## 6. Report template
 
 ```
 Foundry: 14.xxx   dnd5e: 6.0.x   Midi QOL: 14.x.x (before: 14.x.x)
@@ -84,6 +108,12 @@ C1 pass/fail - note
 C2 ...
 ...
 C16 ...
+T1 ...
+...
+T11 ...
+R1 ...
+R2 ...
+R3 ...
 Console lines containing [bg3-flow]:
 <paste>
 Other console errors during the run:

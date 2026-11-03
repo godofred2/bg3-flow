@@ -232,3 +232,8 @@ All settings are world scope, configured from the GM account.
 ## Amendment 2026-11-02 (after first server run, v0.2.0)
 
 Midi 14 creates the ongoing-area region, with its own disposition filter, before `midi-qol.targetingComplete` fires, and its entry triggers damage everyone inside at once. Asking after placement was therefore too late, and Midi forces its own confirmation dialog whenever "Allow choosing targets" is ticked. The prompt now runs in `midi-qol.preTargetingV2`, before the area is placed: two buttons (Enemies only, Everyone; the checkbox list is dropped because nobody is inside yet), Midi's confirmation is silenced for that use, and the choice is written into the per-use activity clone's `regionBehavior.dispositionFilter`, which Midi copies onto the region. No GM relay is needed, so the socket handler was removed.
+
+## Amendment 2026-11-02 (feature 2 and reactions, v0.3.0)
+
+- Reactions (Shield, Uncanny Dodge, Counterspell) are Midi QOL's reaction system; the preset switches it on with Midi's own quick-setup keys (30 s timeout, enforce once per round). Counterspell needs Gambit's Premades.
+- Feature 2 rulings: groups are derived from `combat.turns` on every call instead of `CombatantGroup` documents (a chat line announces the shared turn); Dash is detected by item name (setting `dashNames`) plus an API `toggleDash` instead of a context-menu entry.

@@ -35,7 +35,7 @@
       "Menu": "Apply BG3 automation preset",
       "Hint": "Configure Midi QOL for fully automatic attacks, damage and saves with public dice.",
       "Title": "BG3 automation preset",
-      "Confirm": "<p>This overwrites Midi QOL's workflow settings so attacks, damage and saves resolve with no prompts, all dice public, and templates auto-target everyone inside. It also turns off dnd5e's own initiative grouping.</p><p>You can tweak any setting afterwards. Apply?</p>",
+      "Confirm": "<p>This overwrites Midi QOL's workflow settings so attacks, damage and saves resolve with no prompts, all dice public, templates auto-target everyone inside, and reaction prompts (Shield, Uncanny Dodge, opportunity attacks) are on with a 30 second timeout. It also turns off dnd5e's own initiative grouping.</p><p>You can tweak any setting afterwards. Apply?</p>",
       "Done": "BG3 automation preset applied."
     },
     "Targets": {

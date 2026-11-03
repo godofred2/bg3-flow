@@ -3,7 +3,7 @@
 Makes D&D 5e combat in Foundry VTT play like Baldur's Gate 3. Three features, each with its own on/off setting:
 
 1. **Full automation** (shipped): a one-click Midi QOL preset for zero-prompt attacks, damage and saves with public dice, plus a friend-or-foe prompt for areas that let you choose targets.
-2. **BG3 turn flow** (planned): consecutive allies share one turn, movement is locked off-turn and budgeted on-turn, reachable range drawn on the map.
+2. **BG3 turn flow** (shipped): consecutive allies share one turn, movement is locked off-turn and budgeted on-turn, reachable range drawn on the map.
 3. **Encounters and stealth** (planned): preset enemy groups that start combat when they spot or hurt a player, with Stealth versus Perception.
 
 ## Requirements
@@ -48,6 +48,7 @@ What it writes into Midi QOL:
 | NPC saves | Auto | GM's monsters save by themselves |
 | Template auto target | Walls Block | everyone inside the area is targeted, walls respected |
 | GM attack and damage display, GM 3D dice | Full, Show | nothing hidden from players |
+| Reactions (player and GM) | On, 30 s timeout, enforce once per round, record opportunity attacks | reaction prompts, see below |
 
 It also turns off Midi's target confirmation and dnd5e's own initiative grouping. Every value can be changed afterwards in Midi's settings. Dice So Nice keeps animating every roll because the rolls stay public.
 
@@ -82,10 +83,27 @@ Midi runs the region's damage on the caster owner's client. If that player close
 
 Details and the other options: Midi's README, section "Region Behaviour (AoE)": https://github.com/tposney/midi-qol#readme
 
+## Reactions (Shield, Uncanny Dodge, Counterspell)
+
+Midi QOL already asks a player whether to use a reaction; the preset only switches it on. When a creature with a reaction-type activity is hit (Shield), damaged (Uncanny Dodge, with the Midi condition `reaction === "isDamaged"` on the activity) or attacked, the owner gets a prompt with the attack roll visible, like BG3. No answer within 30 seconds means no reaction, so absent players never get rolled for. Counterspell reacts to someone else's spell, which Midi calls a "3rd party reaction": install the free module **Gambit's Premades** and use its Counterspell. Items from Midi's sample compendium already carry the right conditions.
+
+## BG3 turn flow
+
+With **BG3 turn flow** on:
+
+- **Shared turns.** Consecutive combatants on the same side (same token disposition) act together, whatever their initiative numbers. Pressing next turn from the first member jumps past the whole group; a chat line **Shared turn: Cleric, Rogue** announces who may act. Going back lands on the first member of the previous group.
+- **Movement lock.** During combat a player can only move tokens whose combatant is in the acting group. Others get "Not your turn". The GM is exempt unless **Lock GM movement too** is on. Teleport-style moves (blink, displace) are never checked.
+- **Movement budget.** Each move is measured by Foundry (difficult terrain counts) and compared with the token's speed for the chosen movement action, walk as a floor like the dnd5e ruler. Over the limit: "Not enough movement: 20 of 30 ft already used" and the move is refused. Budgets reset when the group's turn starts.
+- **Dash.** Using an item whose name is in **Dash item names** (default `Dash, Carrera, Correr`) doubles the budget until the group's next turn. For a monster without that item, a macro can call `game.modules.get("bg3-flow").api.toggleDash(combatant)`.
+- **Reach circle.** A blue circle around a controlled token that may act shows how far it can still go. It is a plain circle, not a wall-aware fill; the dnd5e ruler colours stay the exact indicator.
+
+Argon Combat HUD and Monk's Combat Marker only know Foundry's single current combatant, so they will say "not your turn" to other members of the group. Ignore them; the module decides.
+
 ## Settings
 
 - **Full automation**, **BG3 turn flow**, **Encounters and stealth**: feature toggles.
-- **Lock GM movement too**, **Default encounter radius**, **Obscured darkness threshold**: used by features 2 and 3.
+- **Lock GM movement too**, **Dash item names**: feature 2.
+- **Default encounter radius**, **Obscured darkness threshold**: feature 3.
 
 ## Development
 

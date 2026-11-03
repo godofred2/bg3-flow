@@ -35,7 +35,7 @@
       "Menu": "Aplicar preset de automatización BG3",
       "Hint": "Configura Midi QOL para ataques, daño y salvaciones automáticos con dados públicos.",
       "Title": "Preset de automatización BG3",
-      "Confirm": "<p>Esto sobrescribe la configuración de flujo de Midi QOL para que ataques, daño y salvaciones se resuelvan sin preguntas, con todos los dados públicos y las plantillas apuntando a todos los que estén dentro. También desactiva la agrupación de iniciativa propia de dnd5e.</p><p>Puedes ajustar cualquier opción después. ¿Aplicar?</p>",
+      "Confirm": "<p>Esto sobrescribe la configuración de flujo de Midi QOL para que ataques, daño y salvaciones se resuelvan sin preguntas, con todos los dados públicos, las plantillas apuntando a todos los que estén dentro, y las preguntas de reacción (Escudo, Esquiva asombrosa, ataques de oportunidad) activas con 30 segundos de espera. También desactiva la agrupación de iniciativa propia de dnd5e.</p><p>Puedes ajustar cualquier opción después. ¿Aplicar?</p>",
       "Done": "Preset de automatización BG3 aplicado."
     },
     "Targets": {
