@@ -24,7 +24,7 @@
       },
       "obscuredDarkness": {
         "Name": "Umbral de oscuridad",
-        "Hint": "Nivel de oscuridad (0 a 1) a partir del cual una posición cuenta como oculta para el sigilo."
+        "Hint": "Oscuridad de la escena (0 a 1) a partir de la cual una posición sin luz está muy oscurecida. Con luz tenue está poco oscurecida; con luz brillante, despejada."
       },
       "dashNames": {
         "Name": "Nombres del objeto Carrera",

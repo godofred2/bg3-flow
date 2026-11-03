@@ -1,7 +1,7 @@
 // Feature 3: encounters and stealth. Marked enemy groups watch for player tokens; a spot or a hit starts combat.
 import { MODULE_ID, log, safe, safeSync } from "./main.js";
-import { encounterGroups, isObscured, passiveSpots, activeSpots, withinRadius } from "./rules.js";
-import { rollOrType, promptSkill, promptInitiative, askGmToStart, activeOwner, awaitOrGm, closePrompt } from "./prompts.js";
+import { encounterGroups, obscurity, spotsBg3, withinRadius } from "./rules.js";
+import { rollOrType, promptInitiative, askGmToStart, activeOwner, awaitOrGm } from "./prompts.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 const encounterOf = (doc) => doc.getFlag(MODULE_ID, "encounter");
@@ -59,7 +59,7 @@ export async function hideToken(doc, roll = rollOrType) {
   if (stealthOf(doc)?.hidden) return revealToken(doc);
   const value = await roll({ actor: doc.actor, skill: "ste" });
   if (value === null || value === undefined) return;
-  await doc.setFlag(MODULE_ID, "stealth", { value, hidden: true, checked: [] });
+  await doc.setFlag(MODULE_ID, "stealth", { value, hidden: true });
   await doc.actor?.toggleStatusEffect("hiding", { active: true });
 }
 
@@ -111,66 +111,36 @@ export function drawEncounters() {
 const isLive = (t) => !t.hidden && (t.actor?.system?.attributes?.hp?.value ?? 1) > 0;
 const distanceFt = (a, b) => canvas.grid.measurePath([a, b]).distance;
 const hasLineOfSight = (a, b) => !CONFIG.Canvas.polygonBackends.sight.testCollision(a, b, { type: "sight", mode: "any" });
-const rollPerception = async (enemy) => (await enemy.actor.rollSkill({ skill: "prc" }, { configure: false }, { rollMode: "publicroll" }))?.[0]?.total ?? 0;
-
-/** The token's stored Stealth value, else ask its owner (GM can take over), else the GM rolls. null when nobody answered. */
-async function stealthFor(doc, { ask, roll, dismiss }) {
-  const existing = stealthOf(doc);
-  if (typeof existing?.value === "number") return existing.value;
-  const owner = activeOwner(doc);
-  const title = L("Prompt.Waiting", { name: doc.name, skill: CONFIG.DND5E?.skills?.ste?.label ?? "Stealth" });
-  const value = owner
-    ? await awaitOrGm(ask(owner.id, { tokenUuid: doc.uuid, skill: "ste" }), { title, label: L("Prompt.RollForThem") },
-        async () => { await dismiss(owner.id); return roll({ actor: doc.actor, skill: "ste" }); }) // GM takes over: close the player's prompt first
-    : await roll({ actor: doc.actor, skill: "ste" });
-  if (typeof value !== "number") return null;
-  await doc.setFlag(MODULE_ID, "stealth", { value, hidden: false, checked: [] });
-  return value;
+/** Light at a point: inside a light's bright radius, inside any light (its dim radius), inside a darkness source. */
+function lightAt(p) {
+  const bright = canvas.effects.testInsideLight(p, { condition: (s) => Math.hypot(s.x - p.x, s.y - p.y) <= s.data.bright });
+  return { bright, dim: bright || canvas.effects.testInsideLight(p), darknessSource: canvas.effects.testInsideDarkness(p) };
 }
 
-const busy = new Set(), queued = new Map();
-/** moveToken: enemies of each group near the moved player token try to spot it. First spotter starts the encounter. */
+/** moveToken: enemies of each group near the moved player token try to spot it (BG3 sight rules). First spotter starts the encounter. */
 export async function onMoveToken(doc, movement, operation, user, deps = {}) {
-  const { start = startEncounter, ask = promptSkill, roll = rollOrType, dismiss = closePrompt } = deps;
-  if (!leadGm() || game.combat?.started || !isPc(doc)) return;
+  const { start = startEncounter } = deps;
+  if (!leadGm() || starting || game.combat?.started || !isPc(doc)) return;
   if (doc.parent?.id !== canvas?.scene?.id) return; // measured against the GM's canvas: only its scene
-  if (busy.has(doc.id)) { queued.set(doc.id, [...(queued.get(doc.id) ?? []), movement]); return; } // checked in order once the open prompt resolves
-  busy.add(doc.id);
-  try {
-    // The hook fires before the document position changes: measure where the token is going.
-    const center = doc.getCenterPoint(movement?.destination ?? {});
-    const obscured = isObscured({
-      hidden: !!stealthOf(doc)?.hidden, darkness: canvas.effects.getDarknessLevel(center),
-      threshold: game.settings.get(MODULE_ID, "obscuredDarkness")
-    });
-    for (const [groupId, members] of encounterGroups(canvas.scene.tokens.contents)) {
-      const near = members.filter((e) => isLive(e) && withinRadius(distanceFt(e.getCenterPoint(), center), encounterOf(e).radius));
-      if (!near.length) continue;
-      let stealth = stealthOf(doc)?.value ?? null;
-      let spotter = null;
-      if (obscured && !stealthOf(doc)?.checked?.includes(groupId)) {
-        stealth = await stealthFor(doc, { ask, roll, dismiss });
-        // A dismissed prompt is remembered too (value null): no re-prompt for this group, seen on line of sight.
-        const cur = stealthOf(doc) ?? { value: null, hidden: false, checked: [] };
-        await doc.setFlag(MODULE_ID, "stealth", { ...cur, checked: [...(cur.checked ?? []), groupId] });
-        if (stealth !== null) spotter = near.find((e) => passiveSpots({ obscured, passive: e.actor?.system?.skills?.prc?.passive ?? 10, stealth }));
-      }
-      for (const e of near) {
-        if (spotter) break;
-        if (!hasLineOfSight(e.getCenterPoint(), center)) continue;
-        // ponytail: nobody answered the Stealth prompt → the player is simply seen
-        if (!obscured || stealth === null) { spotter = e; break; }
-        if (activeSpots({ obscured, los: true, perception: await rollPerception(e), stealth })) spotter = e;
-      }
-      if (!spotter) { log(`${doc.name} unseen by group ${groupId}`); continue; }
-      await ChatMessage.create({ content: L("Encounter.Spotted", { enemy: spotter.name, name: doc.name }) });
-      await start(canvas.scene.id, groupId);
-      return;
-    }
-  } finally {
-    busy.delete(doc.id);
-    const next = queued.get(doc.id)?.shift();
-    if (next) await onMoveToken(doc, next, operation, user, deps);
+  // The hook fires before the document position changes: measure where the token is going.
+  const center = doc.getCenterPoint(movement?.destination ?? {});
+  const p = { x: center.x, y: center.y, elevation: doc.elevation ?? 0 };
+  const level = obscurity({ dark: canvas.effects.getDarknessLevel(p) >= game.settings.get(MODULE_ID, "obscuredDarkness"), ...lightAt(p) });
+  const stealth = stealthOf(doc);
+  for (const [groupId, members] of encounterGroups(canvas.scene.tokens.contents)) {
+    const near = members.filter((e) => isLive(e) && withinRadius(distanceFt(e.getCenterPoint(), center), encounterOf(e).radius));
+    if (!near.length) continue;
+    const spotter = near.find((e) => spotsBg3({
+      hidden: !!stealth?.hidden, stealth: stealth?.value ?? 0, level,
+      los: hasLineOfSight(e.getCenterPoint(), center),
+      passive: e.actor?.system?.skills?.prc?.passive ?? 10,
+      darkvision: distanceFt(e.getCenterPoint(), center) <= (e.actor?.system?.attributes?.senses?.ranges?.darkvision ?? 0) // dnd5e 6: senses.ranges
+    }));
+    if (!spotter) { log(`${doc.name} unseen by group ${groupId}`); continue; }
+    const go = start(canvas.scene.id, groupId); // called before the first await: a second move in the same tick sees `starting`
+    await ChatMessage.create({ content: L("Encounter.Spotted", { enemy: spotter.name, name: doc.name }) });
+    await go;
+    return;
   }
 }
 

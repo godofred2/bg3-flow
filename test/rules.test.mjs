@@ -162,22 +162,31 @@ test("isGroupStart uses the first live member when skipDefeated", () => {
   assert.equal(isGroupStart(groups, t, 0, false), true);
 });
 
-import { isObscured, passiveSpots, activeSpots, encounterGroups, withinRadius } from "../scripts/rules.js";
-test("isObscured: hidden or dark enough", () => {
-  assert.equal(isObscured({ hidden: true, darkness: 0, threshold: 0.5 }), true);
-  assert.equal(isObscured({ hidden: false, darkness: 0.5, threshold: 0.5 }), true);
-  assert.equal(isObscured({ hidden: false, darkness: 0.49, threshold: 0.5 }), false);
+import { obscurity, spotsBg3, encounterGroups, withinRadius } from "../scripts/rules.js";
+test("obscurity: BG3 levels from scene darkness, light radii and darkness sources", () => {
+  assert.equal(obscurity({ dark: false, bright: false, dim: false, darknessSource: false }), 0); // lit scene: clear
+  assert.equal(obscurity({ dark: true, bright: true, dim: true, darknessSource: false }), 0); // bright light: clear
+  assert.equal(obscurity({ dark: true, bright: false, dim: true, darknessSource: false }), 1); // dim ring: lightly obscured
+  assert.equal(obscurity({ dark: true, bright: false, dim: false, darknessSource: false }), 2); // unlit darkness: heavily obscured
+  assert.equal(obscurity({ dark: false, bright: true, dim: true, darknessSource: true }), 3); // darkness source beats light: magical darkness
 });
-test("passiveSpots only when obscured and passive meets stealth", () => {
-  assert.equal(passiveSpots({ obscured: true, passive: 12, stealth: 12 }), true);
-  assert.equal(passiveSpots({ obscured: true, passive: 11, stealth: 12 }), false);
-  assert.equal(passiveSpots({ obscured: false, passive: 20, stealth: 1 }), false);
+test("spotsBg3: unhidden seen on sight; hidden seen in the clear, checked in dim light, unseen in darkness", () => {
+  assert.equal(spotsBg3({ hidden: false, level: 2, los: true, passive: 1, stealth: 30 }), true);
+  assert.equal(spotsBg3({ hidden: false, level: 0, los: false, passive: 30, stealth: 1 }), false);
+  assert.equal(spotsBg3({ hidden: true, level: 0, los: true, passive: 1, stealth: 30 }), true);
+  assert.equal(spotsBg3({ hidden: true, level: 1, los: true, passive: 13, stealth: 12 }), true);
+  assert.equal(spotsBg3({ hidden: true, level: 1, los: true, passive: 12, stealth: 12 }), false); // meeting the DC keeps you hidden
+  assert.equal(spotsBg3({ hidden: true, level: 2, los: true, passive: 30, stealth: 1 }), false);
 });
-test("activeSpots: line of sight spots unless obscured, then perception vs stealth", () => {
-  assert.equal(activeSpots({ obscured: false, los: true }), true);
-  assert.equal(activeSpots({ obscured: false, los: false }), false);
-  assert.equal(activeSpots({ obscured: true, los: true, perception: 15, stealth: 15 }), true);
-  assert.equal(activeSpots({ obscured: true, los: true, perception: 14, stealth: 15 }), false);
+test("spotsBg3: darkvision in range lowers the level one step", () => {
+  assert.equal(spotsBg3({ hidden: true, level: 2, los: true, passive: 13, stealth: 12, darkvision: true }), true);
+  assert.equal(spotsBg3({ hidden: true, level: 2, los: true, passive: 12, stealth: 12, darkvision: true }), false);
+  assert.equal(spotsBg3({ hidden: true, level: 1, los: true, passive: 1, stealth: 30, darkvision: true }), true);
+  assert.equal(spotsBg3({ hidden: true, level: 0, los: false, passive: 30, stealth: 1, darkvision: true }), false);
+});
+test("spotsBg3: darkvision does not see into magical darkness, an unhidden creature is still seen there", () => {
+  assert.equal(spotsBg3({ hidden: true, level: 3, los: true, passive: 30, stealth: 1, darkvision: true }), false);
+  assert.equal(spotsBg3({ hidden: false, level: 3, los: true, passive: 1, stealth: 30, darkvision: false }), true);
 });
 test("encounterGroups groups marked tokens by id and skips unmarked", () => {
   const f = (id) => ({ flags: { "bg3-flow": { encounter: { id, radius: 60 } } } });

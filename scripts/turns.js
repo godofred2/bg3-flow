@@ -51,7 +51,7 @@ export function onCombatTurn(combat, updateData, updateOptions) {
 
 /** combatTurnChange (GM only acts): at a group's first member, reset members' movement and Dash, announce the shared turn. */
 export async function onCombatTurnChange(combat, prior, current) {
-  if (!game.user.isGM || !combat?.started) return;
+  if (!game.users.activeGM?.isSelf || !combat?.started) return; // one GM acts, however many are connected
   const turns = turnsOf(combat), groups = groupsOf(combat);
   if (!isGroupStart(groups, turns, current.turn, skipDefeated(combat))) return;
   const members = groupOf(groups, turns[current.turn].id).ids.map((id) => combat.combatants.find((c) => c.id === id)).filter(Boolean);

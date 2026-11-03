@@ -24,7 +24,7 @@
       },
       "obscuredDarkness": {
         "Name": "Obscured darkness threshold",
-        "Hint": "Darkness level (0 to 1) at or above which a position counts as obscured for stealth."
+        "Hint": "Scene darkness (0 to 1) at or above which an unlit position is heavily obscured. Dim light there is lightly obscured, bright light is clear."
       },
       "dashNames": {
         "Name": "Dash item names",

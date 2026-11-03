@@ -16,7 +16,7 @@ globalThis.CONFIG = {
 const settings = { lockGmMovement: false, dashNames: "Dash, Carrera" };
 globalThis.game = {
   i18n: { localize: (k) => k, format: (k, d) => `${k}:${JSON.stringify(d)}` },
-  user: { isGM: false },
+  user: { isGM: false }, users: [],
   settings: { get: (m, k) => settings[k], set() {}, settings: new Map() },
   modules: { get: () => ({}) },
   combat: null
@@ -92,8 +92,18 @@ test("preMoveToken ignores teleports, GM when lock is off, and tokens outside co
   assert.equal(onPreMoveToken({ id: "stranger", parent: { id: "scene" } }, move()), undefined);
 });
 
+test("combatTurnChange on a GM that is not the lead GM does nothing: one chat line however many GMs", async () => {
+  game.user.isGM = true; game.users.activeGM = { isSelf: false };
+  const cb = combat([g1, g2, cleric, rogue], 2);
+  calls.cleared = []; calls.chat = [];
+  await onCombatTurnChange(cb, { turn: 1 }, { turn: 2, combatantId: "c" });
+  assert.deepEqual(calls.cleared, []);
+  assert.equal(calls.chat.length, 0);
+  game.user.isGM = false;
+});
+
 test("combatTurnChange at a group start clears members' histories and dash, posts one message", async () => {
-  game.user.isGM = true;
+  game.user.isGM = true; game.users.activeGM = { isSelf: true };
   const dasher = combatant("r2", 1, { dash: true });
   const cb = combat([g1, g2, cleric, dasher], 2);
   calls.cleared = []; calls.chat = []; calls.flags = [];

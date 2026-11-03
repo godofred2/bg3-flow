@@ -186,7 +186,7 @@ For every encounter group on the scene with an enemy within `radius` of the play
    `CONFIG.Canvas.polygonBackends.sight.testCollision(a, b, {type:"sight", mode:"any"})`).
    If the player is not obscured: spotted. Else enemy rolls Perception
    (`actor.rollSkill({skill:"prc"})`, public) against the player's Stealth value; meets or beats: spotted.
-Simplification: no darkvision or lighting rules in line of sight; sight range and walls only.
+Simplification: no darkvision or lighting rules in line of sight; sight range and walls only. *Superseded by the 2026-11-03 amendment (BG3 sight rules) at the end of this document.*
 
 ### Damage trigger
 
@@ -237,3 +237,14 @@ Midi 14 creates the ongoing-area region, with its own disposition filter, before
 
 - Reactions (Shield, Uncanny Dodge, Counterspell) are Midi QOL's reaction system; the preset switches it on with Midi's own quick-setup keys (30 s timeout, enforce once per round). Counterspell needs Gambit's Premades.
 - Feature 2 rulings: groups are derived from `combat.turns` on every call instead of `CombatantGroup` documents (a chat line announces the shared turn); Dash is detected by item name (setting `dashNames`) plus an API `toggleDash` instead of a context-menu entry.
+
+## Amendment 2026-11-03 (BG3 sight rules, v0.5.0)
+
+Detection follows Baldur's Gate 3 instead of the passive-plus-active-roll scheme above (user ruling: "handle dim light like BG3"):
+
+- Light at the player's destination square, via `canvas.effects.testInsideLight` / `testInsideDarkness` and the scene darkness level: **clear** (scene below the threshold, or inside a light's bright radius), **lightly obscured** (inside a light's dim radius only), **heavily obscured** (unlit on a dark scene, or inside a darkness source).
+- Line of sight through walls is required for every level, including the passive check.
+- A player who is not hiding is seen on sight. A hiding one: clear = spotted instantly; lightly obscured = spotted by an enemy whose passive Perception is strictly above the Stealth value; heavily obscured = not seen.
+- Darkvision (`actor.system.attributes.senses.darkvision`, feet) within range lowers the level one step for that enemy.
+- No Perception rolls and no Stealth prompt on movement any more: Stealth comes only from the Hide action, so the `promptSkill`/`closePrompt` sockets, the per-group `checked` list and the move queue are gone. `awaitOrGm` remains for initiative.
+- Feature 2's turn-change handler now gates on the lead GM like feature 3 (no duplicate shared-turn chat with two GMs).

@@ -18,7 +18,7 @@ globalThis.game = {
 };
 globalThis.canvas = null;
 
-function tokenDoc(id, { flags = {}, owner = true, hp = 10, passive = 10, hidden = false, type = "npc", playerOwner = false, at = { x: 0, y: 0 }, roll = async () => [{ total: 10 }] } = {}) {
+function tokenDoc(id, { flags = {}, owner = true, hp = 10, passive = 10, darkvision = 0, hidden = false, type = "npc", playerOwner = false, at = { x: 0, y: 0 }, roll = async () => [{ total: 10 }] } = {}) {
   const f = { "bg3-flow": { ...flags } };
   const doc = {
     id, name: id, uuid: `Scene.scene.Token.${id}`, isOwner: owner, hidden, flags: f, actorId: `act-${id}`,
@@ -31,7 +31,7 @@ function tokenDoc(id, { flags = {}, owner = true, hp = 10, passive = 10, hidden 
   };
   doc.actor = {
     id: `act-${id}`, type, hasPlayerOwner: playerOwner,
-    system: { attributes: { hp: { value: hp } }, skills: { prc: { passive } } },
+    system: { attributes: { hp: { value: hp }, senses: { ranges: { darkvision } } }, skills: { prc: { passive } } },
     toggleStatusEffect: async (s, o) => calls.status.push([id, s, o.active]),
     getActiveTokens: () => [doc],
     rollSkill: roll
@@ -71,7 +71,7 @@ test("hideToken stores the Stealth value and turns the hiding status on; again c
   const r = tokenDoc("r");
   calls.flags = []; calls.status = [];
   await hideToken(r, async () => 13);
-  assert.deepEqual(r.getFlag("bg3-flow", "stealth"), { value: 13, hidden: true, checked: [] });
+  assert.deepEqual(r.getFlag("bg3-flow", "stealth"), { value: 13, hidden: true });
   assert.deepEqual(calls.status, [["r", "hiding", true]]);
   calls.flags = []; calls.status = [];
   await hideToken(r, async () => 99);
@@ -79,15 +79,12 @@ test("hideToken stores the Stealth value and turns the hiding status on; again c
   assert.deepEqual(calls.status, [["r", "hiding", false]]);
 });
 
-test("hideToken does nothing when the dialog is closed, and re-hides over a darkness-only value", async () => {
+test("hideToken does nothing when the dialog is closed", async () => {
   const r = tokenDoc("r2");
   calls.flags = []; calls.status = [];
   await hideToken(r, async () => null);
   assert.deepEqual(calls.flags, []);
   assert.deepEqual(calls.status, []);
-  const d = tokenDoc("r3", { flags: { stealth: { value: 8, hidden: false, checked: ["g"] } } });
-  await hideToken(d, async () => 16);
-  assert.deepEqual(d.getFlag("bg3-flow", "stealth"), { value: 16, hidden: true, checked: [] });
 });
 
 test("an attack or save activity reveals the actor's stealthy tokens; other activities do not", async () => {
@@ -116,110 +113,89 @@ test("renderTokenHUD adds the Hide button only for owned tokens", () => {
 
 // ---- Detection ----
 // 100 px per 5 ft square. Enemies at x=400 are 20 ft from a player at x=0.
-function scene(tokens, { darkness = 0, wall = false } = {}) {
+// lights: [{ x, y, bright, dim }] radii in px; darknessSource puts the whole scene under a darkness source.
+function scene(tokens, { darkness = 0, wall = false, lights = [], darknessSource = false } = {}) {
+  const sources = lights.map((l) => ({ x: l.x, y: l.y, data: { bright: l.bright, dim: l.dim } }));
   globalThis.canvas = {
     ready: true, scene: { id: "scene", tokens: { contents: tokens } },
     grid: { measurePath: ([a, b]) => ({ distance: Math.hypot(b.x - a.x, b.y - a.y) / 100 * 5 }) },
-    effects: { getDarknessLevel: () => darkness }
+    effects: {
+      getDarknessLevel: () => darkness,
+      testInsideLight: (p, { condition } = {}) => sources.some((s) => Math.hypot(s.x - p.x, s.y - p.y) <= s.data.dim && (!condition || condition(s))),
+      testInsideDarkness: () => darknessSource
+    }
   };
   CONFIG.Canvas.polygonBackends.sight.testCollision = () => wall;
 }
 const enemy = (id, opts = {}) => tokenDoc(id, { flags: { encounter: { id: "g", radius: 30 } }, at: { x: 400, y: 0 }, ...opts });
 const player = (id, opts = {}) => tokenDoc(id, { type: "character", playerOwner: true, ...opts });
+const hiding = (id, value, opts = {}) => player(id, { flags: { stealth: { value, hidden: true } }, ...opts });
 let started = [];
-const deps = () => ({ start: async (s, g) => started.push([s, g]), ask: async () => 11, roll: async () => 7 });
+const deps = () => ({ start: async (s, g) => started.push([s, g]) });
 function reset() { started = []; calls.flags = []; calls.chat = []; game.user.isGM = true; game.combat = null; game.users = [{ id: "p1", active: true, isGM: false }]; game.users.activeGM = { isSelf: true }; }
 
-test("an enemy in radius with line of sight spots an unobscured player and starts the encounter", async () => {
-  reset(); const e = enemy("g1"); scene([e, player("pc")]);
+test("an enemy in radius with line of sight spots an unhidden player and starts the encounter", async () => {
+  reset(); scene([enemy("g1"), player("pc")]);
   await onMoveToken(player("pc"), {}, {}, null, deps());
   assert.deepEqual(started, [["scene", "g"]]);
   assert.equal(calls.chat.length, 1);
 });
 
-test("hidden player: passive Perception below Stealth and a failed Perception roll keep the encounter closed", async () => {
-  reset(); const pc = player("pc", { flags: { stealth: { value: 15, hidden: true, checked: [] } } });
-  scene([enemy("g1", { passive: 12, roll: async () => [{ total: 10 }] }), pc]);
-  await onMoveToken(pc, {}, {}, null, deps());
-  assert.deepEqual(started, []);
-  assert.deepEqual(pc.getFlag("bg3-flow", "stealth").checked, ["g"]);
-});
-
-test("hidden player: passive Perception meeting Stealth starts the encounter", async () => {
-  reset(); const pc = player("pc", { flags: { stealth: { value: 15, hidden: true, checked: [] } } });
-  scene([enemy("g1", { passive: 15, roll: async () => [{ total: 1 }] }), pc]);
-  await onMoveToken(pc, {}, {}, null, deps());
+test("an unhidden player is seen even in darkness: only Hide benefits from obscurity", async () => {
+  reset(); scene([enemy("g1"), player("pc")], { darkness: 0.9 });
+  await onMoveToken(player("pc"), {}, {}, null, deps());
   assert.deepEqual(started, [["scene", "g"]]);
 });
 
-test("hidden player: a Perception roll meeting Stealth starts the encounter", async () => {
-  reset(); const pc = player("pc", { flags: { stealth: { value: 15, hidden: true, checked: ["g"] } } });
-  scene([enemy("g1", { passive: 5, roll: async () => [{ total: 15 }] }), pc]);
-  await onMoveToken(pc, {}, {}, null, deps());
+test("hidden in a clear area: spotted on sight whatever the Stealth value", async () => {
+  reset(); scene([enemy("g1", { passive: 1 })]);
+  await onMoveToken(hiding("pc", 30), {}, {}, null, deps());
   assert.deepEqual(started, [["scene", "g"]]);
 });
 
-test("the passive check runs once per group: an already checked group only gets the active roll", async () => {
-  reset(); const pc = player("pc", { flags: { stealth: { value: 15, hidden: true, checked: ["g"] } } });
-  scene([enemy("g1", { passive: 20, roll: async () => [{ total: 3 }] }), pc]);
-  await onMoveToken(pc, {}, {}, null, deps());
+test("hidden in darkness: invisible to enemies without darkvision, even with line of sight", async () => {
+  reset(); scene([enemy("g1", { passive: 20 })], { darkness: 0.6 });
+  await onMoveToken(hiding("pc", 1), {}, {}, null, deps());
   assert.deepEqual(started, []);
 });
 
-test("a dark square asks the active owner for Stealth once and stores it with hidden:false", async () => {
-  reset(); const pc = player("pc"); let asked = 0;
-  scene([enemy("g1", { passive: 10, roll: async () => [{ total: 10 }] }), pc], { darkness: 0.6 });
-  const d = { ...deps(), ask: async () => { asked++; return 11; } };
-  await onMoveToken(pc, {}, {}, null, d);
-  assert.equal(asked, 1);
-  assert.deepEqual(pc.getFlag("bg3-flow", "stealth"), { value: 11, hidden: false, checked: ["g"] });
-  assert.deepEqual(started, []);
-  await onMoveToken(pc, {}, {}, null, d);
-  assert.equal(asked, 1);
-});
-
-test("no active owner: the GM rolls or types instead", async () => {
-  reset(); game.users = []; game.users.activeGM = { isSelf: true }; const pc = player("pc"); let gmRolled = 0;
-  scene([enemy("g1", { passive: 1, roll: async () => [{ total: 1 }] }), pc], { darkness: 0.6 });
-  await onMoveToken(pc, {}, {}, null, { ...deps(), roll: async () => { gmRolled++; return 18; } });
-  assert.equal(gmRolled, 1);
-  assert.equal(pc.getFlag("bg3-flow", "stealth").value, 18);
-});
-
-test("outside the radius, behind a wall, defeated or hidden enemies: nothing happens", async () => {
-  reset(); const pc = player("pc");
-  scene([enemy("far", { at: { x: 700, y: 0 } }), enemy("dead", { hp: 0 }), enemy("ghost", { hidden: true })]);
-  await onMoveToken(pc, {}, {}, null, deps());
-  scene([enemy("g1")], { wall: true });
-  await onMoveToken(pc, {}, {}, null, deps());
+test("hidden in darkness: an enemy with darkvision in range treats it as dim light, passive Perception above Stealth spots", async () => {
+  reset(); scene([enemy("g2", { passive: 12, darkvision: 10 }), enemy("g1", { passive: 12, darkvision: 60 })], { darkness: 0.6 });
+  await onMoveToken(hiding("pc", 11), {}, {}, null, deps()); // g2's 10 ft is out of range at 20 ft; g1 spots
+  assert.deepEqual(started, [["scene", "g"]]);
+  assert.match(calls.chat[0].content, /g1/);
+  started = [];
+  await onMoveToken(hiding("pc", 12), {}, {}, null, deps()); // a tie keeps the hider hidden
   assert.deepEqual(started, []);
 });
 
-test("a move made while a prompt is open is checked once the prompt resolves, without a second prompt", async () => {
-  reset(); const pc = player("pc"); let asked = 0, rolls = 0; let release;
-  scene([enemy("g1", { passive: 1, roll: async () => { rolls++; return [{ total: 2 }]; } }), pc], { darkness: 0.6 });
-  const slow = { ...deps(), ask: () => { asked++; return new Promise((r) => { release = r; }); } };
-  const first = onMoveToken(pc, { destination: { x: 100, y: 0 } }, {}, null, slow);
-  await new Promise((r) => setTimeout(r, 0));
-  await onMoveToken(pc, { destination: { x: 200, y: 0 } }, {}, null, slow);
-  assert.equal(asked, 1);
-  assert.equal(rolls, 0);
-  release(12); await first;
-  assert.equal(asked, 1);
-  assert.equal(rolls, 2); // the first move's Perception roll, then the queued move's
+test("hidden in a torch's dim ring on a dark scene: lightly obscured, Stealth vs passive Perception", async () => {
+  reset(); const torch = { x: 0, y: 300, bright: 100, dim: 400 }; // the player at 15 ft: dim only
+  scene([enemy("g1", { passive: 12 })], { darkness: 0.6, lights: [torch] });
+  await onMoveToken(hiding("pc", 12), {}, {}, null, deps());
+  assert.deepEqual(started, []);
+  await onMoveToken(hiding("pc", 11), {}, {}, null, deps());
+  assert.deepEqual(started, [["scene", "g"]]);
 });
 
-test("every move made while a prompt is open is checked, in order, not just the last one", async () => {
-  reset(); const pc = player("pc"); const seen = []; let release;
-  scene([enemy("g1", { passive: 1, roll: async () => { seen.push(pc.center.x); return [{ total: 2 }]; } }), pc], { darkness: 0.6 });
-  const slow = { ...deps(), ask: () => new Promise((r) => { release = r; }) };
-  pc.getCenterPoint = (d) => { pc.center = { x: d.x, y: 0 }; return pc.center; };
-  const first = onMoveToken(pc, { destination: { x: 100, y: 0 } }, {}, null, slow);
-  await new Promise((r) => setTimeout(r, 0));
-  onMoveToken(pc, { destination: { x: 200, y: 0 } }, {}, null, slow);
-  onMoveToken(pc, { destination: { x: 300, y: 0 } }, {}, null, slow);
-  release(12); await first;
-  assert.deepEqual(seen, [100, 200, 300]);
+test("hidden in a torch's bright area on a dark scene: clear, spotted on sight", async () => {
+  reset(); scene([enemy("g1", { passive: 1 })], { darkness: 0.6, lights: [{ x: 50, y: 0, bright: 100, dim: 400 }] });
+  await onMoveToken(hiding("pc", 30), {}, {}, null, deps());
+  assert.deepEqual(started, [["scene", "g"]]);
+});
+
+test("a darkness source makes a lit scene magical darkness for a hidden player: darkvision does not help", async () => {
+  reset(); scene([enemy("g1", { passive: 20 }), enemy("g2", { passive: 20, darkvision: 60 })], { darkness: 0, darknessSource: true });
+  await onMoveToken(hiding("pc", 1), {}, {}, null, deps());
+  assert.deepEqual(started, []);
+});
+
+test("light is measured at the move's destination, with the token's elevation", async () => {
+  reset(); let seen; scene([enemy("g1", { passive: 1 })], { darkness: 0.6 });
+  canvas.effects.testInsideLight = (p) => { seen = p; return false; };
+  const pc = hiding("pc", 30); pc.elevation = 5;
+  await onMoveToken(pc, { destination: { x: 100, y: 0 } }, {}, null, deps());
+  assert.deepEqual(seen, { x: 100, y: 0, elevation: 5 });
 });
 
 test("detection measures from the move's destination, not the position the hook still shows", async () => {
@@ -232,15 +208,13 @@ test("detection measures from the move's destination, not the position the hook 
   assert.deepEqual(started, [["scene", "g"]]);
 });
 
-test("the player's Stealth prompt is told to close the moment the GM presses Roll for them", async () => {
-  reset(); const pc = player("pc"); const order = [];
-  scene([enemy("g1", { passive: 1 })], { darkness: 0.6, wall: true });
-  const Base = foundry.applications.api.DialogV2;
-  foundry.applications.api.DialogV2 = class extends Base { render() { this.config.buttons[0].callback(); return this; } };
-  try {
-    await onMoveToken(pc, {}, {}, null, { ...deps(), ask: () => new Promise(() => {}), roll: async () => { order.push("roll"); return 11; }, dismiss: async (u) => order.push(u) });
-  } finally { foundry.applications.api.DialogV2 = Base; }
-  assert.deepEqual(order, ["p1", "roll"]);
+test("outside the radius, behind a wall, defeated or hidden enemies: nothing happens", async () => {
+  reset(); const pc = player("pc");
+  scene([enemy("far", { at: { x: 700, y: 0 } }), enemy("dead", { hp: 0 }), enemy("ghost", { hidden: true })]);
+  await onMoveToken(pc, {}, {}, null, deps());
+  scene([enemy("g1")], { wall: true });
+  await onMoveToken(pc, {}, {}, null, deps());
+  assert.deepEqual(started, []);
 });
 
 test("non-GM client, running combat, or NPC mover: ignored", async () => {
@@ -302,6 +276,25 @@ test("startEncounter is a no-op when a combat exists on the scene, while one is 
   release(9); assert.equal(await first, combat);
   world([enemy("dead", { hp: 0 }), enemy("ghost", { hidden: true }), player("pc")]);
   assert.equal(await startEncounter("scene", "g"), null);
+});
+
+test("a move made while an encounter is starting is ignored: no second spotted line", async () => {
+  reset(); const combat = world([enemy("g1"), player("pc")]); scene([enemy("g1"), player("pc")]);
+  let release;
+  const first = startEncounter("scene", "g", { askInit: () => new Promise((r) => { release = r; }) });
+  await new Promise((r) => setTimeout(r, 0));
+  await onMoveToken(player("pc"), {}, {}, null, deps());
+  assert.deepEqual(started, []);
+  assert.deepEqual(calls.chat, []);
+  release(9); assert.equal(await first, combat);
+});
+
+test("two moves in the same tick post one spotted line and start one combat", async () => {
+  reset(); const combat = world([enemy("g1"), player("pc")]); scene([enemy("g1"), player("pc")]);
+  const start = (s, g) => startEncounter(s, g, { askInit: async () => 9 });
+  await Promise.all([onMoveToken(player("pc"), {}, {}, null, { start }), onMoveToken(player("pc2"), {}, {}, null, { start })]);
+  assert.equal(calls.chat.length, 1);
+  assert.equal(combat.started, 1);
 });
 
 test("applyDamage on an encounter enemy outside combat asks the GM to start that group", async () => {
@@ -374,20 +367,6 @@ test("a move on a scene the GM is not viewing is ignored", async () => {
   const pc = player("pc"); pc.parent = { id: "other" };
   await onMoveToken(pc, {}, {}, null, deps());
   assert.deepEqual(started, []);
-});
-
-test("a dismissed Stealth prompt is remembered per group: no re-prompt, seen on line of sight", async () => {
-  reset(); const pc = player("pc"); let asked = 0;
-  scene([enemy("g1", { passive: 1 })], { darkness: 0.6, wall: true });
-  const d = { ...deps(), ask: async () => { asked++; return null; }, roll: async () => null };
-  await onMoveToken(pc, {}, {}, null, d);
-  await onMoveToken(pc, {}, {}, null, d);
-  assert.equal(asked, 1);
-  assert.deepEqual(pc.getFlag("bg3-flow", "stealth"), { value: null, hidden: false, checked: ["g"] });
-  assert.deepEqual(started, []);
-  CONFIG.Canvas.polygonBackends.sight.testCollision = () => false;
-  await onMoveToken(pc, {}, {}, null, d);
-  assert.deepEqual(started, [["scene", "g"]]);
 });
 
 test("a player-owned familiar (not a character) neither triggers detection nor joins the combat", async () => {

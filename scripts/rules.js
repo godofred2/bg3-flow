@@ -166,14 +166,23 @@ export function canMove({ spent, cost, limit }) {
 
 // ---- Feature 3: encounters and stealth ----
 
-/** A creature is obscured when hidden or standing where the scene is dark enough. */
-export const isObscured = ({ hidden, darkness, threshold }) => !!hidden || darkness >= threshold;
+/** BG3 obscurity at a point: 0 clear, 1 lightly obscured (dim light), 2 heavily obscured (unlit darkness), 3 magical darkness (a darkness source). */
+export function obscurity({ dark, bright, dim, darknessSource }) {
+  if (darknessSource) return 3;
+  if (!dark || bright) return 0;
+  return dim ? 1 : 2;
+}
 
-/** Passive Perception only matters against an obscured creature. */
-export const passiveSpots = ({ obscured, passive, stealth }) => !!obscured && passive >= stealth;
-
-/** Line of sight spots an unobscured creature outright; an obscured one needs a Perception roll to meet its Stealth. */
-export const activeSpots = ({ obscured, los, perception, stealth }) => !!los && (!obscured || perception >= stealth);
+/** BG3 sight: an unhidden creature is seen on sight. A hidden one is seen in the clear, must beat passive Perception
+ *  in dim light (meeting it stays hidden) and is unseen in darkness. Darkvision in range lowers the level one step,
+ *  but not inside magical darkness. */
+export function spotsBg3({ hidden, level, los, passive, stealth, darkvision = false }) {
+  if (!los) return false;
+  if (!hidden) return true;
+  if (level >= 3) return false;
+  const l = Math.max(0, level - (darkvision ? 1 : 0));
+  return l === 0 || (l === 1 && passive > stealth);
+}
 
 /** Marked tokens grouped by encounter id (unmarked tokens skipped). */
 export function encounterGroups(tokens) {
