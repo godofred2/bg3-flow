@@ -40,6 +40,24 @@ test("awaitOrGm resolves with the GM fallback when the button is pressed first",
   assert.equal(await pending, 3);
 });
 
+test("awaitOrGm ignores the player's prompt closing with null once the GM has taken over", async () => {
+  let closePlayer; const player = new Promise((r) => { closePlayer = r; });
+  const pending = awaitOrGm(player, { title: "t", label: "Roll for them" }, async () => { closePlayer(null); await new Promise((r) => setTimeout(r, 0)); return 9; });
+  await dialogs.at(-1).press("gm");
+  assert.equal(await pending, 9);
+});
+
+test("awaitOrGm runs the fallback once when the button press also closes the waiting dialog", async () => {
+  let ran = 0, release;
+  const pending = awaitOrGm(new Promise(() => {}), { title: "t", label: "Roll for them" }, () => { ran++; return new Promise((r) => { release = r; }); });
+  const d = dialogs.at(-1);
+  d.press("gm");
+  await d.close(); // DialogV2 closes itself after a button callback
+  assert.equal(ran, 1);
+  release(4);
+  assert.equal(await pending, 4);
+});
+
 test("activeOwner picks an active non-GM owner, else null", () => {
   game.users = [{ id: "gm", active: true, isGM: true }, { id: "p1", active: false, isGM: false }, { id: "p2", active: true, isGM: false }];
   const doc = { testUserPermission: (u) => u.id !== "gm" };

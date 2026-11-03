@@ -54,15 +54,17 @@ export async function rollOrType({ actor, skill }) {
 
 /** Wait for a player's answer while the GM sees a dialog whose single button runs `fallback` instead. Dismissing it (X) also falls back. */
 export async function awaitOrGm(promise, { title, label }, fallback) {
-  let dialog, done = false;
+  let dialog, done = false, taken = false;
   const gm = new Promise((resolve) => {
+    const take = () => { if (done) return; done = taken = true; resolve(fallback()); }; // button and close both land here: once
     dialog = new foundry.applications.api.DialogV2({
       window: { title }, content: `<p>${title}</p>`,
-      buttons: [{ action: "gm", label, callback: () => resolve(fallback()) }]
+      buttons: [{ action: "gm", label, callback: take }]
     });
-    dialog.addEventListener("close", () => { if (!done) resolve(fallback()); });
+    dialog.addEventListener("close", take);
   });
   dialog.render({ force: true });
-  try { return await Promise.race([promise, gm]); }
+  // Once the GM took over, the player's prompt is closed and resolves null: that answer is not the one we want.
+  try { return await Promise.race([promise.then((v) => (taken ? gm : v)), gm]); }
   finally { done = true; await dialog.close(); }
 }
