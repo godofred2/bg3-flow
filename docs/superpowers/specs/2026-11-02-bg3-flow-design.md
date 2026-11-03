@@ -248,3 +248,8 @@ Detection follows Baldur's Gate 3 instead of the passive-plus-active-roll scheme
 - Darkvision (`actor.system.attributes.senses.darkvision`, feet) within range lowers the level one step for that enemy.
 - No Perception rolls and no Stealth prompt on movement any more: Stealth comes only from the Hide action, so the `promptSkill`/`closePrompt` sockets, the per-group `checked` list and the move queue are gone. `awaitOrGm` remains for initiative.
 - Feature 2's turn-change handler now gates on the lead GM like feature 3 (no duplicate shared-turn chat with two GMs).
+
+## Amendment 2026-11-03 (v0.5.1, after the v0.5.0 server run)
+
+- Global Illumination (`scene.environment.globalLight`: enabled, within its darkness range) counts as light everywhere: bright when its *bright* flag is set, dim otherwise. A darkness source still wins.
+- Hiding is revealed on `midi-qol.RollComplete` of an attack or save workflow that was not aborted, instead of `dnd5e.postUseActivity`, which also fires when Midi refuses the use (total cover).

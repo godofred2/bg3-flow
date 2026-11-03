@@ -69,12 +69,6 @@ export async function revealToken(doc) {
   await doc.actor?.toggleStatusEffect("hiding", { active: false });
 }
 
-/** dnd5e.postUseActivity: attacking or forcing a save gives the actor away. */
-export async function onPostUseActivityReveal(activity) {
-  if (!["attack", "save"].includes(activity?.type)) return;
-  for (const t of activity.actor?.getActiveTokens?.(false, true) ?? []) await revealToken(t);
-}
-
 /** renderTokenHUD: an eye-slash button on the left column for owned tokens. */
 export function onRenderTokenHUD(app, html) {
   const root = html?.querySelector ? html : html?.[0];
@@ -111,10 +105,18 @@ export function drawEncounters() {
 const isLive = (t) => !t.hidden && (t.actor?.system?.attributes?.hp?.value ?? 1) > 0;
 const distanceFt = (a, b) => canvas.grid.measurePath([a, b]).distance;
 const hasLineOfSight = (a, b) => !CONFIG.Canvas.polygonBackends.sight.testCollision(a, b, { type: "sight", mode: "any" });
-/** Light at a point: inside a light's bright radius, inside any light (its dim radius), inside a darkness source. */
-function lightAt(p) {
-  const bright = canvas.effects.testInsideLight(p, { condition: (s) => Math.hypot(s.x - p.x, s.y - p.y) <= s.data.bright });
-  return { bright, dim: bright || canvas.effects.testInsideLight(p), darknessSource: canvas.effects.testInsideDarkness(p) };
+/** The scene's global illumination at this darkness: "bright", "dim" or null (off, or outside its darkness range). */
+function globalLight(darkness) {
+  const g = canvas.scene?.environment?.globalLight;
+  if (!g?.enabled || darkness < (g.darkness?.min ?? 0) || darkness > (g.darkness?.max ?? 1)) return null;
+  return g.bright ? "bright" : "dim";
+}
+
+/** Light at a point: inside a light's bright radius or bright global illumination, inside any light (dim), inside a darkness source. */
+function lightAt(p, darkness) {
+  const global = globalLight(darkness);
+  const bright = global === "bright" || canvas.effects.testInsideLight(p, { condition: (s) => Math.hypot(s.x - p.x, s.y - p.y) <= s.data.bright });
+  return { bright, dim: bright || !!global || canvas.effects.testInsideLight(p), darknessSource: canvas.effects.testInsideDarkness(p) };
 }
 
 /** moveToken: enemies of each group near the moved player token try to spot it (BG3 sight rules). First spotter starts the encounter. */
@@ -125,7 +127,8 @@ export async function onMoveToken(doc, movement, operation, user, deps = {}) {
   // The hook fires before the document position changes: measure where the token is going.
   const center = doc.getCenterPoint(movement?.destination ?? {});
   const p = { x: center.x, y: center.y, elevation: doc.elevation ?? 0 };
-  const level = obscurity({ dark: canvas.effects.getDarknessLevel(p) >= game.settings.get(MODULE_ID, "obscuredDarkness"), ...lightAt(p) });
+  const darkness = canvas.effects.getDarknessLevel(p);
+  const level = obscurity({ dark: darkness >= game.settings.get(MODULE_ID, "obscuredDarkness"), ...lightAt(p, darkness) });
   const stealth = stealthOf(doc);
   for (const [groupId, members] of encounterGroups(canvas.scene.tokens.contents)) {
     const near = members.filter((e) => isLive(e) && withinRadius(distanceFt(e.getCenterPoint(), center), encounterOf(e).radius));
@@ -197,7 +200,10 @@ export async function onApplyDamage(actor, amount, options, deps = {}) {
 /** midi-qol.RollComplete: an encounter enemy that hits, or is hit, starts its group. */
 export async function onRollComplete(workflow, deps = {}) {
   const { tell = askGmToStart } = deps;
-  if (game.combat?.started || !(workflow?.hitTargets?.size > 0)) return;
+  if (!workflow || workflow.aborted) return; // a use Midi refused (total cover, no reaction...) gives nothing away
+  // Attacking or forcing a save gives the actor away, hit or miss.
+  if (["attack", "save"].includes(workflow.activity?.type)) for (const t of workflow.actor?.getActiveTokens?.(false, true) ?? []) await revealToken(t);
+  if (game.combat?.started || !(workflow.hitTargets?.size > 0)) return;
   const docs = [workflow.token?.document, ...[...workflow.hitTargets].map((t) => t.document ?? t)].filter(Boolean);
   const hit = docs.find((d) => encounterOf(d));
   if (hit) await tell(hit.parent?.id ?? canvas.scene.id, encounterOf(hit).id);
@@ -212,7 +218,6 @@ export function registerEncounters() {
   Hooks.on("getSceneControlButtons", safeSync(onSceneControls));
   Hooks.on("renderTokenHUD", safeSync(onRenderTokenHUD));
   Hooks.on("moveToken", safe((doc, movement, operation, user) => onMoveToken(doc, movement, operation, user)));
-  Hooks.on("dnd5e.postUseActivity", safe(onPostUseActivityReveal));
   Hooks.on("dnd5e.applyDamage", safe((actor, amount, options) => onApplyDamage(actor, amount, options)));
   Hooks.on("midi-qol.RollComplete", safe((workflow) => onRollComplete(workflow)));
   Hooks.on("combatStart", safe(revealAll));

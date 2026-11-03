@@ -39,7 +39,7 @@ function tokenDoc(id, { flags = {}, owner = true, hp = 10, passive = 10, darkvis
   return doc;
 }
 
-const { markEncounter, onSceneControls, hideToken, revealToken, onPostUseActivityReveal, onRenderTokenHUD, onMoveToken, startEncounter, onApplyDamage, onRollComplete, registerEncounters } = await import("../scripts/encounters.js");
+const { markEncounter, onSceneControls, hideToken, revealToken, onRenderTokenHUD, onMoveToken, startEncounter, onApplyDamage, onRollComplete, registerEncounters } = await import("../scripts/encounters.js");
 
 test("markEncounter sets one shared id and the radius on every token, and clears when all are marked", async () => {
   const a = tokenDoc("g1"), b = tokenDoc("g2");
@@ -87,12 +87,14 @@ test("hideToken does nothing when the dialog is closed", async () => {
   assert.deepEqual(calls.status, []);
 });
 
-test("an attack or save activity reveals the actor's stealthy tokens; other activities do not", async () => {
-  const r = tokenDoc("r4", { flags: { stealth: { value: 15, hidden: true, checked: [] } } });
-  calls.status = [];
-  await onPostUseActivityReveal({ type: "utility", actor: r.actor });
+test("a completed attack or save workflow reveals the actor's stealthy tokens; utility uses and Midi-refused workflows do not", async () => {
+  const r = tokenDoc("r4", { flags: { stealth: { value: 15, hidden: true } } });
+  calls.status = []; game.combat = null;
+  await onRollComplete({ activity: { type: "utility" }, actor: r.actor, token: { document: r }, hitTargets: new Set() });
   assert.equal(r.getFlag("bg3-flow", "stealth").value, 15);
-  await onPostUseActivityReveal({ type: "attack", actor: r.actor });
+  await onRollComplete({ aborted: true, activity: { type: "attack" }, actor: r.actor, token: { document: r }, hitTargets: new Set() }); // e.g. total cover
+  assert.equal(r.getFlag("bg3-flow", "stealth").value, 15);
+  await onRollComplete({ activity: { type: "attack" }, actor: r.actor, token: { document: r }, hitTargets: new Set() }); // a miss still gives you away
   assert.equal(r.getFlag("bg3-flow", "stealth"), undefined);
   assert.deepEqual(calls.status, [["r4", "hiding", false]]);
   await revealToken(r); // idempotent
@@ -114,10 +116,11 @@ test("renderTokenHUD adds the Hide button only for owned tokens", () => {
 // ---- Detection ----
 // 100 px per 5 ft square. Enemies at x=400 are 20 ft from a player at x=0.
 // lights: [{ x, y, bright, dim }] radii in px; darknessSource puts the whole scene under a darkness source.
-function scene(tokens, { darkness = 0, wall = false, lights = [], darknessSource = false } = {}) {
+// globalLight: the scene's environment.globalLight ({ enabled, bright, darkness: { min, max } }).
+function scene(tokens, { darkness = 0, wall = false, lights = [], darknessSource = false, globalLight = null } = {}) {
   const sources = lights.map((l) => ({ x: l.x, y: l.y, data: { bright: l.bright, dim: l.dim } }));
   globalThis.canvas = {
-    ready: true, scene: { id: "scene", tokens: { contents: tokens } },
+    ready: true, scene: { id: "scene", tokens: { contents: tokens }, environment: { globalLight } },
     grid: { measurePath: ([a, b]) => ({ distance: Math.hypot(b.x - a.x, b.y - a.y) / 100 * 5 }) },
     effects: {
       getDarknessLevel: () => darkness,
@@ -182,6 +185,26 @@ test("hidden in a torch's bright area on a dark scene: clear, spotted on sight",
   reset(); scene([enemy("g1", { passive: 1 })], { darkness: 0.6, lights: [{ x: 50, y: 0, bright: 100, dim: 400 }] });
   await onMoveToken(hiding("pc", 30), {}, {}, null, deps());
   assert.deepEqual(started, [["scene", "g"]]);
+});
+
+test("global illumination on a dark scene counts as dim light everywhere, or bright when the scene says so", async () => {
+  reset(); scene([enemy("g1", { passive: 9 })], { darkness: 0.7, globalLight: { enabled: true, bright: false, darkness: { min: 0, max: 1 } } });
+  await onMoveToken(hiding("pc", 5), {}, {}, null, deps()); // dim: passive 9 beats 5 (heavy darkness would hide it)
+  assert.deepEqual(started, [["scene", "g"]]);
+  started = [];
+  await onMoveToken(hiding("pc", 25), {}, {}, null, deps());
+  assert.deepEqual(started, []);
+  scene([enemy("g1", { passive: 1 })], { darkness: 0.7, globalLight: { enabled: true, bright: true, darkness: { min: 0, max: 1 } } });
+  await onMoveToken(hiding("pc", 30), {}, {}, null, deps()); // bright: caught on sight
+  assert.deepEqual(started, [["scene", "g"]]);
+});
+
+test("global illumination outside its darkness range, or disabled, changes nothing", async () => {
+  reset(); scene([enemy("g1", { passive: 20 })], { darkness: 0.7, globalLight: { enabled: true, bright: true, darkness: { min: 0, max: 0.5 } } });
+  await onMoveToken(hiding("pc", 1), {}, {}, null, deps());
+  scene([enemy("g1", { passive: 20 })], { darkness: 0.7, globalLight: { enabled: false, bright: true, darkness: { min: 0, max: 1 } } });
+  await onMoveToken(hiding("pc", 1), {}, {}, null, deps());
+  assert.deepEqual(started, []);
 });
 
 test("a darkness source makes a lit scene magical darkness for a hidden player: darkvision does not help", async () => {
@@ -326,7 +349,8 @@ test("registerEncounters hooks the events it needs", () => {
   calls.render = [];
   registerEncounters();
   assert.deepEqual(calls.render, [{ reset: true }]); // the controls rendered before the hook existed
-  for (const h of ["getSceneControlButtons", "renderTokenHUD", "moveToken", "dnd5e.postUseActivity", "dnd5e.applyDamage", "midi-qol.RollComplete", "combatStart", "canvasReady"]) assert.ok(names.includes(h), h);
+  for (const h of ["getSceneControlButtons", "renderTokenHUD", "moveToken", "dnd5e.applyDamage", "midi-qol.RollComplete", "combatStart", "canvasReady"]) assert.ok(names.includes(h), h);
+  assert.ok(!names.includes("dnd5e.postUseActivity")); // fires even when Midi refuses the use: reveal waits for RollComplete
   globalThis.Hooks.on = () => {};
 });
 
