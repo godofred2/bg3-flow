@@ -14,9 +14,11 @@ globalThis.game = {
 const dialogs = [];
 class DialogStub {
   static next = "roll"; static typed = "";
-  constructor(config) { this.config = config; this.closed = false; dialogs.push(this); }
+  constructor(config) { this.config = config; this.closed = false; this.listeners = {}; dialogs.push(this); }
   render() { this.rendered = true; return this; }
-  async close() { this.closed = true; }
+  addEventListener(type, fn) { this.listeners[type] = fn; }
+  async close() { this.closed = true; this.listeners.close?.(); }
+  dismiss() { return this.close(); } // the header X
   async press(action) { const b = this.config.buttons.find((b) => b.action === action); return b.callback({}, { form: { elements: { value: { value: DialogStub.typed } } } }, this); }
   static async wait(config) { const d = new DialogStub(config); return d.press(DialogStub.next); }
 }
@@ -65,8 +67,24 @@ test("registerSockets registers the three handlers and promptInitiative rolls on
   assert.deepEqual(Object.keys(handlers).sort(), ["promptInitiative", "promptSkill", "startEncounter"]);
   assert.deepEqual(await handlers.startEncounter("scene", "g"), ["started", "scene", "g"]);
   const rolled = [];
-  game.combat = { combatants: new Map([["c1", { initiative: 12, actor: { rollInitiative: async (o) => rolled.push(o) } }]]) };
-  assert.equal(await handlers.promptInitiative("c1"), 12);
-  assert.deepEqual(rolled, [{ createCombatants: false, initiativeOptions: { messageMode: "publicroll" } }]);
-  assert.equal(await handlers.promptInitiative("nope"), null);
+  const combat = { combatants: new Map([["c1", { initiative: 12 }]]), rollInitiative: async (ids, o) => rolled.push([ids, o]) };
+  game.combat = null; // the player may be viewing another combat or scene: the handler must not depend on it
+  game.combats = new Map([["cb", combat]]);
+  assert.equal(await handlers.promptInitiative("cb", "c1"), 12);
+  assert.deepEqual(rolled, [[["c1"], { messageMode: "publicroll", messageOptions: { rollMode: "publicroll" } }]]);
+  assert.equal(await handlers.promptInitiative("cb", "nope"), null);
+  assert.equal(await handlers.promptInitiative("gone", "c1"), null);
+});
+
+test("awaitOrGm runs the fallback when the GM dismisses the dialog with its X", async () => {
+  const never = new Promise(() => {});
+  const pending = awaitOrGm(never, { title: "t", label: "Roll for them" }, async () => 5);
+  await dialogs.at(-1).dismiss();
+  assert.equal(await pending, 5);
+});
+
+test("awaitOrGm does not run the fallback when it closes the dialog itself after the answer", async () => {
+  let ran = 0;
+  await awaitOrGm(Promise.resolve(1), { title: "t", label: "l" }, async () => { ran++; return 5; });
+  assert.equal(ran, 0);
 });

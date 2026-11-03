@@ -6,6 +6,8 @@ import { rollOrType, promptSkill, promptInitiative, askGmToStart, activeOwner, a
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 const encounterOf = (doc) => doc.getFlag(MODULE_ID, "encounter");
 const stealthOf = (doc) => doc.getFlag(MODULE_ID, "stealth");
+const leadGm = () => !!game.users.activeGM?.isSelf; // one GM acts, however many are connected
+const isPc = (t) => t.actor?.type === "character" && !!t.actor.hasPlayerOwner;
 
 // ---- Marking ----
 
@@ -129,7 +131,8 @@ const busy = new Set();
 /** moveToken: enemies of each group near the moved player token try to spot it. First spotter starts the encounter. */
 export async function onMoveToken(doc, movement, operation, user, deps = {}) {
   const { start = startEncounter, ask = promptSkill, roll = rollOrType } = deps;
-  if (!game.user.isGM || game.combat?.started || !doc.actor?.hasPlayerOwner || busy.has(doc.id)) return;
+  if (!leadGm() || game.combat?.started || !isPc(doc) || busy.has(doc.id)) return;
+  if (doc.parent?.id !== canvas?.scene?.id) return; // measured against the GM's canvas: only its scene
   busy.add(doc.id);
   try {
     const center = doc.getCenterPoint();
@@ -144,8 +147,9 @@ export async function onMoveToken(doc, movement, operation, user, deps = {}) {
       let spotter = null;
       if (obscured && !stealthOf(doc)?.checked?.includes(groupId)) {
         stealth = await stealthFor(doc, { ask, roll });
-        const cur = stealthOf(doc);
-        if (cur) await doc.setFlag(MODULE_ID, "stealth", { ...cur, checked: [...(cur.checked ?? []), groupId] });
+        // A dismissed prompt is remembered too (value null): no re-prompt for this group, seen on line of sight.
+        const cur = stealthOf(doc) ?? { value: null, hidden: false, checked: [] };
+        await doc.setFlag(MODULE_ID, "stealth", { ...cur, checked: [...(cur.checked ?? []), groupId] });
         if (stealth !== null) spotter = near.find((e) => passiveSpots({ obscured, passive: e.actor?.system?.skills?.prc?.passive ?? 10, stealth }));
       }
       for (const e of near) {
@@ -169,28 +173,36 @@ let starting = false;
 /** GM: one combat with the group's live enemies and every player character on the scene; PCs roll on their own clients. */
 export async function startEncounter(sceneId, groupId, deps = {}) {
   const { askInit = promptInitiative } = deps;
-  if (!game.user.isGM || starting || game.combats.find((c) => c.scene?.id === sceneId)) return null;
+  if (!leadGm() || starting || game.combats.find((c) => c.scene?.id === sceneId && c.started)) return null;
   starting = true;
+  let combat = null;
   try {
     const tokens = game.scenes.get(sceneId)?.tokens?.contents ?? [];
     const enemies = tokens.filter((t) => encounterOf(t)?.id === groupId && isLive(t));
-    const pcs = tokens.filter((t) => t.actor?.type === "character" && t.actor.hasPlayerOwner);
+    const pcs = tokens.filter(isPc);
     if (!enemies.length) return null;
-    const combat = await Combat.create({ scene: sceneId, active: true });
+    combat = await Combat.create({ scene: sceneId, active: true });
     await combat.createEmbeddedDocuments("Combatant", [...enemies, ...pcs].map((t) => ({ tokenId: t.id, sceneId, actorId: t.actorId })));
+    const gmRoll = (c) => combat.rollInitiative([c.id], { messageMode: "publicroll", messageOptions: { rollMode: "publicroll" } });
     for (const t of pcs) {
       const c = combat.combatants.find((c) => c.tokenId === t.id);
       if (!c) continue;
       const owner = activeOwner(t);
       const title = L("Prompt.Waiting", { name: t.name, skill: L("Prompt.Initiative") });
-      if (owner) await awaitOrGm(askInit(owner.id, c.id), { title, label: L("Prompt.RollForThem") }, () => combat.rollInitiative([c.id]));
-      else await combat.rollInitiative([c.id]);
+      if (owner) {
+        try { await awaitOrGm(askInit(owner.id, combat.id, c.id), { title, label: L("Prompt.RollForThem") }, () => gmRoll(c)); }
+        catch (err) { log(`initiative prompt for ${t.name} failed, GM rolls`, err); }
+      }
+      if (c.initiative == null) await gmRoll(c); // the player's client could not roll (other scene, disconnect)
     }
     await combat.rollNPC();
     for (const t of pcs) await revealToken(t);
     await combat.startCombat();
     log(`encounter ${groupId} started: ${[...enemies, ...pcs].map((t) => t.name).join(", ")}`);
     return combat;
+  } catch (err) {
+    await combat?.delete?.(); // never leave a half-built combat behind
+    throw err;
   } finally { starting = false; }
 }
 
@@ -209,13 +221,13 @@ export async function onApplyDamage(actor, amount, options, deps = {}) {
 export async function onRollComplete(workflow, deps = {}) {
   const { tell = askGmToStart } = deps;
   if (game.combat?.started || !(workflow?.hitTargets?.size > 0)) return;
-  const docs = [workflow.token?.document, ...[...workflow.hitTargets].map((t) => t.document)].filter(Boolean);
+  const docs = [workflow.token?.document, ...[...workflow.hitTargets].map((t) => t.document ?? t)].filter(Boolean);
   const hit = docs.find((d) => encounterOf(d));
   if (hit) await tell(hit.parent?.id ?? canvas.scene.id, encounterOf(hit).id);
 }
 
 async function revealAll() {
-  if (!game.user.isGM) return;
+  if (!leadGm()) return;
   for (const t of canvas?.scene?.tokens?.contents ?? []) await revealToken(t);
 }
 

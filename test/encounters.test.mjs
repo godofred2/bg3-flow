@@ -8,7 +8,7 @@ globalThis.ui = { notifications: { info() {}, warn: (m) => calls.warn.push(m) } 
 globalThis.ChatMessage = { create: async (d) => calls.chat.push(d) };
 globalThis.CONFIG = { DND5E: { skills: { ste: { label: "Stealth" }, prc: { label: "Perception" } } }, Canvas: { polygonBackends: { sight: { testCollision: () => false } } } };
 let nextId = 0;
-globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: class { constructor(c) { this.config = c; } render() { return this; } async close() {} static async wait() { return null; } static async prompt() { return null; } } } }, utils: { escapeHTML: (s) => s, randomID: () => `id${++nextId}` } };
+globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: class { constructor(c) { this.config = c; } render() { return this; } addEventListener() {} async close() {} static async wait() { return null; } static async prompt() { return null; } } } }, utils: { escapeHTML: (s) => s, randomID: () => `id${++nextId}` } };
 const settings = { defaultEncounterRadius: 60, obscuredDarkness: 0.5 };
 globalThis.game = {
   i18n: { localize: (k) => k, format: (k, d) => `${k}:${JSON.stringify(d)}` },
@@ -127,7 +127,7 @@ const enemy = (id, opts = {}) => tokenDoc(id, { flags: { encounter: { id: "g", r
 const player = (id, opts = {}) => tokenDoc(id, { type: "character", playerOwner: true, ...opts });
 let started = [];
 const deps = () => ({ start: async (s, g) => started.push([s, g]), ask: async () => 11, roll: async () => 7 });
-function reset() { started = []; calls.flags = []; calls.chat = []; game.user.isGM = true; game.combat = null; game.users = [{ id: "p1", active: true, isGM: false }]; }
+function reset() { started = []; calls.flags = []; calls.chat = []; game.user.isGM = true; game.combat = null; game.users = [{ id: "p1", active: true, isGM: false }]; game.users.activeGM = { isSelf: true }; }
 
 test("an enemy in radius with line of sight spots an unobscured player and starts the encounter", async () => {
   reset(); const e = enemy("g1"); scene([e, player("pc")]);
@@ -178,7 +178,7 @@ test("a dark square asks the active owner for Stealth once and stores it with hi
 });
 
 test("no active owner: the GM rolls or types instead", async () => {
-  reset(); game.users = []; const pc = player("pc"); let gmRolled = 0;
+  reset(); game.users = []; game.users.activeGM = { isSelf: true }; const pc = player("pc"); let gmRolled = 0;
   scene([enemy("g1", { passive: 1, roll: async () => [{ total: 1 }] }), pc], { darkness: 0.6 });
   await onMoveToken(pc, {}, {}, null, { ...deps(), roll: async () => { gmRolled++; return 18; } });
   assert.equal(gmRolled, 1);
@@ -207,8 +207,8 @@ test("a token with a prompt still open is skipped", async () => {
 
 test("non-GM client, running combat, or NPC mover: ignored", async () => {
   reset(); scene([enemy("g1"), player("pc")]);
-  game.user.isGM = false; await onMoveToken(player("pc"), {}, {}, null, deps());
-  game.user.isGM = true; game.combat = { started: true }; await onMoveToken(player("pc"), {}, {}, null, deps());
+  game.users.activeGM = { isSelf: false }; await onMoveToken(player("pc"), {}, {}, null, deps());
+  game.users.activeGM = { isSelf: true }; game.combat = { started: true }; await onMoveToken(player("pc"), {}, {}, null, deps());
   game.combat = null; await onMoveToken(tokenDoc("npc"), {}, {}, null, deps());
   assert.deepEqual(started, []);
 });
@@ -239,12 +239,12 @@ test("startEncounter builds the combat from the group and the player characters,
   const combat = world([enemy("g1"), enemy("g2"), pc1, pc2, tokenDoc("villager")]);
   const asked = [];
   calls.status = [];
-  const out = await startEncounter("scene", "g", { askInit: async (u, c) => { asked.push([u, c]); return 12; } });
+  const out = await startEncounter("scene", "g", { askInit: async (u, cb, c) => { asked.push([u, cb, c]); combat.combatants.find((x) => x.id === c).initiative = 12; return 12; } });
   assert.equal(out, combat);
   assert.deepEqual(combat.data, { scene: "scene", active: true });
   assert.deepEqual(combat.combatants.map((c) => c.tokenId), ["g1", "g2", "pc1", "pc2"]);
   assert.deepEqual(combat.combatants.map((c) => [c.sceneId, c.actorId]), [["scene", "act-g1"], ["scene", "act-g2"], ["scene", "act-pc1"], ["scene", "act-pc2"]]);
-  assert.deepEqual(asked, [["p1", "c2"]]);
+  assert.deepEqual(asked, [["p1", combat.id, "c2"]]);
   assert.deepEqual(combat.init, [["c3"]]);
   assert.equal(combat.npc, 1);
   assert.equal(combat.started, 1);
@@ -254,7 +254,7 @@ test("startEncounter builds the combat from the group and the player characters,
 
 test("startEncounter is a no-op when a combat exists on the scene, while one is starting, or without live enemies", async () => {
   reset();
-  world([enemy("g1"), player("pc")], { existing: [{ scene: { id: "scene" } }] });
+  world([enemy("g1"), player("pc")], { existing: [{ scene: { id: "scene" }, started: true }] });
   assert.equal(await startEncounter("scene", "g"), null);
   const combat = world([enemy("g1"), player("pc")]);
   let release;
@@ -295,4 +295,69 @@ test("registerEncounters hooks the events it needs", () => {
   registerEncounters();
   for (const h of ["getSceneControlButtons", "renderTokenHUD", "moveToken", "dnd5e.postUseActivity", "dnd5e.applyDamage", "midi-qol.RollComplete", "combatStart", "canvasReady"]) assert.ok(names.includes(h), h);
   globalThis.Hooks.on = () => {};
+});
+
+test("a player whose client could not roll (null or error) is rolled by the GM, and the combat still starts", async () => {
+  reset();
+  const pc1 = player("pc1"), pc2 = player("pc2");
+  const combat = world([enemy("g1"), pc1, pc2]);
+  let n = 0;
+  const out = await startEncounter("scene", "g", { askInit: async () => { n++; if (n === 1) return null; throw new Error("socket timeout"); } });
+  assert.equal(out, combat);
+  assert.deepEqual(combat.init, [["c1"], ["c2"]]);
+  assert.equal(combat.started, 1);
+});
+
+test("the combat is deleted when starting it fails after creation, so the scene is not blocked", async () => {
+  reset();
+  const combat = world([enemy("g1"), player("pc")]);
+  combat.rollNPC = async () => { throw new Error("boom"); };
+  combat.delete = async () => { combat.deleted = true; };
+  await assert.rejects(() => startEncounter("scene", "g", { askInit: async () => 10 }));
+  assert.equal(combat.deleted, true);
+});
+
+test("only the lead GM detects and starts; an unstarted leftover combat does not block", async () => {
+  reset(); game.users.activeGM = { isSelf: false };
+  scene([enemy("g1"), player("pc")]);
+  await onMoveToken(player("pc"), {}, {}, null, deps());
+  assert.deepEqual(started, []);
+  world([enemy("g1"), player("pc")]);
+  assert.equal(await startEncounter("scene", "g"), null);
+  reset();
+  const combat = world([enemy("g1"), player("pc")], { existing: [{ scene: { id: "scene" }, started: false }] });
+  assert.equal(await startEncounter("scene", "g", { askInit: async () => 10 }), combat);
+});
+
+test("a move on a scene the GM is not viewing is ignored", async () => {
+  reset(); scene([enemy("g1")]);
+  const pc = player("pc"); pc.parent = { id: "other" };
+  await onMoveToken(pc, {}, {}, null, deps());
+  assert.deepEqual(started, []);
+});
+
+test("a dismissed Stealth prompt is remembered per group: no re-prompt, seen on line of sight", async () => {
+  reset(); const pc = player("pc"); let asked = 0;
+  scene([enemy("g1", { passive: 1 })], { darkness: 0.6, wall: true });
+  const d = { ...deps(), ask: async () => { asked++; return null; }, roll: async () => null };
+  await onMoveToken(pc, {}, {}, null, d);
+  await onMoveToken(pc, {}, {}, null, d);
+  assert.equal(asked, 1);
+  assert.deepEqual(pc.getFlag("bg3-flow", "stealth"), { value: null, hidden: false, checked: ["g"] });
+  assert.deepEqual(started, []);
+  CONFIG.Canvas.polygonBackends.sight.testCollision = () => false;
+  await onMoveToken(pc, {}, {}, null, d);
+  assert.deepEqual(started, [["scene", "g"]]);
+});
+
+test("a player-owned familiar (not a character) neither triggers detection nor joins the combat", async () => {
+  reset(); scene([enemy("g1"), player("pc")]);
+  await onMoveToken(tokenDoc("owl", { type: "npc", playerOwner: true }), {}, {}, null, deps());
+  assert.deepEqual(started, []);
+});
+
+test("RollComplete copes with TokenDocuments in hitTargets", async () => {
+  reset(); const told = [];
+  await onRollComplete({ token: { document: player("pc") }, hitTargets: new Set([enemy("g1")]) }, { tell: async (s, g) => told.push([s, g]) });
+  assert.deepEqual(told, [["scene", "g"]]);
 });

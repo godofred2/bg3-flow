@@ -9,16 +9,18 @@ let socket = null;
 export function registerSockets(s, { startEncounter }) {
   socket = s;
   s.register("promptSkill", ({ tokenUuid, skill }) => rollOrType({ actor: fromUuidSync(tokenUuid)?.actor, skill }));
-  s.register("promptInitiative", async (combatantId) => {
-    const c = game.combat?.combatants.get(combatantId);
-    await c?.actor?.rollInitiative({ createCombatants: false, initiativeOptions: { messageMode: "publicroll" } });
-    return c?.initiative ?? null;
+  s.register("promptInitiative", async (combatId, combatantId) => {
+    // By id, not game.combat: the player may be viewing another scene or combat.
+    const combat = game.combats.get(combatId), c = combat?.combatants.get(combatantId);
+    if (!c) return null;
+    await combat.rollInitiative([combatantId], { messageMode: "publicroll", messageOptions: { rollMode: "publicroll" } });
+    return c.initiative ?? null;
   });
   s.register("startEncounter", (sceneId, groupId) => startEncounter(sceneId, groupId));
 }
 
 export const promptSkill = (userId, args) => socket.executeAsUser("promptSkill", userId, args);
-export const promptInitiative = (userId, combatantId) => socket.executeAsUser("promptInitiative", userId, combatantId);
+export const promptInitiative = (userId, combatId, combatantId) => socket.executeAsUser("promptInitiative", userId, combatId, combatantId);
 export const askGmToStart = (sceneId, groupId) => socket.executeAsGM("startEncounter", sceneId, groupId);
 
 /** First connected non-GM owner of a document, or null. */
@@ -42,16 +44,17 @@ export async function rollOrType({ actor, skill }) {
   return typeof r === "number" && Number.isFinite(r) ? r : null;
 }
 
-/** Wait for a player's answer while the GM sees a dialog whose single button runs `fallback` instead. */
+/** Wait for a player's answer while the GM sees a dialog whose single button runs `fallback` instead. Dismissing it (X) also falls back. */
 export async function awaitOrGm(promise, { title, label }, fallback) {
-  let dialog;
+  let dialog, done = false;
   const gm = new Promise((resolve) => {
     dialog = new foundry.applications.api.DialogV2({
       window: { title }, content: `<p>${title}</p>`,
       buttons: [{ action: "gm", label, callback: () => resolve(fallback()) }]
     });
+    dialog.addEventListener("close", () => { if (!done) resolve(fallback()); });
   });
   dialog.render({ force: true });
   try { return await Promise.race([promise, gm]); }
-  finally { await dialog.close(); }
+  finally { done = true; await dialog.close(); }
 }
