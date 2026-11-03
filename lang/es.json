@@ -52,7 +52,8 @@
     "Encounter": {
       "Mark": "Marcar como encuentro",
       "Radius": "Radio de detección (pies)",
-      "NoTokens": "Selecciona antes las fichas enemigas"
+      "NoTokens": "Selecciona antes las fichas enemigas",
+      "Spotted": "¡<b>{enemy}</b> ha visto a <b>{name}</b>!"
     },
     "Hide": {
       "Button": "Esconderse",
@@ -60,6 +61,10 @@
       "Roll": "Tirar Sigilo",
       "Use": "Usar este valor",
       "Value": "O escribe un valor"
+    },
+    "Prompt": {
+      "Waiting": "Esperando {skill} de {name}",
+      "RollForThem": "Tirar por ellos"
     }
   }
 }
