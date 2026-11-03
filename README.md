@@ -78,6 +78,8 @@ Spirit Guardians, Moonbeam, Cloud of Daggers and similar spells damage whoever s
 6. **Disposition Filter**: Enemies for Spirit Guardians (the friend-or-foe prompt can change it per cast). All for Cloud of Daggers and Moonbeam.
 7. Tick **Allow choosing targets** in the activity's Targeting section if the spell text lets you exclude creatures, so the prompt shows.
 
+Midi runs the region's damage on the caster owner's client. If that player closes or hides their browser tab, ongoing damage waits until the tab is visible again. This is Midi's design, not something the module changes.
+
 Details and the other options: Midi's README, section "Region Behaviour (AoE)": https://github.com/tposney/midi-qol#readme
 
 ## Settings
