@@ -77,3 +77,60 @@ test("mergePreset skips keys Midi does not know", () => {
 test("presetUnknownKeys lists keys missing from current", () => {
   assert.deepEqual(presetUnknownKeys({ autoTarget: "none" }, { autoTarget: "wallsBlock", bogus: 1 }), ["bogus"]);
 });
+
+// ---- Feature 2: grouping, turn jump, speed, budget ----
+import { groupBySide, groupOf, jumpTurn, isGroupStart, speedLimit, canMove } from "../scripts/rules.js";
+const T = (id, side) => ({ id, side });
+const order = [T("c", 1), T("r", 1), T("g1", -1), T("g2", -1), T("v", 0), T("x", 1)];
+test("groupBySide: runs of 2+ on the same side", () => {
+  assert.deepEqual(groupBySide(order), [{ side: 1, ids: ["c", "r"] }, { side: -1, ids: ["g1", "g2"] }]);
+});
+test("groupBySide: no wrap across the round boundary", () => {
+  assert.deepEqual(groupBySide([T("a", 1), T("g", -1), T("b", 1)]), []);
+});
+test("groupOf finds the group or null", () => {
+  const groups = groupBySide(order);
+  assert.deepEqual(groupOf(groups, "r"), { side: 1, ids: ["c", "r"] });
+  assert.equal(groupOf(groups, "v"), null);
+});
+test("jumpTurn forward skips the rest of the group", () => {
+  const groups = groupBySide(order);
+  assert.deepEqual(jumpTurn({ turns: order, groups, turn: 0, direction: 1 }), { turn: 2, roundDelta: 0 });
+  assert.deepEqual(jumpTurn({ turns: order, groups, turn: 2, direction: 1 }), { turn: 4, roundDelta: 0 });
+});
+test("jumpTurn wraps round when the group ends the order", () => {
+  const t = [T("g1", -1), T("c", 1), T("r", 1)];
+  assert.deepEqual(jumpTurn({ turns: t, groups: groupBySide(t), turn: 1, direction: 1 }), { turn: 0, roundDelta: 1 });
+});
+test("jumpTurn backward lands on the previous group's first member", () => {
+  const groups = groupBySide(order);
+  assert.deepEqual(jumpTurn({ turns: order, groups, turn: 4, direction: -1 }), { turn: 2, roundDelta: 0 });
+  assert.deepEqual(jumpTurn({ turns: order, groups, turn: 2, direction: -1 }), { turn: 0, roundDelta: 0 });
+});
+test("jumpTurn no group: null", () => {
+  const groups = groupBySide(order);
+  assert.equal(jumpTurn({ turns: order, groups, turn: 4, direction: 1 }), null);
+  assert.equal(jumpTurn({ turns: order, groups, turn: 5, direction: -1 }), null);
+  assert.equal(jumpTurn({ turns: [T("a", 1)], groups: [], turn: 0, direction: 1 }), null);
+});
+test("isGroupStart only for the first member", () => {
+  const groups = groupBySide(order);
+  assert.equal(isGroupStart(groups, order, 0), true);
+  assert.equal(isGroupStart(groups, order, 1), false);
+  assert.equal(isGroupStart(groups, order, 4), false);
+});
+test("speedLimit: action speed with walk fallback, dash doubles", () => {
+  const speeds = { walk: 30, fly: 0, swim: 20 };
+  assert.equal(speedLimit({ speeds, action: "walk", walkFallback: false, dash: false }), 30);
+  assert.equal(speedLimit({ speeds, action: "swim", walkFallback: true, dash: false }), 30);
+  assert.equal(speedLimit({ speeds, action: "swim", walkFallback: false, dash: false }), 20);
+  assert.equal(speedLimit({ speeds, action: "walk", walkFallback: false, dash: true }), 60);
+});
+test("speedLimit: no speeds gives 0", () => {
+  assert.equal(speedLimit({ speeds: null, action: "walk", walkFallback: true, dash: false }), 0);
+});
+test("canMove: ok within budget, budget reason when over, zero limit allows", () => {
+  assert.deepEqual(canMove({ spent: 10, cost: 20, limit: 30 }), { ok: true, reason: null });
+  assert.deepEqual(canMove({ spent: 10, cost: 25, limit: 30 }), { ok: false, reason: "budget" });
+  assert.deepEqual(canMove({ spent: 50, cost: 5, limit: 0 }), { ok: true, reason: null });
+});
