@@ -76,16 +76,16 @@ test("planTurn: best expected value wins, reason lists the alternatives", () => 
   const p = planTurn(b);
   assert.deepEqual(at(p.move), { x: 400, y: 0, elevation: 0 });
   assert.deepEqual(p.move.waypoints, [{ x: 400, y: 0, elevation: 0 }]); // the square's own route
-  assert.deepEqual(p.actions, [{ activityId: "sc", targetIds: ["rogue"] }]);
+  assert.deepEqual(p.actions, [{ activityId: "sc", targetIds: ["rogue"], aimId: "rogue" }]);
   assert.equal(p.reason, "Scimitar vs rogue (expected 2.5); also: Shortbow 2.0");
 });
 
 test("planTurn: Multiattack sums the named attacks, repeats the best when unnamed", () => {
   const bite = { ...scimitar, id: "bi", name: "Bite", damage: 3 }, spear = { ...scimitar, id: "sp", name: "Spear", damage: 4 };
   const b = board({ enemies: [pc("rogue", 5)], activities: [bite, spear], multiattack: "The gnoll makes two attacks: one with its bite and one with its spear." });
-  assert.deepEqual(planTurn(b).actions, [{ activityId: "bi", targetIds: ["rogue"] }, { activityId: "sp", targetIds: ["rogue"] }]);
+  assert.deepEqual(planTurn(b).actions, [{ activityId: "bi", targetIds: ["rogue"], aimId: "rogue" }, { activityId: "sp", targetIds: ["rogue"], aimId: "rogue" }]);
   const two = board({ enemies: [pc("rogue", 5)], activities: [bite, spear], multiattack: "The veteran makes two attacks." });
-  assert.deepEqual(planTurn(two).actions, [{ activityId: "sp", targetIds: ["rogue"] }, { activityId: "sp", targetIds: ["rogue"] }]);
+  assert.deepEqual(planTurn(two).actions, [{ activityId: "sp", targetIds: ["rogue"], aimId: "rogue" }, { activityId: "sp", targetIds: ["rogue"], aimId: "rogue" }]);
 });
 
 test("planTurn: nothing in range walks the budget toward the nearest visible enemy, nobody visible stays", () => {
@@ -145,7 +145,7 @@ test("an area aims at the enemy that covers the most, friendly fire subtracts, a
   const b = { ...board({ enemies: [e("r1", 450, 50), e("r2", 650, 50), e("r3", 1450, 50)], activities: [fireball] }), allies: [], grid };
   b.me = { ...b.me, cx: 50, cy: 50, w: 1 };
   const p = planTurn(b);
-  assert.deepEqual(p.actions, [{ activityId: "fb", targetIds: ["r1", "r2"] }]);
+  assert.deepEqual(p.actions, [{ activityId: "fb", targetIds: ["r1", "r2"], aimId: "r1" }]); // the aim travels with the use: the template is placed on it
   assert.equal(p.move, null);
   const g = (id, x) => ({ id, name: id, cx: x, cy: 50, w: 1, ac: 15, saves: { dex: 1 }, hp: 7, maxHp: 7 });
   b.allies = [g("g2", 550)]; // a goblin between r1 and r2
@@ -161,7 +161,7 @@ test("heals: the most wounded ally in range, self-only heals only the monster, f
   const b = { ...board({ enemies: [pc("rogue", 5, { ac: 30 })], activities: [scimitar, cure] }), allies: [ally("g2", 4), ally("g3", 15), ally("m", 7)], grid: { px: 100, ft: 5 } };
   b.me = { ...b.me, hp: 7, maxHp: 7, cx: 0, cy: 0, w: 1 };
   const p = planTurn(b);
-  assert.deepEqual(p.actions, [{ activityId: "cw", targetIds: ["g2"] }]); // 9 healed beats 0.25 * 5 on AC 30
+  assert.deepEqual(p.actions, [{ activityId: "cw", targetIds: ["g2"], aimId: "g2" }]); // 9 healed beats 0.25 * 5 on AC 30
   assert.equal(pickTarget(b, { ...cure, affects: "self" }), null); // the monster is at full hp
   b.me.hp = 1; b.allies.find((a) => a.id === "m").hp = 1;
   assert.equal(pickTarget(b, { ...cure, affects: "self" }).enemy.id, "m");
@@ -170,8 +170,8 @@ test("heals: the most wounded ally in range, self-only heals only the monster, f
 test("planTurn with slot bonus picks the best bonus activity from where it stands, or nothing", () => {
   const word = { id: "hw", uuid: "A.hw", name: "Healing Word", kind: "heal", slot: "bonus", range: 60, healing: 4.5, affects: "creature" };
   const b = { ...board({ budget: 0, enemies: [pc("rogue", 5)], activities: [scimitar, word] }), allies: [{ id: "g2", uuid: "T.g2", name: "g2", cx: 0, cy: 0, w: 1, hp: 2, maxHp: 7, ac: 15, saves: {}, distance: 30, elevation: 0 }], grid: { px: 100, ft: 5 } };
-  assert.deepEqual(planTurn(b, { slot: "bonus" }).actions, [{ activityId: "hw", targetIds: ["g2"] }]);
-  assert.deepEqual(planTurn(b).actions, [{ activityId: "sc", targetIds: ["rogue"] }]);
+  assert.deepEqual(planTurn(b, { slot: "bonus" }).actions, [{ activityId: "hw", targetIds: ["g2"], aimId: "g2" }]);
+  assert.deepEqual(planTurn(b).actions, [{ activityId: "sc", targetIds: ["rogue"], aimId: "rogue" }]);
   b.allies[0].hp = 7;
   assert.deepEqual(planTurn(b, { slot: "bonus" }), { move: null, actions: [], reason: "no bonus action" });
 });
@@ -180,7 +180,7 @@ test("a clever archer next to an enemy steps back to a free square 10 ft away be
   const retreat = { x: 0, y: 100, elevation: 0, cost: 5, waypoints: [{ x: 0, y: 100, elevation: 0 }], distances: { rogue: 10 } };
   const smart = { ...board({ intelligence: 10, enemies: [pc("rogue", 5)], activities: [bow] }), retreats: [retreat] };
   const p = planTurn(smart);
-  assert.deepEqual([at(p.move), p.actions, p.reason], [{ x: 0, y: 100, elevation: 0 }, [{ activityId: "bw", targetIds: ["rogue"] }], "Shortbow vs rogue (expected 2.5)"]);
+  assert.deepEqual([at(p.move), p.actions, p.reason], [{ x: 0, y: 100, elevation: 0 }, [{ activityId: "bw", targetIds: ["rogue"], aimId: "rogue" }], "Shortbow vs rogue (expected 2.5)"]);
   const dumb = planTurn({ ...smart, me: { ...smart.me, intelligence: 3 } });
   assert.deepEqual([dumb.move, dumb.reason], [null, "Shortbow vs rogue (expected 1.3)"]);
   assert.equal(planTurn({ ...smart, retreats: [] }).move, null);
@@ -210,4 +210,12 @@ test("a Multiattack from a retreat square counts its follow-up shots", () => {
   assert.deepEqual(at(p.move), { x: 0, y: 100, elevation: 0 });
   assert.equal(p.actions.length, 2);
   assert.ok(p.reason.startsWith("Multiattack vs rogue (expected 5.0)"));
+});
+
+test("a clever archer with a scimitar too steps back on a tie: ranged attackers keep their distance", () => {
+  const retreat = { x: 0, y: 100, elevation: 0, cost: 5, waypoints: [{ x: 0, y: 100, elevation: 0 }], distances: { rogue: 10 } };
+  const b = { ...board({ intelligence: 10, enemies: [pc("rogue", 5)], activities: [scimitar, bow] }), retreats: [retreat] };
+  const p = planTurn(b);
+  assert.deepEqual([at(p.move), p.actions[0].activityId], [{ x: 0, y: 100, elevation: 0 }, "bw"]);
+  assert.equal(p.reason, "Shortbow vs rogue (expected 2.5); also: Scimitar 2.5");
 });

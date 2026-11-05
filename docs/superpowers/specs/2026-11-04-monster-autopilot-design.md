@@ -224,3 +224,12 @@ Midi does the rest).
 
 - Foundry's pathfinder returns only the start when the goal cannot be reached, and the enemy's own square is never a reachable goal for a Large mover (nor for anyone when an ally fills the only corridor): the board then path-finds to every free square touching the enemy and keeps the shortest route. The Ogre's `path0` came from this.
 - Thrown weapons keep counting as melee (the Javelin shows reach 5); deferred.
+
+## Amendment 2026-11-05 (v0.7.0 server run, fixed in v0.7.1)
+
+- Automatic uses pass `dialog.configure = false` to Midi (dnd5e's configuration dialog for slots and item uses never opens).
+- An area use places its own template where the planner aimed it (cone or line from the caster toward the aim, anything else centred on the aim; cubes from the corner the way dnd5e draws them) and hands its uuid to Midi as `workflowOptions.templateUuid`: Midi then resolves targets and saves from the template instead of waiting for a placement that never comes. Instantaneous areas have their template removed afterwards.
+- Templates on attack activities (Spiritual Weapon) are placements, not blasts: those activities are not used.
+- A clever archer steps back on a tie between shooting from 10 ft and swinging adjacent (archers keep their distance).
+- Sentinel stop also watches temporary hit points.
+- Reach circles (piece 2) show for every active token the user can see; the GM sees them all.

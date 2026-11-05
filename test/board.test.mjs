@@ -210,6 +210,7 @@ test("activityInfo: Fireball sphere, breath cone from self, Cure Wounds heal, He
   assert.equal(activityInfo(act({ name: "Second Wind", type: "heal", activation: "bonus", parts: [["1d10", {}]], affects: "self" })).affects, "self");
   assert.equal(activityInfo(act({ name: "Spirit Guardians", type: "save", template: "radius", size: 15, affects: "self" })), null);
   assert.equal(activityInfo(act({ name: "Wall of Fire", type: "save", template: "wall", size: 60 })), null); // a wall is not a blast
+  assert.equal(activityInfo(act({ name: "Spiritual Weapon", type: "attack", activation: "bonus", template: "square", size: 5 })), null); // a template on an attack places something, it is no blast
   assert.equal(activityInfo(act({ name: "Scimitar", type: "attack", item: { type: "weapon", range: { reach: 5 } } })).recharge, false);
 });
 

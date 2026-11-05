@@ -126,7 +126,7 @@ export function pickTarget(board, activity, from = null) {
         const d = r.distances?.[enemy.id] ?? Infinity;
         if (r.cost > board.me.budget || d > activity.range || board.reserved.has(key(r))) continue;
         const v = expectedValue(activity, enemy, { disadvantage: d <= 5 });
-        if (v > value) { value = v; square = r; }
+        if (v >= value) { value = v; square = r; } // a tie goes to stepping back: archers keep their distance
       }
     }
     const pick = { enemy, square, value, targets };
@@ -146,7 +146,7 @@ export function planTurn(board, { slot = "action" } = {}) {
   const options = [];
   for (const a of actions) {
     const p = pickTarget(board, a);
-    if (p && p.value > 0) options.push({ name: a.name, value: p.value, square: p.square, aimId: p.enemy.id, actions: [{ activityId: a.id, targetIds: p.targets.map((t) => t.id) }] });
+    if (p && p.value > 0) options.push({ name: a.name, value: p.value, square: p.square, aimId: p.enemy.id, actions: [{ activityId: a.id, targetIds: p.targets.map((t) => t.id), aimId: p.enemy.id }] });
   }
   if (board.multiattack && slot === "action") {
     const attacks = actions.filter((a) => a.kind === "attack");
@@ -161,15 +161,15 @@ export function planTurn(board, { slot = "action" } = {}) {
     if (first && first.value > 0) {
       const from = first.square ?? board.me;
       let value = first.value;
-      const acts = [{ activityId: seq[0].id, targetIds: [first.enemy.id] }];
+      const acts = [{ activityId: seq[0].id, targetIds: [first.enemy.id], aimId: first.enemy.id }];
       for (const a of seq.slice(1)) {
         const p = pickTarget(board, a, from);
-        if (p) { value += p.value; acts.push({ activityId: a.id, targetIds: [p.enemy.id] }); }
+        if (p) { value += p.value; acts.push({ activityId: a.id, targetIds: [p.enemy.id], aimId: p.enemy.id }); }
       }
       options.push({ name: "Multiattack", value, square: first.square, aimId: first.enemy.id, actions: acts });
     }
   }
-  options.sort(byValue);
+  options.sort((a, b) => byValue(a, b) || (b.square?.distances ? 1 : 0) - (a.square?.distances ? 1 : 0)); // ties: the option that steps back from melee first
   const nameOf = (id) => [...board.enemies, ...(board.allies ?? [])].find((e) => e.id === id)?.name ?? id;
   if (options.length) {
     const [w, ...rest] = options;

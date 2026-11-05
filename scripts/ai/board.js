@@ -32,6 +32,7 @@ export function activityInfo(activity) {
   const area = template?.type ? { shape: template.type, size: Number(template.size) || 0, width: Number(template.width) || 5 } : null;
   if (affects === "self" && (activity.type !== "heal" || area)) return null; // self emanations (Spirit Guardians) are Midi regions, not uses
   if (area && ["wall", "ring"].includes(area.shape)) return null; // not blasts
+  if (area && activity.type === "attack") return null; // a template on an attack places something (Spiritual Weapon): no blast
   if (spent(activity.item?.system?.uses) || spent(activity.uses)) return null;
   if (activity.requiresSpellSlot && !(activity.actor?.system?.spells?.[`spell${activity.item?.system?.level}`]?.value > 0)) return null;
   // dnd5e gives every item's default activity the same id (dnd5eactivity000) and Midi names it "Midi Attack": the uuid is the identity, the item the name.
@@ -154,7 +155,7 @@ export async function snapshot(combat, combatant, reserved = new Set()) {
     const saves = Object.fromEntries(Object.entries(t.actor?.system?.abilities ?? {}).map(([k, a]) => [k, a?.save?.value ?? (typeof a?.save === "number" ? a.save : 0)]));
     const c = t.getCenterPoint();
     const sentinel = [...(t.actor?.items ?? [])].some((i) => String(i.name).trim().toLowerCase() === "sentinel");
-    return { id: t.id, uuid: t.uuid, name: t.name, x: t.x, y: t.y, elevation: t.elevation ?? 0, cx: c.x, cy: c.y, w: widthOf(t), hp: hpOf(t).value, maxHp: hpOf(t).max ?? hpOf(t).value, ac: t.actor?.system?.attributes?.ac?.value ?? 10, saves, distance: t === doc ? 0 : reachFt(myFoot, footOf(t)), sentinel };
+    return { id: t.id, uuid: t.uuid, name: t.name, x: t.x, y: t.y, elevation: t.elevation ?? 0, cx: c.x, cy: c.y, w: widthOf(t), hp: hpOf(t).value, maxHp: hpOf(t).max ?? hpOf(t).value, temp: hpOf(t).temp ?? 0, ac: t.actor?.system?.attributes?.ac?.value ?? 10, saves, distance: t === doc ? 0 : reachFt(myFoot, footOf(t)), sentinel };
   };
   const me = { ...creature(doc), intelligence: actor?.system?.abilities?.int?.value ?? 10, hp: hpOf(doc).value ?? 0, maxHp: hpOf(doc).max ?? 0, budget };
   const enemies = [], allies = [me], paths = {}, tokensById = {};

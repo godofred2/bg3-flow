@@ -11,11 +11,43 @@ const whisper = (content) => ChatMessage.create({ content, whisper: [game.user.i
 /** On unless the combatant flag says false or a player owns the actor. */
 export const isAuto = (c) => c.getFlag(MODULE_ID, "autopilot") !== false && !c.actor?.hasPlayerOwner;
 
-/** One use through Midi with the targets fixed (every covered creature for an area, no template placed): resolves when the workflow is done, `undefined` when Midi refused it. */
-export async function useActivity(info, targetUuids) {
+/**
+ * Place an area's template where the planner aimed it (a cone or line from the caster toward the aim, anything else centred on
+ * the aim), the way Midi places its own emanations. Returns the document Midi should use (a Region in Foundry 14), or null.
+ */
+async function placeArea(activity, info, { origin, aim }) {
+  const factory = game.system?.canvas?.TemplatePlacement ?? game.system?.canvas?.AbilityTemplate;
+  if (!factory?.fromActivity) return null;
+  const fromCaster = ["cone", "line"].includes(info.area.shape);
+  const direction = Math.atan2(aim.cy - origin.cy, aim.cx - origin.cx) * 180 / Math.PI;
+  const [tpl] = [].concat(factory.fromActivity(activity, { x: fromCaster ? origin.cx : aim.cx, y: fromCaster ? origin.cy : aim.cy, direction: fromCaster ? direction : 0 }) ?? []);
+  if (!tpl) return null;
+  const data = tpl.document.toObject();
+  if (["cube", "square"].includes(info.area.shape)) { // dnd5e draws cubes from a corner: a rotated rect, or a ray as wide as it is long
+    const half = info.area.size / canvas.dimensions.distance * canvas.dimensions.size / 2;
+    data.x = aim.cx - half;
+    data.y = data.t === "ray" ? aim.cy : aim.cy - half;
+    data.direction = data.t === "ray" ? 0 : 45;
+  }
+  data.flags = { ...data.flags, "midi-qol": { ...data.flags?.["midi-qol"], actorUuid: activity.actor?.uuid, itemUuid: activity.item?.uuid } };
+  const [td] = await canvas.scene.createEmbeddedDocuments("MeasuredTemplate", [data]);
+  return canvas.scene.regions?.get?.(td._id ?? td.id) ?? td;
+}
+
+/**
+ * One use through Midi with the targets fixed, no configuration dialog and no dnd5e template placement. An area gets its
+ * template from `placeArea` and Midi targets from it; an instantaneous area's template is removed afterwards.
+ * Resolves when the workflow is done, `undefined` when Midi refused it.
+ */
+export async function useActivity(info, targetUuids, place = null) {
   const activity = fromUuidSync(info.uuid);
   if (!activity) throw new Error(`activity ${info.uuid} not found`);
-  return MidiQOL.completeActivityUse(activity, { create: { measuredTemplate: false }, midiOptions: { targetUuids, ignoreUserTargets: true } });
+  const template = info.area && place ? await placeArea(activity, info, place) : null;
+  const midiOptions = { targetUuids, ignoreUserTargets: true };
+  if (template) midiOptions.workflowOptions = { templateUuid: template.uuid };
+  const result = await MidiQOL.completeActivityUse(activity, { create: { measuredTemplate: false }, midiOptions }, { configure: false });
+  if (template && activity.duration?.units === "inst") { const live = fromUuidSync(template.uuid); if (live?.delete) await live.delete(); }
+  return result;
 }
 
 const rechargeable = (uses) => (uses?.recovery ?? []).some((r) => r.period === "recharge") && uses.spent > 0;
@@ -39,14 +71,14 @@ export function sentinelWatch(movers, boards = {}) {
     if (![...(workflow?.actor?.items ?? [])].some((i) => String(i.name).trim().toLowerCase() === "sentinel")) return;
     for (const t of workflow.hitTargets ?? []) ids.get(t.document?.id ?? t.id)?.token.stopMovement?.();
   };
-  const threatened = movers.filter((c) => (boards[c.id]?.enemies ?? []).some((e) => e.visible && e.distance <= 5 && e.sentinel)).map((c) => ({ c, hp: boards[c.id].me.hp }));
+  const threatened = movers.filter((c) => (boards[c.id]?.enemies ?? []).some((e) => e.visible && e.distance <= 5 && e.sentinel)).map((c) => ({ c, hp: boards[c.id].me.hp, temp: boards[c.id].me.temp ?? c.actor?.system?.attributes?.hp?.temp ?? 0 }));
   const onUpdate = (actor, changes) => {
-    const hp = changes?.system?.attributes?.hp?.value;
-    if (typeof hp !== "number") return;
     const m = threatened.find((t) => t.c.actor === actor || (actor?.uuid && t.c.actor?.uuid === actor.uuid));
     if (!m) return;
-    if (hp < m.hp) m.c.token.stopMovement?.();
-    m.hp = hp;
+    const { value: hp, temp } = changes?.system?.attributes?.hp ?? {};
+    if ((typeof hp === "number" && hp < m.hp) || (typeof temp === "number" && temp < m.temp)) m.c.token.stopMovement?.(); // a hit: real or temporary hit points went down
+    if (typeof hp === "number") m.hp = hp;
+    if (typeof temp === "number") m.temp = temp;
   };
   const a = Hooks.on("midi-qol.RollComplete", onRoll), b = Hooks.on("updateActor", onUpdate);
   return () => { Hooks.off("midi-qol.RollComplete", a); Hooks.off("updateActor", b); };
@@ -133,7 +165,9 @@ export async function runTurn(combat, deps = {}) {
           if (choice === "manual") { await c.setFlag(MODULE_ID, "autopilot", false); return false; }
           if (stale()) return null; // the GM moved on while the dialog was open
         }
-        if ((await use(activity, targets.map((t) => t.uuid))) === undefined) throw new Error("Midi refused the use");
+        const aim = pool.find((t) => t.id === a.aimId) ?? targets[0];
+        const place = activity.area ? { origin: { cx: board.me.cx, cy: board.me.cy }, aim: { cx: aim.cx, cy: aim.cy } } : null;
+        if ((await use(activity, targets.map((t) => t.uuid), place)) === undefined) throw new Error("Midi refused the use");
         board = await snap(combat, c, reserved); // fresh hit points and sight for the next use
       }
       return true;

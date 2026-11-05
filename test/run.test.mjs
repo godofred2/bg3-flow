@@ -17,7 +17,7 @@ globalThis.game = {
   settings: { get: (m, k) => settings[k], set() {}, register() {}, registerMenu() {} }, modules: { get: () => ({}) }
 };
 
-let order = [], moves = [], uses = [];
+let order = [], moves = [], uses = [], places = [];
 function combatant(id, { disposition = -1, auto = true, defeated = false, playerOwner = false } = {}) {
   const flags = { "bg3-flow": auto ? {} : { autopilot: false } };
   return {
@@ -46,11 +46,11 @@ function deps({ plans, bonus = {}, enemies = () => [enemy("rogue")], allies = ()
   return {
     snap: async (combat, c) => boardFor(c, enemies(), allies()),
     plan: (board, opts) => (opts?.slot === "bonus" ? bonus[board.me.id] ?? { move: null, actions: [], reason: "no bonus action" } : plans[board.me.id]),
-    use: use ?? (async (a, uuids) => { uses.push([a.id, String(uuids)]); order.push(`use ${uuids}`); return {}; }),
+    use: use ?? (async (a, uuids, place) => { uses.push([a.id, String(uuids)]); order.push(`use ${uuids}`); places.push(place); return {}; }),
     pause: pause ?? (async () => "execute")
   };
 }
-function reset() { order = []; moves = []; uses = []; calls.chat = []; settings.pauseBeforeAttack = false; settings.autoNextTurn = true; settings.enableTurns = true; settings.autoRecharge = "no"; game.user.isGM = true; }
+function reset() { order = []; moves = []; uses = []; places = []; calls.chat = []; settings.pauseBeforeAttack = false; settings.autoNextTurn = true; settings.enableTurns = true; settings.autoRecharge = "no"; game.user.isGM = true; }
 
 const { isAuto, runTurn, onCombatTurnChange, onRenderCombatTracker, pauseDialog, registerAutopilot, arrive, useActivity, rollRecharge, sentinelWatch } = await import("../scripts/ai/run.js");
 
@@ -313,16 +313,38 @@ test("an area use sends every covered target to Midi in one call", async () => {
   reset();
   const g1 = combatant("g1");
   const combat = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]);
-  await runTurn(combat, deps({ plans: { g1: { move: null, actions: [{ activityId: "fb", targetIds: ["rogue", "wiz"] }], reason: "Fireball vs rogue (expected 20.0)" } }, enemies: () => [enemy("rogue"), enemy("wiz")] }));
+  await runTurn(combat, deps({ plans: { g1: { move: null, actions: [{ activityId: "fb", targetIds: ["rogue", "wiz"], aimId: "wiz" }], reason: "Fireball vs rogue (expected 20.0)" } }, enemies: () => [enemy("rogue"), { ...enemy("wiz"), cx: 650, cy: 50 }] }));
   assert.deepEqual(uses, [["fb", "T.rogue,T.wiz"]]);
+  assert.deepEqual(places[0], { origin: { cx: 50, cy: 50 }, aim: { cx: 650, cy: 50 } }); // where the template goes
 });
 
-test("useActivity passes create.measuredTemplate false and the target uuids to Midi", async () => {
+test("useActivity: no configuration dialog, the target uuids, and no dnd5e template placement", async () => {
   const cfgs = [];
-  globalThis.MidiQOL = { completeActivityUse: async (a, cfg) => { cfgs.push([a, cfg]); return {}; } };
+  globalThis.MidiQOL = { completeActivityUse: async (a, cfg, dialog) => { cfgs.push([a, cfg, dialog]); return {}; } };
   globalThis.fromUuidSync = (uuid) => ({ uuid });
-  await useActivity({ uuid: "A.fb" }, ["T.rogue", "T.wiz"]);
-  assert.deepEqual(cfgs, [[{ uuid: "A.fb" }, { create: { measuredTemplate: false }, midiOptions: { targetUuids: ["T.rogue", "T.wiz"], ignoreUserTargets: true } }]]);
+  await useActivity({ uuid: "A.sc" }, ["T.rogue"]);
+  assert.deepEqual(cfgs, [[{ uuid: "A.sc" }, { create: { measuredTemplate: false }, midiOptions: { targetUuids: ["T.rogue"], ignoreUserTargets: true } }, { configure: false }]]);
+});
+
+test("useActivity on an area places the template itself (cone from the caster toward the aim, sphere on the aim), hands its uuid to Midi and deletes an instantaneous one afterwards", async () => {
+  const cfgs = [], created = [], deleted = [];
+  const activity = { uuid: "A.br", duration: { units: "inst" } };
+  globalThis.MidiQOL = { completeActivityUse: async (a, cfg, dialog) => { cfgs.push(cfg); return {}; } };
+  globalThis.game.system = { canvas: { TemplatePlacement: { fromActivity: (a, opts) => [{ document: { toObject: () => ({ t: opts.t ?? "cone", distance: 15, ...opts }) } }] } } };
+  globalThis.canvas.scene.createEmbeddedDocuments = async (type, [data]) => { created.push([type, data]); return [{ _id: "tpl1", uuid: "Scene.s.MeasuredTemplate.tpl1" }]; };
+  globalThis.canvas.scene.regions = { get: (id) => ({ uuid: `Scene.s.Region.${id}`, delete: async () => deleted.push(id) }) };
+  globalThis.fromUuidSync = (uuid) => uuid === "A.br" ? activity : uuid.includes("Region") ? { uuid, delete: async () => deleted.push(uuid) } : null;
+  await useActivity({ uuid: "A.br", area: { shape: "cone", size: 15 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 350 } });
+  assert.deepEqual([created[0][0], created[0][1].x, created[0][1].y, created[0][1].direction], ["MeasuredTemplate", 150, 50, 45]);
+  assert.equal(cfgs[0].midiOptions.workflowOptions.templateUuid, "Scene.s.Region.tpl1");
+  assert.deepEqual(deleted, ["Scene.s.Region.tpl1"]);
+  created.length = 0;
+  await useActivity({ uuid: "A.br", area: { shape: "sphere", size: 20 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 350 } });
+  assert.deepEqual([created[0][1].x, created[0][1].y], [450, 350]);
+  activity.duration.units = "minute"; deleted.length = 0;
+  await useActivity({ uuid: "A.br", area: { shape: "sphere", size: 20 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 350 } });
+  assert.deepEqual(deleted, []); // a lasting area keeps its template
+  delete globalThis.canvas.scene.createEmbeddedDocuments; delete globalThis.canvas.scene.regions; delete globalThis.game.system;
 });
 
 test("the bonus phase runs after the action from a fresh snapshot and whispers its own line", async () => {
@@ -410,4 +432,17 @@ test("an area use sends covered allies to Midi too, mapped from the allies pool"
   const g2 = { id: "g2", uuid: "T.g2", name: "g2", cx: 550, cy: 50, w: 1, hp: 7, maxHp: 7, ac: 15, saves: {}, distance: 25, elevation: 0 };
   await runTurn(combat, deps({ plans: { g1: { move: null, actions: [{ activityId: "fb", targetIds: ["rogue", "g2"] }], reason: "Fireball vs rogue (expected 10.0)" } }, allies: () => [g2] }));
   assert.deepEqual(uses, [["fb", "T.rogue,T.g2"]]);
+});
+
+test("a Sentinel hit that only burns temporary hit points still stops the mover", async () => {
+  const g1 = combatant("g1");
+  g1.actor = { ...g1.actor, id: "act-g1", system: { attributes: { hp: { value: 7, temp: 15 } } } };
+  const stopped = [];
+  g1.token.stopMovement = () => stopped.push("g1");
+  const b = boardFor(g1, [{ ...enemy("fighter"), sentinel: true, distance: 5 }]);
+  b.me.temp = 15;
+  const off = sentinelWatch([g1], { g1: b });
+  hookFns["updateActor"](g1.actor, { system: { attributes: { hp: { temp: 7 } } } });
+  assert.deepEqual(stopped, ["g1"]);
+  off();
 });
