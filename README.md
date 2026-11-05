@@ -118,11 +118,27 @@ With **Encounters and stealth** on, exploration is free movement until an enemy 
 
 Simplifications: no Perception rolls (passive only, like BG3), the token's own vision range is ignored, no surprise round. A chat line says who spotted whom.
 
+## Monster autopilot (piece 4a)
+
+With **Monster autopilot** on, every combatant whose actor has no player owner plays its own turn on the GM client, like a BG3 enemy:
+
+1. The whole shared-turn group plans its movement at once (nobody takes a square a group mate already took) and moves together.
+2. Each monster, in initiative order, looks at the enemies it can see (the same sight rules as detection: walls, light, darkvision, hidden Stealth against its passive Perception) and scores every single-target attack or save activity on its sheet by expected damage: hit chance (or save failure) times average damage. The best option wins; a *Multiattack* trait is read from its text ("one with its bite and one with its spear") and runs as a sequence. Ties go to the most wounded target when the monster's Intelligence reaches the **Intelligence threshold**, to the nearest one otherwise.
+3. It stops on the first square of its path where the chosen ability is in range, uses it through Midi (cards, dice, damage as usual), and the next one acts. Nothing in range this turn: it walks its full movement toward the nearest visible enemy.
+4. When every active monster was automatic, the turn passes by itself.
+
+The GM gets a whispered line per monster ("Goblin: Scimitar vs Rogue (expected 2.5); also: Shortbow 2.0"). The robot button on each NPC row of the combat tracker switches that monster's autopilot off (or back on) for the combat. **Pause before each monster action** opens a dialog before every use: Execute, Skip, or Take over (switches that monster off and stops).
+
+Moving monsters trigger opportunity attacks through **Gambit's Premades** (enable its *Opportunity Attack* automation): the monster's move waits while the player answers. A use Midi refuses or an error leaves that monster to the GM with a whispered note; the others continue.
+
+Not counted yet: areas, heals, bonus actions, recharge abilities, fleeing, resistances and vulnerabilities, advantage or disadvantage, legendary and lair actions, ammunition.
+
 ## Settings
 
 - **Full automation**, **BG3 turn flow**, **Encounters and stealth**: feature toggles.
 - **Lock GM movement too**, **Dash item names**: feature 2.
 - **Default encounter radius**, **Obscured darkness threshold**: feature 3.
+- **Monster autopilot**, **Pause before each monster action**, **Pass the turn automatically**, **Intelligence threshold**: piece 4.
 
 ## Development
 
@@ -130,4 +146,4 @@ Simplifications: no Perception rolls (passive only, like BG3), the token's own v
 npm test        # pure rules, no Foundry needed
 ```
 
-Design spec: `docs/superpowers/specs/2026-11-02-bg3-flow-design.md`. Server test script: `docs/SERVER-TESTING.md`.
+Design specs: `docs/superpowers/specs/2026-11-02-bg3-flow-design.md` (pieces 1 to 3) and `docs/superpowers/specs/2026-11-04-monster-autopilot-design.md` (piece 4). Server test script: `docs/SERVER-TESTING.md`.

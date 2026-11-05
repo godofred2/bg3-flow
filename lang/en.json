@@ -29,6 +29,22 @@
       "dashNames": {
         "Name": "Dash item names",
         "Hint": "Comma-separated item names that double the movement budget for the turn when used."
+      },
+      "enableAutopilot": {
+        "Name": "Monster autopilot",
+        "Hint": "Combatants with no player owner play their own turns: move, attack, pass. Switch per combatant with the robot button in the combat tracker."
+      },
+      "pauseBeforeAttack": {
+        "Name": "Pause before each monster action",
+        "Hint": "Ask the GM (Execute, Skip, Take over) before every automatic use."
+      },
+      "autoNextTurn": {
+        "Name": "Pass the turn automatically",
+        "Hint": "When every active monster was automatic, the autopilot passes the turn."
+      },
+      "intelligenceThreshold": {
+        "Name": "Intelligence threshold",
+        "Hint": "Intelligence at or above which a monster finishes the most wounded target instead of the nearest."
       }
     },
     "Preset": {

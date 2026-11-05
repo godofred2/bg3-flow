@@ -186,3 +186,11 @@ test("registerAutopilot hooks combatTurnChange and renderCombatTracker and re-re
   for (const h of ["combatTurnChange", "renderCombatTracker"]) assert.ok(calls.hooks.includes(h), h);
   assert.equal(calls.render, 1);
 });
+
+test("lang files carry every Autopilot and settings key the module uses", async () => {
+  const { readFileSync } = await import("node:fs");
+  const en = JSON.parse(readFileSync(new URL("../lang/en.json", import.meta.url))).BG3FLOW;
+  const es = JSON.parse(readFileSync(new URL("../lang/es.json", import.meta.url))).BG3FLOW;
+  for (const k of ["enableAutopilot", "pauseBeforeAttack", "autoNextTurn", "intelligenceThreshold"]) { assert.ok(en.Settings[k]?.Name && en.Settings[k]?.Hint, k); assert.ok(es.Settings[k]?.Name && es.Settings[k]?.Hint, k); }
+  for (const k of ["Toggle", "Decision", "Error"]) { assert.ok(en.Autopilot[k], k); assert.ok(es.Autopilot[k], k); }
+});

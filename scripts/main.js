@@ -3,6 +3,7 @@ import { registerAutomation, PresetMenu } from "./automation.js";
 import { registerTurns, toggleDash } from "./turns.js";
 import { registerSockets } from "./prompts.js";
 import { startEncounter, registerEncounters, markEncounter } from "./encounters.js";
+import { registerAutopilot, runTurn } from "./ai/run.js";
 
 export const MODULE_ID = "bg3-flow";
 
@@ -42,6 +43,10 @@ Hooks.once("init", () => {
   reg("defaultEncounterRadius", Number, 60);
   reg("obscuredDarkness", Number, 0.5);
   reg("dashNames", String, "Dash, Carrera, Correr");
+  reg("enableAutopilot", Boolean, true);
+  reg("pauseBeforeAttack", Boolean, false);
+  reg("autoNextTurn", Boolean, true);
+  reg("intelligenceThreshold", Number, 6);
   game.settings.registerMenu(MODULE_ID, "preset", {
     name: L("Preset.Menu"), label: L("Preset.Menu"), hint: L("Preset.Hint"),
     icon: "fas fa-bolt", type: PresetMenu, restricted: true
@@ -63,6 +68,7 @@ Hooks.once("ready", () => {
   if (game.settings.get(MODULE_ID, "enableAutomation")) registerAutomation();
   if (game.settings.get(MODULE_ID, "enableTurns")) registerTurns();
   if (game.settings.get(MODULE_ID, "enableEncounters")) registerEncounters();
-  game.modules.get(MODULE_ID).api = { toggleDash, startEncounter, markEncounter };
+  if (game.settings.get(MODULE_ID, "enableAutopilot")) registerAutopilot();
+  game.modules.get(MODULE_ID).api = { toggleDash, startEncounter, markEncounter, runTurn };
   log("ready");
 });

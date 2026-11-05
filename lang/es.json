@@ -28,7 +28,23 @@
       },
       "dashNames": {
         "Name": "Nombres del objeto Carrera",
-        "Hint": "Nombres de objeto, separados por comas, que duplican el movimiento del turno al usarse."
+        "Hint": "Nombres de objetos, separados por comas, que duplican el movimiento del turno al usarse."
+      },
+      "enableAutopilot": {
+        "Name": "Piloto automático de monstruos",
+        "Hint": "Los combatientes sin dueño jugador juegan su turno solos: se mueven, atacan y pasan. Se apaga por combatiente con el botón del robot en el rastreador de combate."
+      },
+      "pauseBeforeAttack": {
+        "Name": "Pausa antes de cada acción de monstruo",
+        "Hint": "Pregunta al DM (Ejecutar, Saltar, Llevar a mano) antes de cada uso automático."
+      },
+      "autoNextTurn": {
+        "Name": "Pasar el turno automáticamente",
+        "Hint": "Cuando todos los monstruos activos iban en piloto, el piloto pasa el turno."
+      },
+      "intelligenceThreshold": {
+        "Name": "Umbral de Inteligencia",
+        "Hint": "Inteligencia a partir de la cual un monstruo remata al objetivo más herido en vez de pegar al más cercano."
       }
     },
     "Preset": {
