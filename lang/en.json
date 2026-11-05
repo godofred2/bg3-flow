@@ -66,6 +66,12 @@
       "Waiting": "Waiting for {skill} from {name}",
       "RollForThem": "Roll for them",
       "Initiative": "initiative"
+    },
+    "Autopilot": {
+      "Toggle": "Autopilot",
+      "Pause": { "Title": "{name}: autopilot", "Execute": "Execute", "Skip": "Skip", "Manual": "Take over" },
+      "Decision": "<b>{name}</b>: {reason}",
+      "Error": "Autopilot stopped for <b>{name}</b>: {error}"
     }
   }
 }

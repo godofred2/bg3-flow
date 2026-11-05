@@ -66,6 +66,12 @@
       "Waiting": "Esperando {skill} de {name}",
       "RollForThem": "Tirar por ellos",
       "Initiative": "iniciativa"
+    },
+    "Autopilot": {
+      "Toggle": "Piloto automático",
+      "Pause": { "Title": "{name}: piloto automático", "Execute": "Ejecutar", "Skip": "Saltar", "Manual": "Llevar a mano" },
+      "Decision": "<b>{name}</b>: {reason}",
+      "Error": "Piloto detenido para <b>{name}</b>: {error}"
     }
   }
 }
