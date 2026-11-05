@@ -212,3 +212,10 @@ Midi does the rest).
 - `TokenDocument#move` resolves when the server applied the move, before the sprite arrives and before a Gambit reaction hold ends: the autopilot waits for the sprite to reach the document position (45 s cap) before acting or passing the turn.
 - Reach and range are the fewest squares between the two creatures' footprints times the grid distance (5/5/5): `measurePath` snaps a Large token's centre (a grid vertex) to a whole square and put a diagonal neighbour at 7.5 ft.
 - Observed, not changed: Midi's reaction prompts (Uncanny Dodge) hold the autopilot like any other use; the autopilot fires on combat start when a monster has the first turn; starting a combat reveals hidden tokens (piece 3 rule).
+
+## Amendment 2026-11-05 (v0.6.1 server run, fixed in v0.6.2)
+
+- `Token#x` is the document's x: arrival is awaited on `Token#movementAnimationPromise` (poll, 45 s cap), not on positions.
+- A monster at 0 hit points (an opportunity attack on the way) plays nothing more.
+- A ranged attack within 5 ft of its target counts its disadvantage (hit chance squared), which also settles the Scimitar/Shortbow tie next to the target.
+- One `[bg3-flow]` console line per monster turn with the board the planner saw (activities, enemies, distances, path lengths): the Ogre's "approach" with a touching square could not be explained from the compendium data, so the next run reports that line.

@@ -15,10 +15,10 @@ export function averageOf(formula) {
 export const hitChance = ({ bonus, ac }) => clamp((21 + bonus - ac) / 20);
 export const failChance = ({ dc, bonus }) => clamp((dc - 1 - bonus) / 20);
 
-/** Expected damage (or healing, as damage avoided) of one activity against one target. */
-export function expectedValue(activity, target) {
+/** Expected damage (or healing, as damage avoided) of one activity against one target. Disadvantage squares the hit chance. */
+export function expectedValue(activity, target, { disadvantage = false } = {}) {
   switch (activity.kind) {
-    case "attack": return hitChance({ bonus: activity.bonus ?? 0, ac: target.ac ?? 10 }) * activity.damage;
+    case "attack": { const p = hitChance({ bonus: activity.bonus ?? 0, ac: target.ac ?? 10 }); return (disadvantage ? p * p : p) * activity.damage; }
     case "save": {
       const fail = failChance({ dc: activity.dc ?? 10, bonus: target.saves?.[activity.saveAbility] ?? 0 });
       const onSave = activity.onSave === "half" ? 0.5 : activity.onSave === "full" ? 1 : 0;
@@ -71,7 +71,9 @@ export function pickTarget(board, activity, from = null) {
       square = (board.paths[enemy.id] ?? []).find((s) => s.distance <= activity.range && s.cost <= board.me.budget && !s.occupied && !board.reserved.has(key(s)));
       if (!square) continue;
     }
-    const value = expectedValue(activity, enemy);
+    // A ranged attack within 5 ft of its target is at disadvantage (5e); ponytail: only the target counts, not other adjacent enemies.
+    const near = (square ? square.distance : from ? distanceFrom(board, from, enemy) : enemy.distance) <= 5;
+    const value = expectedValue(activity, enemy, { disadvantage: !!activity.ranged && near });
     const pick = { enemy, square, value };
     if (!best) { best = pick; continue; }
     const d = value - best.value;

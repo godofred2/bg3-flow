@@ -267,15 +267,18 @@ test("runTurn: the GM changed the turn while the pause dialog was open: the use 
   assert.equal(combat.nextTurns, 0);
 });
 
-test("arrive waits until the token's sprite reaches the document position (move() resolves before the animation ends)", async () => {
-  const doc = { x: 400, y: 0, object: { x: 0, y: 0 } };
-  setTimeout(() => { doc.object.x = 400; order.push("sprite arrived"); }, 15);
+function animating(obj, ms, label) { // Token#movementAnimationPromise: a promise while the sprite moves, null afterwards
+  obj.movementAnimationPromise = new Promise((r) => setTimeout(() => { obj.movementAnimationPromise = null; order.push(label); r(); }, ms));
+}
+test("arrive waits for the token's movement animation (move() resolves before the sprite stops; Token#x is the document's x)", async () => {
+  const doc = { x: 400, y: 0, object: { x: 400, y: 0 } };
+  animating(doc.object, 15, "sprite arrived");
   order = [];
   await arrive(doc, { poll: 2 });
   order.push("arrive resolved");
   assert.deepEqual(order, ["sprite arrived", "arrive resolved"]);
   await arrive({ x: 1, y: 1, object: null }); // no sprite on this client: nothing to wait for
-  const stuck = { x: 400, y: 0, object: { x: 0, y: 0 } };
+  const stuck = { x: 400, y: 0, object: { movementAnimationPromise: new Promise(() => {}) } };
   await arrive(stuck, { poll: 1, cap: 5 }); // the cap ends the wait
 });
 
@@ -283,8 +286,22 @@ test("runTurn waits for every mover to arrive before the actions and before pass
   reset();
   const g1 = combatant("g1");
   g1.token.object = { x: 0, y: 0 };
-  g1.token.move = async (wp) => { order.push("move g1"); g1.token.x = wp.at(-1).x; g1.token.y = 0; setTimeout(() => { g1.token.object.x = wp.at(-1).x; order.push("sprite g1"); }, 15); return true; }; // the document moves at once, the sprite later
+  g1.token.move = async (wp) => { order.push("move g1"); g1.token.x = wp.at(-1).x; g1.token.y = 0; animating(g1.token.object, 15, "sprite g1"); return true; }; // the document moves at once, the sprite later
   const combat = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]);
   await runTurn(combat, { ...deps({ plans: { g1: attackPlan() } }), poll: 2 });
   assert.deepEqual(order, ["clear g1", "move g1", "sprite g1", "use T.rogue"]);
+});
+
+test("runTurn: a monster at 0 hit points (dropped by an opportunity attack on the way) does nothing more", async () => {
+  reset();
+  const g1 = combatant("g1"), g2 = combatant("g2");
+  const combat = makeCombat([g1, g2, combatant("pc", { disposition: 1, playerOwner: true })]);
+  const d = deps({ plans: { g1: attackPlan(), g2: attackPlan() } });
+  let moved = false;
+  d.snap = async (c, m) => { const b = boardFor(m, [enemy("rogue")]); if (m.id === "g1" && moved) b.me.hp = 0; return b; };
+  g1.token.move = async () => { order.push("move g1"); moved = true; return true; };
+  await runTurn(combat, d);
+  assert.deepEqual(order, ["clear g1", "clear g2", "move g1", "move g2", "use T.rogue"]);
+  assert.ok(!calls.chat.some((m) => m.content.includes("Autopilot.Error")));
+  assert.equal(combat.nextTurns, 1);
 });

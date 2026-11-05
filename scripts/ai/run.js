@@ -35,12 +35,15 @@ export async function pauseDialog({ name, reason }) {
 let running = false;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** move() resolves when the server applied the move; the sprite (and a Gambit reaction hold) may still be on its way. */
+/** move() resolves when the server applied the move; the sprite may still be animating (Token#x is the document's x, so watch the animation promise). */
 export async function arrive(doc, { poll = 100, cap = 45000 } = {}) {
   const obj = doc.object;
   const t0 = Date.now();
-  while (obj && (Math.abs(obj.x - doc.x) > 1 || Math.abs(obj.y - doc.y) > 1) && Date.now() - t0 < cap) await sleep(poll);
+  await sleep(poll); // let the animation start
+  while (obj?.movementAnimationPromise && Date.now() - t0 < cap) await Promise.race([obj.movementAnimationPromise, sleep(poll)]);
 }
+
+const brief = (b) => `${b.me.name} hp ${b.me.hp} budget ${b.me.budget}; activities: ${b.activities.map((a) => `${a.name}[${a.kind} r${a.range} +${a.bonus} dmg${a.damage.toFixed(1)}${a.ranged ? " ranged" : ""}]`).join(" ") || "none"}; enemies: ${b.enemies.map((e) => `${e.name}[d${e.distance} ac${e.ac} hp${e.hp}${e.visible ? "" : " unseen"} path${(b.paths[e.id] ?? []).length}]`).join(" ") || "none"}`;
 
 /** Play the active group's automatic members: all moves at once, then actions in initiative order. */
 export async function runTurn(combat, deps = {}) {
@@ -59,7 +62,10 @@ export async function runTurn(combat, deps = {}) {
     const reserved = new Set(), plans = [];
     for (const c of members) {
       try {
-        const p = plan(await snap(combat, c, reserved));
+        const board = await snap(combat, c, reserved);
+        log(brief(board)); // what the planner saw: the first thing to read when a monster does something odd
+        if (board.me.hp <= 0) continue; // down before its turn: nothing to play
+        const p = plan(board);
         if (p.move) reserved.add(`${p.move.x},${p.move.y}`);
         plans.push([c, p]);
       } catch (err) { await failed(c, err); }
@@ -72,6 +78,7 @@ export async function runTurn(combat, deps = {}) {
       if (stale()) return;
       try {
         let board = await snap(combat, c, reserved);
+        if (board.me.hp <= 0) continue; // dropped on the way (an opportunity attack): no action
         const p = plan({ ...board, me: { ...board.me, budget: 0 } }); // act from where it stands: a move that fell short never fires out of reach
         await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason }));
         for (const a of p.actions) {

@@ -46,7 +46,7 @@ function board({ budget = 30, intelligence = 10, enemies, activities, multiattac
   return { me: { id: "m", name: "Goblin", intelligence, hp: 7, maxHp: 7, x: 0, y: 0, elevation: 0, budget }, enemies, activities, multiattack, paths, reserved, threshold: 6 };
 }
 const scimitar = { id: "sc", uuid: "A.sc", name: "Scimitar", kind: "attack", slot: "action", range: 5, bonus: 4, damage: 5 };
-const bow = { id: "bw", uuid: "A.bw", name: "Shortbow", kind: "attack", slot: "action", range: 80, bonus: 4, damage: 5 };
+const bow = { id: "bw", uuid: "A.bw", name: "Shortbow", kind: "attack", slot: "action", range: 80, bonus: 4, damage: 5, ranged: true };
 const pc = (id, distance, { hp = 10, ac = 15, visible = true } = {}) => ({ id, uuid: `T.${id}`, name: id, x: distance * 20, y: 0, elevation: 0, hp, maxHp: 20, ac, saves: {}, distance, visible });
 
 test("pickTarget from where it stands, or from the first path square in range within budget", () => {
@@ -108,4 +108,18 @@ test("planTurn: the move carries the path's waypoints up to the chosen square", 
   const b = board({ enemies: [pc("rogue", 25)], activities: [scimitar], paths: { rogue: path } });
   assert.deepEqual(planTurn(b).move.waypoints, [{ x: 100, y: 0, elevation: 0 }, { x: 200, y: 0, elevation: 0 }, { x: 300, y: 0, elevation: 0 }, { x: 400, y: 0, elevation: 0 }]);
   assert.deepEqual(planTurn(board({ budget: 10, enemies: [pc("rogue", 25)], activities: [scimitar], paths: { rogue: path } })).move.waypoints, [{ x: 100, y: 0, elevation: 0 }, { x: 200, y: 0, elevation: 0 }]);
+});
+
+test("expectedValue: disadvantage squares the hit chance", () => {
+  const t = { ac: 15, saves: {}, hp: 10, maxHp: 10 };
+  assert.equal(expectedValue({ kind: "attack", bonus: 4, damage: 6 }, t, { disadvantage: true }), 1.5);
+});
+
+test("a ranged attack next to its target has disadvantage: the scimitar wins when adjacent, the bow from afar", () => {
+  const near = board({ enemies: [pc("rogue", 5)], activities: [scimitar, bow] });
+  assert.equal(planTurn(near).reason, "Scimitar vs rogue (expected 2.5); also: Shortbow 1.3");
+  const far = board({ budget: 0, enemies: [pc("rogue", 25)], activities: [scimitar, bow] });
+  assert.equal(planTurn(far).reason, "Shortbow vs rogue (expected 2.5)");
+  const walkIn = board({ enemies: [pc("rogue", 25)], activities: [bow], paths: { rogue: [sq(400, 20, 5)] } });
+  assert.equal(pickTarget(walkIn, bow).square, null); // shoots from here rather than walking into melee
 });

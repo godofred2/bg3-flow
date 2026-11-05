@@ -50,7 +50,7 @@ globalThis.canvas = {
 };
 
 let n = 0;
-function act({ type, activation = "action", toHit = "+0", parts = [], item = {}, range = null, save = null, uses = null, spell = null, affects = "creature", template = null, canUse = true, name = "X", siblings = 1 } = {}) {
+function act({ type, activation = "action", toHit = "+0", parts = [], item = {}, range = null, save = null, uses = null, spell = null, affects = "creature", template = null, canUse = true, name = "X", siblings = 1, attackType = "melee" } = {}) {
   const id = `a${++n}`;
   const actor = { system: { spells: { spell1: { value: spell?.slots ?? 0 } } } };
   // dnd5e gives every item's default activity the same id (dnd5eactivity000) and Midi names it "Midi Attack": only the uuid and the item name tell them apart.
@@ -60,7 +60,7 @@ function act({ type, activation = "action", toHit = "+0", parts = [], item = {},
     activation: { type: activation }, range: range ?? { value: null, units: "", override: false },
     target: { affects: { type: affects }, template: { type: template } },
     uses: { max: uses?.max ?? "", value: uses?.value ?? 0 },
-    requiresSpellSlot: !!spell, labels: { toHit },
+    requiresSpellSlot: !!spell, labels: { toHit }, attack: type === "attack" ? { type: { value: attackType } } : undefined,
     save: save && { dc: { value: save.dc }, ability: new Set([save.ability]) }, damage: { onSave: save?.onSave },
     getDamageConfig: () => ({ rolls: parts.map(([f, d]) => ({ parts: [f], data: d })) })
   };
@@ -90,10 +90,10 @@ const { activityInfo, snapshot } = await import("../scripts/ai/board.js");
 test("activityInfo: a goblin's scimitar and shortbow as Plutonium imports them", () => {
   n = 0;
   const scimitar = act({ name: "Scimitar", type: "attack", toHit: "+4", parts: [["1d6 + @mod", { mod: 2 }]], item: { type: "weapon", range: { reach: 5, value: null } } });
-  assert.deepEqual(activityInfo(scimitar), { id: "A.a1", uuid: "A.a1", name: "Scimitar", kind: "attack", slot: "action", range: 5, bonus: 4, dc: undefined, saveAbility: undefined, onSave: undefined, damage: 5.5, healing: 0 });
+  assert.deepEqual(activityInfo(scimitar), { id: "A.a1", uuid: "A.a1", name: "Scimitar", kind: "attack", slot: "action", range: 5, bonus: 4, dc: undefined, saveAbility: undefined, onSave: undefined, damage: 5.5, healing: 0, ranged: false });
   assert.equal(activityInfo(act({ name: "Dagger", type: "attack", siblings: 2 })).name, "Dagger (Midi Attack)"); // an item with several activities keeps the activity's name
-  const bow = act({ name: "Shortbow", type: "attack", toHit: "+4", parts: [["1d6 + 2", {}]], item: { type: "weapon", range: { reach: null, value: 80, long: 320 } } });
-  assert.equal(activityInfo(bow).range, 80);
+  const bow = act({ name: "Shortbow", type: "attack", toHit: "+4", parts: [["1d6 + 2", {}]], item: { type: "weapon", range: { reach: null, value: 80, long: 320 } }, attackType: "ranged" });
+  assert.deepEqual([activityInfo(bow).range, activityInfo(bow).ranged], [80, true]);
 });
 
 test("activityInfo: save activity, spell slot check, uses, self targets, areas, utility, legendary", () => {

@@ -37,7 +37,8 @@ export function activityInfo(activity) {
     id: activity.uuid, uuid: activity.uuid, name, kind: activity.type, slot: activity.activation.type,
     range: rangeOf(activity), bonus: parseInt(activity.labels?.toHit) || 0,
     dc: activity.save?.dc?.value, saveAbility: activity.save?.ability?.first?.() ?? [...(activity.save?.ability ?? [])][0], onSave: activity.damage?.onSave,
-    damage: averageDamage(activity), healing: 0
+    damage: averageDamage(activity), healing: 0,
+    ranged: activity.attack?.type?.value === "ranged"
   };
 }
 
