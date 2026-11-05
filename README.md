@@ -131,7 +131,7 @@ The GM gets a whispered line per monster ("Goblin: Scimitar vs Rogue (expected 2
 
 Moving monsters trigger opportunity attacks through **Gambit's Premades** (enable its *Opportunity Attack* automation): the monster's move waits while the player answers. A use Midi refuses or an error leaves that monster to the GM with a whispered note; the others continue.
 
-Not counted yet: areas, heals, bonus actions, recharge abilities, fleeing, resistances and vulnerabilities, advantage or disadvantage, legendary and lair actions, ammunition.
+Not counted yet: areas, heals, bonus actions, recharge abilities, fleeing, resistances and vulnerabilities, advantage or disadvantage, legendary and lair actions, ammunition, difficult terrain cost, gridless scenes. Large creatures are placed by their top-left square and measure reach from their edge.
 
 ## Settings
 

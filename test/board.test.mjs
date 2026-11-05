@@ -31,6 +31,7 @@ globalThis.canvas = {
     getOffset: (p) => off("i" in p ? center(p) : p),
     getCenterPoint: (p) => center("i" in p ? p : off(p)),
     getTopLeftPoint: (o) => ({ x: o.j * SIZE, y: o.i * SIZE }),
+    getAdjacentOffsets: (o) => [-1, 0, 1].flatMap((di) => [-1, 0, 1].map((dj) => ({ i: o.i + di, j: o.j + dj }))).filter((n) => (n.i !== o.i || n.j !== o.j) && n.i >= 0 && n.j >= 0),
     getDirectPath: (points) => {
       const out = [];
       for (let k = 1; k < points.length; k++) {
@@ -64,11 +65,11 @@ function act({ type, activation = "action", toHit = "+0", parts = [], item = {},
   };
 }
 
-function token(id, { x, y = 0, disposition, hp = 10, maxHp = 10, ac = 15, int = 10, passive = 9, darkvision = 0, speed = 30, spent = 0, items = [], hidden = false, flags = {} } = {}) {
+function token(id, { x, y = 0, disposition, hp = 10, maxHp = 10, ac = 15, int = 10, passive = 9, darkvision = 0, speed = 30, spent = 0, items = [], hidden = false, flags = {}, width = 1 } = {}) {
   const doc = {
-    id, name: id, x, y, elevation: 0, hidden, disposition, parent: { id: "scene" }, uuid: `Scene.scene.Token.${id}`,
+    id, name: id, x, y, elevation: 0, hidden, disposition, parent: { id: "scene" }, uuid: `Scene.scene.Token.${id}`, width, height: width,
     flags: { "bg3-flow": flags }, getFlag: (m, k) => doc.flags[m]?.[k],
-    getCenterPoint: (d) => ({ x: (d?.x ?? doc.x) + SIZE / 2, y: (d?.y ?? doc.y) + SIZE / 2 }),
+    getCenterPoint: (d) => ({ x: (d?.x ?? doc.x) + width * SIZE / 2, y: (d?.y ?? doc.y) + width * SIZE / 2 }),
     movementHistory: spent ? [{ cost: spent }] : [],
     object: { findMovementPath: (wps) => ({ promise: Promise.resolve(wps) }) }
   };
@@ -101,7 +102,7 @@ test("activityInfo: save activity, spell slot check, uses, self targets, areas, 
   assert.equal(activityInfo(act({ type: "attack", uses: { max: 1, value: 0 } })), null);
   assert.equal(activityInfo(act({ type: "attack", uses: { max: 1, value: 1 } })).kind, "attack");
   assert.equal(activityInfo(act({ type: "heal", activation: "bonus", affects: "self" })), null);
-  assert.equal(activityInfo(act({ type: "heal", activation: "bonus", parts: [["1d4 + 2", {}]] })).healing, 4.5);
+  assert.equal(activityInfo(act({ type: "heal", activation: "bonus", parts: [["1d4 + 2", {}]] })), null); // heals aim at allies: 4b
   assert.equal(activityInfo(act({ type: "save", template: "cone" })), null);
   assert.equal(activityInfo(act({ type: "utility" })), null);
   assert.equal(activityInfo(act({ type: "attack", activation: "legendary" })), null);
@@ -127,7 +128,11 @@ test("snapshot: enemies, visibility through walls, paths cut at the budget, occu
   const b = await snapshot(combat, combat.combatants[0], new Set(["9,9"]));
   assert.deepEqual([b.me.id, b.me.name, b.me.intelligence, b.me.budget, b.me.x, b.me.y, b.threshold], ["goblin", "goblin", 10, 20, 0, 0, 6]);
   assert.deepEqual(b.enemies.map((e) => [e.id, e.visible, e.distance, e.hp, e.maxHp, e.ac, e.saves.dex]), [["rogue", true, 20, 6, 20, 14, 2], ["wizard", false, 20, 10, 10, 15, 2]]);
-  assert.deepEqual(b.paths.rogue.map((s) => [s.x, s.y, s.cost, s.distance, s.occupied]), [[100, 0, 5, 15, false], [200, 0, 10, 10, true], [300, 0, 15, 5, false]]);
+  assert.deepEqual(b.paths.rogue.slice(0, 3).map((s) => [s.x, s.y, s.cost, s.distance, s.occupied]), [[100, 0, 5, 15, false], [200, 0, 10, 10, true], [300, 0, 15, 5, false]]);
+  assert.deepEqual(b.paths.rogue[2].waypoints, [{ x: 100, y: 0, elevation: 0 }, { x: 200, y: 0, elevation: 0 }, { x: 300, y: 0, elevation: 0 }]);
+  // branch squares: free neighbours of the last path square that still touch the enemy (row 1 only: row -1 is off the map)
+  assert.deepEqual(b.paths.rogue.slice(3).map((s) => [s.x, s.y, s.cost, s.distance]), [[300, 100, 20, 5], [400, 100, 20, 5]]);
+  assert.deepEqual(b.paths.rogue[4].waypoints, [{ x: 100, y: 0, elevation: 0 }, { x: 200, y: 0, elevation: 0 }, { x: 300, y: 0, elevation: 0 }, { x: 400, y: 100, elevation: 0 }]);
   assert.equal(b.paths.wizard, undefined);
   assert.equal(b.multiattack, "The goblin makes two attacks: one with its scimitar and one with its shortbow.");
   assert.deepEqual(b.activities.map((a) => [a.name, a.slot]), [["Scimitar", "action"], ["Shortbow", "action"]]);
@@ -144,4 +149,23 @@ test("snapshot: a hidden rogue in the dark beating passive Perception is an enem
   assert.deepEqual(b.enemies.map((e) => [e.id, e.visible]), [["rogue", false]]);
   assert.deepEqual(b.paths, {});
   canvas.effects.getDarknessLevel = () => 0;
+});
+
+test("snapshot: a villager outside the combat still occupies its square", async () => {
+  const goblin = token("goblin", { x: 0, disposition: -1 });
+  const rogue = token("rogue", { x: 400, disposition: 1 });
+  const villager = token("villager", { x: 300, disposition: 0 });
+  canvas.scene.tokens.contents = [goblin, rogue, villager];
+  const b = await snapshot({ combatants: [combatantOf(goblin), combatantOf(rogue)] }, combatantOf(goblin));
+  assert.deepEqual(b.paths.rogue.slice(0, 3).map((s) => [s.x, s.occupied]), [[100, false], [200, false], [300, true]]);
+});
+
+test("snapshot: a Large monster is placed by its top-left, measures reach from its edge and cannot overlap anyone", async () => {
+  const ogre = token("ogre", { x: 0, disposition: -1, width: 2 });
+  const rogue = token("rogue", { x: 400, disposition: 1 });
+  canvas.scene.tokens.contents = [ogre, rogue];
+  const b = await snapshot({ combatants: [combatantOf(ogre), combatantOf(rogue)] }, combatantOf(ogre));
+  assert.equal(b.enemies[0].distance, 15); // centres 17.5 ft apart, minus half the ogre's extra width
+  const main = b.paths.rogue.filter((s) => s.y === 0);
+  assert.deepEqual(main.map((s) => [s.x, s.cost, s.distance, s.occupied]), [[100, 5, 10, false], [200, 10, 5, false]]); // 300 would overlap the rogue: dropped
 });

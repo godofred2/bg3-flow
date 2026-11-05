@@ -37,29 +37,33 @@ let running = false;
 /** Play the active group's automatic members: all moves at once, then actions in initiative order. */
 export async function runTurn(combat, deps = {}) {
   const { snap = snapshot, plan = planTurn, pick = pickTarget, use = useActivity, pause = pauseDialog } = deps;
-  const ids = activeIds(combat);
+  const ids = game.settings.get(MODULE_ID, "enableTurns") === false ? new Set([combat.combatant?.id]) : activeIds(combat); // groups only exist with piece 2
   const active = combat.turns.filter((c) => ids.has(c.id) && !c.isDefeated);
   const members = active.filter((c) => isAuto(c) && c.token && c.token.parent?.id === canvas.scene?.id);
   if (!members.length) return;
   const mark = { id: combat.id, round: combat.round, turn: combat.turn };
   const stale = () => game.combat?.id !== mark.id || game.combat.round !== mark.round || game.combat.turn !== mark.turn;
-  let clean = active.every(isAuto);
+  let clean = active.every(isAuto), pass = false;
+  const failed = async (c, err) => { console.error(`[${MODULE_ID}]`, err); clean = false; await whisper(L("Autopilot.Error", { name: c.token.name, error: err?.message ?? String(err) })); };
   running = true;
   try {
     await Promise.all(members.map((c) => c.token.clearMovementHistory?.())); // piece 2 clears without awaiting: do it ourselves
     const reserved = new Set(), plans = [];
     for (const c of members) {
-      const p = plan(await snap(combat, c, reserved));
-      if (p.move) reserved.add(`${p.move.x},${p.move.y}`);
-      plans.push([c, p]);
+      try {
+        const p = plan(await snap(combat, c, reserved));
+        if (p.move) reserved.add(`${p.move.x},${p.move.y}`);
+        plans.push([c, p]);
+      } catch (err) { await failed(c, err); }
     }
     if (stale()) return;
-    await Promise.all(plans.map(([c, p]) => p.move && c.token.move({ ...p.move, action: "walk" }, { autoRotate: true, showRuler: false, bg3Autopilot: true })));
-    for (const c of members) {
+    const walk = (m) => (m.waypoints ?? [m]).map((w) => ({ x: w.x, y: w.y, elevation: w.elevation, action: "walk" }));
+    await Promise.all(plans.map(([c, p]) => p.move && c.token.move(walk(p.move), { autoRotate: true, showRuler: false, bg3Autopilot: true })));
+    for (const [c] of plans) {
       if (stale()) return;
       try {
         let board = await snap(combat, c, reserved);
-        const p = plan(board);
+        const p = plan({ ...board, me: { ...board.me, budget: 0 } }); // act from where it stands: a move that fell short never fires out of reach
         await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason }));
         for (const a of p.actions) {
           if (stale()) return;
@@ -72,28 +76,29 @@ export async function runTurn(combat, deps = {}) {
             const choice = await pause({ name: c.token.name, reason: `${activity.name} vs ${target.name}` });
             if (choice === "skip") continue;
             if (choice === "manual") { await c.setFlag(MODULE_ID, "autopilot", false); clean = false; break; }
+            if (stale()) return; // the GM moved on while the dialog was open
           }
           if ((await use(activity, target.uuid)) === undefined) throw new Error("Midi refused the use");
           board = await snap(combat, c, reserved); // fresh hit points and sight for the next use
         }
-      } catch (err) {
-        console.error(`[${MODULE_ID}]`, err);
-        clean = false;
-        await whisper(L("Autopilot.Error", { name: c.token.name, error: err?.message ?? String(err) }));
-      }
+      } catch (err) { await failed(c, err); }
     }
-    if (clean && !stale() && game.settings.get(MODULE_ID, "autoNextTurn")) await combat.nextTurn();
+    pass = clean && !stale() && game.settings.get(MODULE_ID, "autoNextTurn");
   } finally { running = false; }
+  if (pass) await combat.nextTurn(); // after `running` clears: the turn-change hook fires inside the update and must be able to play the next monsters
 }
 
-/** combatTurnChange: the lead GM plays the new turn's automatic members. */
-export async function onCombatTurnChange(combat, deps) {
+/** combatTurnChange: the lead GM plays the new turn's automatic members. Only on a step forward: "previous turn" never replays a group. */
+export async function onCombatTurnChange(combat, prior, current, deps) {
   if (!leadGm() || !combat?.started || running) return;
+  const r0 = prior?.round ?? 0, r1 = current?.round ?? 0, t0 = prior?.turn ?? -1, t1 = current?.turn ?? 0;
+  if (r1 < r0 || (r1 === r0 && t1 <= t0)) return;
   await runTurn(combat, deps);
 }
 
 /** renderCombatTracker: a robot button per NPC row that switches its autopilot. */
 export function onRenderCombatTracker(app, html) {
+  if (!game.user.isGM) return; // players cannot update combatants
   const root = typeof html?.querySelectorAll === "function" ? html : html?.[0] ?? html; // HTMLElement in v13+, jQuery before
   const combat = app?.viewed ?? game.combat;
   for (const li of root?.querySelectorAll?.("li.combatant[data-combatant-id]") ?? []) {
@@ -114,7 +119,7 @@ export function onRenderCombatTracker(app, html) {
 }
 
 export function registerAutopilot() {
-  Hooks.on("combatTurnChange", safe((combat) => onCombatTurnChange(combat)));
+  Hooks.on("combatTurnChange", safe((combat, prior, current) => onCombatTurnChange(combat, prior, current)));
   Hooks.on("renderCombatTracker", safeSync(onRenderCombatTracker));
   ui.combat?.render();
   log("autopilot on");

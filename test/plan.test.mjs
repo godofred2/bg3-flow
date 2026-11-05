@@ -40,7 +40,8 @@ test("parseMultiattack reads SRD texts", () => {
   assert.deepEqual(parseMultiattack("Nothing useful here.", ["Bite"]), { count: 1, names: [] });
 });
 
-const sq = (x, cost, distance, occupied = false) => ({ x, y: 0, elevation: 0, cost, distance, occupied });
+const sq = (x, cost, distance, occupied = false) => ({ x, y: 0, elevation: 0, cost, distance, occupied, waypoints: [{ x, y: 0, elevation: 0 }] });
+const at = (m) => m && { x: m.x, y: m.y, elevation: m.elevation };
 function board({ budget = 30, intelligence = 10, enemies, activities, multiattack = null, paths = {}, reserved = new Set() }) {
   return { me: { id: "m", name: "Goblin", intelligence, hp: 7, maxHp: 7, x: 0, y: 0, elevation: 0, budget }, enemies, activities, multiattack, paths, reserved, threshold: 6 };
 }
@@ -73,7 +74,8 @@ test("ties: intelligent picks the most wounded, dumb picks the nearest", () => {
 test("planTurn: best expected value wins, reason lists the alternatives", () => {
   const b = board({ enemies: [pc("rogue", 25)], activities: [scimitar, { ...bow, damage: 4 }], paths: { rogue: [sq(100, 5, 20), sq(200, 10, 15), sq(300, 15, 10), sq(400, 20, 5)] } });
   const p = planTurn(b);
-  assert.deepEqual(p.move, { x: 400, y: 0, elevation: 0 });
+  assert.deepEqual(at(p.move), { x: 400, y: 0, elevation: 0 });
+  assert.deepEqual(p.move.waypoints, [{ x: 400, y: 0, elevation: 0 }]); // the square's own route
   assert.deepEqual(p.actions, [{ activityId: "sc", targetId: "rogue" }]);
   assert.equal(p.reason, "Scimitar vs rogue (expected 2.5); also: Shortbow 2.0");
 });
@@ -89,7 +91,7 @@ test("planTurn: Multiattack sums the named attacks, repeats the best when unname
 test("planTurn: nothing in range walks the budget toward the nearest visible enemy, nobody visible stays", () => {
   const b = board({ budget: 10, enemies: [pc("rogue", 40), pc("wiz", 60)], activities: [scimitar], paths: { rogue: [sq(100, 5, 35), sq(200, 10, 30), sq(300, 15, 25)], wiz: [sq(100, 5, 55)] } });
   const p = planTurn(b);
-  assert.deepEqual([p.move, p.actions, p.reason], [{ x: 200, y: 0, elevation: 0 }, [], "approach rogue"]);
+  assert.deepEqual([at(p.move), p.actions, p.reason], [{ x: 200, y: 0, elevation: 0 }, [], "approach rogue"]);
   const none = planTurn(board({ enemies: [pc("rogue", 40, { visible: false })], activities: [scimitar], paths: {} }));
   assert.deepEqual([none.move, none.actions, none.reason], [null, [], "no visible enemy"]);
   const stuck = planTurn(board({ budget: 0, enemies: [pc("rogue", 40)], activities: [scimitar], paths: { rogue: [sq(100, 5, 35)] } }));
@@ -98,5 +100,12 @@ test("planTurn: nothing in range walks the budget toward the nearest visible ene
 
 test("planTurn: a reserved best square sends the second monster to the next square of its path", () => {
   const b = board({ enemies: [pc("rogue", 15)], activities: [scimitar], paths: { rogue: [sq(100, 5, 10), sq(200, 10, 5), sq(250, 15, 5)] }, reserved: new Set(["200,0"]) });
-  assert.deepEqual(planTurn(b).move, { x: 250, y: 0, elevation: 0 });
+  assert.deepEqual(at(planTurn(b).move), { x: 250, y: 0, elevation: 0 });
+});
+
+test("planTurn: the move carries the path's waypoints up to the chosen square", () => {
+  const path = [sq(100, 5, 20), sq(200, 10, 15), sq(300, 15, 10), sq(400, 20, 5)].map((s, k, all) => ({ ...s, waypoints: all.slice(0, k + 1).map(at) }));
+  const b = board({ enemies: [pc("rogue", 25)], activities: [scimitar], paths: { rogue: path } });
+  assert.deepEqual(planTurn(b).move.waypoints, [{ x: 100, y: 0, elevation: 0 }, { x: 200, y: 0, elevation: 0 }, { x: 300, y: 0, elevation: 0 }, { x: 400, y: 0, elevation: 0 }]);
+  assert.deepEqual(planTurn(board({ budget: 10, enemies: [pc("rogue", 25)], activities: [scimitar], paths: { rogue: path } })).move.waypoints, [{ x: 100, y: 0, elevation: 0 }, { x: 200, y: 0, elevation: 0 }]);
 });

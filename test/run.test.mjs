@@ -9,7 +9,7 @@ globalThis.ChatMessage = { create: async (d) => calls.chat.push(d) };
 globalThis.CONFIG = { time: { turnTime: 6, roundTime: 60 }, Token: { movement: { actions: { walk: {} } } }, DND5E: { movementTypes: { walk: {} } } };
 globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: { wait: async () => null } } }, utils: { escapeHTML: (s) => s } };
 globalThis.canvas = { ready: true, scene: { id: "scene", tokens: { contents: [] } } };
-const settings = { pauseBeforeAttack: false, autoNextTurn: true, intelligenceThreshold: 6 };
+const settings = { pauseBeforeAttack: false, autoNextTurn: true, intelligenceThreshold: 6, enableTurns: true };
 globalThis.game = {
   i18n: { localize: (k) => k, format: (k, d) => `${k}:${JSON.stringify(d)}` },
   user: { id: "gm", isGM: true }, users: { activeGM: { isSelf: true } }, combat: null,
@@ -36,7 +36,7 @@ function makeCombat(turns, turn = 0) {
 const sc = { id: "sc", uuid: "A.sc", name: "Scimitar", kind: "attack", slot: "action", range: 5, bonus: 4, damage: 5 };
 const enemy = (id, hp = 10, visible = true) => ({ id, uuid: `T.${id}`, name: id, hp, maxHp: 10, ac: 15, saves: {}, distance: 5, visible });
 const boardFor = (c, enemies) => ({ me: { id: c.id, name: c.id, intelligence: 10, hp: 7, maxHp: 7, x: 0, y: 0, elevation: 0, budget: 30 }, enemies, activities: [sc], multiattack: null, paths: {}, reserved: new Set(), threshold: 6 });
-const attackPlan = (target = "rogue", n = 1) => ({ move: { x: 400, y: 0, elevation: 0 }, actions: Array(n).fill({ activityId: "sc", targetId: target }), reason: `Scimitar vs ${target} (expected 2.5)` });
+const attackPlan = (target = "rogue", n = 1) => ({ move: { x: 400, y: 0, elevation: 0, waypoints: [{ x: 200, y: 0, elevation: 0 }, { x: 400, y: 0, elevation: 0 }] }, actions: Array(n).fill({ activityId: "sc", targetId: target }), reason: `Scimitar vs ${target} (expected 2.5)` });
 const approachPlan = { move: { x: 200, y: 0, elevation: 0 }, actions: [], reason: "approach rogue" };
 const emptyPlan = { move: null, actions: [], reason: "no visible enemy" };
 function deps({ plans, enemies = () => [enemy("rogue")], use, pause } = {}) {
@@ -47,7 +47,7 @@ function deps({ plans, enemies = () => [enemy("rogue")], use, pause } = {}) {
     pause: pause ?? (async () => "execute")
   };
 }
-function reset() { order = []; moves = []; uses = []; calls.chat = []; settings.pauseBeforeAttack = false; settings.autoNextTurn = true; }
+function reset() { order = []; moves = []; uses = []; calls.chat = []; settings.pauseBeforeAttack = false; settings.autoNextTurn = true; settings.enableTurns = true; game.user.isGM = true; }
 
 const { isAuto, runTurn, onCombatTurnChange, onRenderCombatTracker, pauseDialog, registerAutopilot } = await import("../scripts/ai/run.js");
 
@@ -63,7 +63,7 @@ test("runTurn: moves the whole group first, then uses actions one by one, whispe
   const combat = makeCombat([g1, g2, pc]);
   await runTurn(combat, deps({ plans: { g1: attackPlan(), g2: approachPlan } }));
   assert.deepEqual(order, ["clear g1", "clear g2", "move g1", "move g2", "use T.rogue"]);
-  assert.deepEqual(moves[0][1], { x: 400, y: 0, elevation: 0, action: "walk" });
+  assert.deepEqual(moves[0][1], [{ x: 200, y: 0, elevation: 0, action: "walk" }, { x: 400, y: 0, elevation: 0, action: "walk" }]); // the whole route, not just the destination
   assert.equal(moves[0][2].bg3Autopilot, true);
   assert.deepEqual(calls.chat.map((m) => m.whisper), [["gm"], ["gm"]]);
   assert.ok(calls.chat[0].content.includes("Scimitar vs rogue"));
@@ -145,13 +145,14 @@ test("onCombatTurnChange runs only on the lead GM with a started combat", async 
   const g1 = combatant("g1");
   let snaps = 0;
   const d = { ...deps({ plans: { g1: emptyPlan } }), snap: async (combat, c) => { snaps++; return boardFor(c, []); } };
+  const step = [{ round: 0, turn: null }, { round: 1, turn: 0 }];
   game.users.activeGM.isSelf = false;
-  await onCombatTurnChange(makeCombat([g1]), d);
+  await onCombatTurnChange(makeCombat([g1]), ...step, d);
   assert.equal(snaps, 0);
   game.users.activeGM.isSelf = true;
-  await onCombatTurnChange({ ...makeCombat([g1]), started: false }, d);
+  await onCombatTurnChange({ ...makeCombat([g1]), started: false }, ...step, d);
   assert.equal(snaps, 0);
-  await onCombatTurnChange(makeCombat([g1]), d);
+  await onCombatTurnChange(makeCombat([g1]), ...step, d);
   assert.equal(snaps, 2); // one snapshot before moving, one before acting
 });
 
@@ -159,6 +160,9 @@ test("onRenderCombatTracker appends an active robot button to NPC rows only, cli
   const g1 = combatant("g1"), g2 = combatant("g2", { auto: false }), pc = combatant("pc", { disposition: 1, playerOwner: true });
   const combat = makeCombat([g1, g2, pc]);
   const made = [];
+  game.user.isGM = false;
+  onRenderCombatTracker({ viewed: combat }, { querySelectorAll: () => { throw new Error("players never get the button"); } });
+  game.user.isGM = true;
   globalThis.document = { createElement: () => { const el = { classes: new Set(), listeners: {}, classList: { add: (...c) => c.forEach((x) => el.classes.add(x)), toggle: (c, on) => on ? el.classes.add(c) : el.classes.delete(c) }, dataset: {}, setAttribute(k, v) { el[k] = v; }, addEventListener: (ev, fn) => { el.listeners[ev] = fn; } }; made.push(el); return el; } };
   const rows = [g1, g2, pc].map((c) => { const controls = { children: [], append: (el) => controls.children.push(el) }; return { dataset: { combatantId: c.id }, querySelector: (s) => s === ".combatant-controls" ? controls : null, controls }; });
   const html = { querySelectorAll: () => rows };
@@ -193,4 +197,72 @@ test("lang files carry every Autopilot and settings key the module uses", async 
   const es = JSON.parse(readFileSync(new URL("../lang/es.json", import.meta.url))).BG3FLOW;
   for (const k of ["enableAutopilot", "pauseBeforeAttack", "autoNextTurn", "intelligenceThreshold"]) { assert.ok(en.Settings[k]?.Name && en.Settings[k]?.Hint, k); assert.ok(es.Settings[k]?.Name && es.Settings[k]?.Hint, k); }
   for (const k of ["Toggle", "Decision", "Error"]) { assert.ok(en.Autopilot[k], k); assert.ok(es.Autopilot[k], k); }
+});
+
+test("runTurn: the next turn's monsters are played when the autopilot itself passes the turn", async () => {
+  reset();
+  const g1 = combatant("g1"), pc = combatant("pc", { disposition: 1, playerOwner: true }), wolf = combatant("wolf", { disposition: 0 }); // not grouped with g1
+  const combat = makeCombat([g1, wolf, pc]);
+  const d = deps({ plans: { g1: attackPlan(), wolf: attackPlan() } });
+  combat.nextTurn = async () => { combat.nextTurns++; combat.turn++; await onCombatTurnChange(combat, { round: 1, turn: 0 }, { round: 1, turn: 1 }, d); }; // Foundry fires the hook inside the update
+  await runTurn(combat, d);
+  assert.deepEqual(uses.map((u) => u[1]), ["T.rogue", "T.rogue"]);
+  assert.equal(combat.nextTurns, 2);
+});
+
+test("runTurn: after the move, actions come only from where the monster stands (a move that fell short never fires out of reach)", async () => {
+  reset();
+  const { planTurn } = await import("../scripts/ai/plan.js");
+  const g1 = combatant("g1");
+  const combat = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]);
+  const far = () => ({ ...enemy("rogue"), distance: 25 });
+  const path = [{ x: 200, y: 0, elevation: 0, cost: 10, distance: 15, occupied: false, waypoints: [{ x: 200, y: 0, elevation: 0 }] }, { x: 400, y: 0, elevation: 0, cost: 20, distance: 5, occupied: false, waypoints: [{ x: 200, y: 0, elevation: 0 }, { x: 400, y: 0, elevation: 0 }] }];
+  const d = { ...deps({ plans: {} }), plan: planTurn, snap: async (c, m) => ({ ...boardFor(m, [far()]), paths: { rogue: path } }) }; // the snapshot after the move still shows the rogue 25 ft away: the move fell short
+  await runTurn(combat, d);
+  assert.equal(moves.length, 1);
+  assert.deepEqual(uses, []);
+  assert.ok(!calls.chat.some((m) => m.content.includes("Autopilot.Error")));
+});
+
+test("onCombatTurnChange ignores a step backwards (previous turn) and plays a step forward or a new round", async () => {
+  reset();
+  const g1 = combatant("g1");
+  let snaps = 0;
+  const d = { ...deps({ plans: { g1: emptyPlan } }), snap: async (combat, c) => { snaps++; return boardFor(c, []); } };
+  await onCombatTurnChange(makeCombat([g1]), { round: 1, turn: 1 }, { round: 1, turn: 0 }, d);
+  await onCombatTurnChange(makeCombat([g1]), { round: 2, turn: 0 }, { round: 1, turn: 0 }, d);
+  assert.equal(snaps, 0);
+  await onCombatTurnChange(makeCombat([g1]), { round: 1, turn: 2 }, { round: 2, turn: 0 }, d);
+  await onCombatTurnChange(makeCombat([g1]), { round: 0, turn: null }, { round: 1, turn: 0 }, d);
+  assert.equal(snaps, 4);
+});
+
+test("runTurn: with BG3 turn flow off only the current combatant acts", async () => {
+  reset(); settings.enableTurns = false;
+  const g1 = combatant("g1"), g2 = combatant("g2");
+  const combat = makeCombat([g1, g2, combatant("pc", { disposition: 1, playerOwner: true })]);
+  await runTurn(combat, deps({ plans: { g1: attackPlan(), g2: attackPlan() } }));
+  assert.deepEqual(order, ["clear g1", "move g1", "use T.rogue"]);
+  assert.equal(combat.nextTurns, 1);
+});
+
+test("runTurn: a snapshot that throws while planning the moves whispers the error, the others still act, the turn stays", async () => {
+  reset();
+  const g1 = combatant("g1"), g2 = combatant("g2");
+  const combat = makeCombat([g1, g2, combatant("pc", { disposition: 1, playerOwner: true })]);
+  const d = deps({ plans: { g1: attackPlan(), g2: attackPlan() } });
+  d.snap = async (c, m) => { if (m.id === "g1") throw new Error("odd activity"); return boardFor(m, [enemy("rogue")]); };
+  await runTurn(combat, d);
+  assert.deepEqual(order, ["clear g1", "clear g2", "move g2", "use T.rogue"]);
+  assert.ok(calls.chat.some((m) => m.content.includes("Autopilot.Error") && m.content.includes("odd activity")));
+  assert.equal(combat.nextTurns, 0);
+});
+
+test("runTurn: the GM changed the turn while the pause dialog was open: the use does not fire", async () => {
+  reset(); settings.pauseBeforeAttack = true;
+  const g1 = combatant("g1");
+  const combat = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]);
+  await runTurn(combat, deps({ plans: { g1: attackPlan() }, pause: async () => { combat.turn = 1; return "execute"; } }));
+  assert.deepEqual(uses, []);
+  assert.equal(combat.nextTurns, 0);
 });

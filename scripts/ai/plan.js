@@ -49,6 +49,7 @@ export function parseMultiattack(text, names) {
 
 const key = (s) => `${s.x},${s.y}`;
 const xyz = (s) => ({ x: s.x, y: s.y, elevation: s.elevation });
+const moveTo = (s) => ({ ...xyz(s), waypoints: s.waypoints ?? [xyz(s)] }); // the route to the square, for TokenDocument#move
 const byValue = (a, b) => b.value - a.value;
 
 /** Where an enemy stands relative to `from`: its own distance when the monster stays put, else the matching square of its path.
@@ -115,11 +116,11 @@ export function planTurn(board) {
   if (options.length) {
     const [w, ...rest] = options;
     const also = rest.slice(0, 3).map((o) => `${o.name} ${o.value.toFixed(1)}`).join(", ");
-    return { move: w.square ? xyz(w.square) : null, actions: w.actions, reason: `${w.name} vs ${nameOf(w.actions[0].targetId)} (expected ${w.value.toFixed(1)})${also ? `; also: ${also}` : ""}` };
+    return { move: w.square ? moveTo(w.square) : null, actions: w.actions, reason: `${w.name} vs ${nameOf(w.actions[0].targetId)} (expected ${w.value.toFixed(1)})${also ? `; also: ${also}` : ""}` };
   }
   const visible = board.enemies.filter((e) => e.visible && e.hp > 0).sort((a, b) => a.distance - b.distance);
   if (!visible.length) return { move: null, actions: [], reason: "no visible enemy" };
   const target = visible[0];
   const last = [...(board.paths[target.id] ?? [])].reverse().find((s) => s.cost <= board.me.budget && !s.occupied && !board.reserved.has(key(s)));
-  return { move: last ? xyz(last) : null, actions: [], reason: `approach ${target.name}` };
+  return { move: last ? moveTo(last) : null, actions: [], reason: `approach ${target.name}` };
 }
