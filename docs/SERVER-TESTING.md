@@ -116,7 +116,7 @@ Setup: no combat. Turn **Encounters and stealth** on. Scene darkness 0 with a da
 - [ ] E9. Light per square. End the combat. Set both goblins' darkvision to 0. Place an ambient light in the room (bright 10 ft, dim 30 ft) within sight of the goblins. Hide the Rogue with value 25. Walk it into the dim ring in sight at 25 ft from the goblins. Expected: `Rogue unseen` (lightly obscured, passive 9 does not beat 25). Step into the bright circle. Expected: spotted at once. End the combat, hide with value 5, step into the dim ring. Expected: spotted (passive 9 beats 5). End the combat. Hide with value 25 and stand in sight outside any light. Expected: unseen (heavily obscured, no darkvision). Remove the light. Global Illumination: turn it on with *bright* unticked and darkness range 0 to 1, darkness still 0.7, goblins still without darkvision. Hide 25 and stand in sight outside any light. Expected: unseen (dim everywhere, passive 9 does not beat 25). Hide 5, move once. Expected: spotted. End the combat, tick *bright*, hide 25, move once. Expected: spotted on sight. Restore Global Illumination as it was, darkvision 60 on both goblins, darkness back to 0.
 - [ ] E10. Turn **Encounters and stealth** off, reload both windows. Expected: no skull button, no Hide button in the HUD, the Rogue walks up to the goblins in sight with nothing happening. Turn it back on.
 
-## 7. Monster autopilot (piece 4a, v0.6.0; A-steps retested on v0.6.3)
+## 7. Monster autopilot (piece 4a, v0.6.0, A-steps green on v0.6.3; piece 4b, v0.7.0, B-steps)
 
 Every autopilot turn prints one `[bg3-flow] <monster> hp ... budget ...; activities: ...; enemies: ...` console line on the GM (before the move; `pathN` is the number of squares found toward that enemy): copy it into the report for every failing step. Setup: **Monster autopilot** on, **Pause before each monster action** off, **Pass the turn automatically** on. Gambit's Premades installed with its *Opportunity Attack* automation enabled and the world reloaded afterwards (Gambit reads the setting on load). Goblin scene, darkness 0, no lights, no walls between the Rogue and the goblins unless a step says so. Both goblins unmarked as encounter (or marked: it does not matter once a combat exists). Start each combat by hand (GM: toggle combat on the tokens, roll all initiative) and note the order. Console on load: `[bg3-flow] autopilot on`.
 
@@ -128,6 +128,18 @@ Every autopilot turn prints one `[bg3-flow] <monster> hp ... budget ...; activit
 - [ ] A6. Rogue hidden behind the wall in the dark (Hide 25, darkness 0.7, as in E7). On the goblin's turn: whisper **no visible enemy**, no move, turn passes. Darkness back to 0, reveal.
 - [ ] A7. Goblin adjacent to the Fighter (a player character with a melee weapon), Rogue 30 ft away in sight and easier to hit (lower AC) or more wounded. On the goblin's turn it walks away toward the Rogue: Gambit prompts the Fighter's opportunity attack; the goblin waits for the answer, then continues and attacks. Report whether the opportunity attack resolved before the goblin's attack.
 - [ ] A11. Goblin 1 adjacent to the Rogue with both weapons. Expected: whisper **Goblin 1: Scimitar vs Rogue (expected ...); also: Shortbow ...** with the bow's value lower (disadvantage next to the target), and a Scimitar attack.
+
+### 7b. Tactics (piece 4b, v0.7.0)
+
+Setup: as section 7 (autopilot on, pause off, pass the turn on, Gambit's Opportunity Attack on and reloaded). dnd5e world setting *NPC auto recharge* left at "no". Import with Plutonium (or the dnd5e monsters compendium): a **Priest** (Cure Wounds, Spirit Guardians, Mace), a **Red Dragon Wyrmling** (Fire Breath: 15 ft cone, recharge 5-6; Bite). Player characters: the Rogue, the Fighter, and give the Fighter a feat item named **Sentinel** (text only is enough; Gambit reads the name). For B7 add a Healing Word spell to the Priest's sheet (prepared, a level 1 slot available). Every autopilot turn prints one `[bg3-flow] <monster> ...` console line; copy it for every failing step. Set initiatives by hand so the player characters act before the monsters.
+
+- [ ] B1. Wyrmling 20 ft from the Rogue and the Fighter, who stand side by side (adjacent squares) facing it. On its turn: it moves until both are within 15 ft in front of it and breathes: two Midi save cards (Rogue and Fighter), damage applied, **no template left on the map**; whisper **Red Dragon Wyrmling: Fire Breath vs Rogue (expected ...); also: Bite ...** (the aim is whichever it names); the console line shows `Fire Breath[save r15 ... cone15 recharge]`. Report who was hit and whether anyone standing just outside the 15 ft was included or excluded.
+- [ ] B2. Same scene, Fire Breath spent (set its uses to 0 on the sheet). On the Wyrmling's turn start a recharge roll card appears (d6). On a 5 or 6 it breathes as in B1; otherwise it closes in and bites. Report the roll and what it did.
+- [ ] B3. Priest with Goblin 1 adjacent to it at 3 hp (edit the goblin's hp), the Rogue 30 ft away in sight. On the Priest's turn: it casts Cure Wounds on Goblin 1 (Midi healing card, goblin hp rises); whisper **Priest: Cure Wounds vs Goblin 1 (expected ...); also: Mace ...**; then the turn passes (no attack: the action is spent). Next round with the goblin healed: it walks to the Rogue and attacks with the Mace.
+- [ ] B4. Priest at 2 hp, nobody else wounded, the Rogue 30 ft away. Expected: Cure Wounds on itself (whisper names Priest as the target), hp rises.
+- [ ] B5. Goblin 1 with Scimitar and Shortbow adjacent to the Rogue, Intelligence set to 10 on its sheet, a free square behind it. Expected: it steps one square back (10 ft from the Rogue) and shoots the Shortbow; whisper **Shortbow vs Rogue (expected 3.3)**. Then Intelligence 5, same spot: no move, Scimitar attack. Restore Intelligence.
+- [ ] B6. Goblin 1 adjacent to the Fighter (Sentinel item on the Fighter's sheet), the Rogue 30 ft away. On the goblin's turn it starts walking toward the Rogue: Gambit prompts the Fighter's opportunity attack; answer Yes and hit. Expected: the goblin stays on the square where it was caught (its route is cut), then acts from there: Scimitar on the Fighter if still adjacent, else nothing; whisper accordingly. Report the goblin's final square and the console errors, if any. If the opportunity attack misses, the goblin finishes its walk as in A7.
+- [ ] B7. Priest adjacent to the Rogue, Goblin 1 at 3 hp within 60 ft, Healing Word on the Priest's sheet. Expected: Mace attack on the Rogue first (whisper **Mace vs Rogue**), then a second whisper **Healing Word vs Goblin 1** and the healing card as the bonus action; then the turn passes.
 - [ ] A8. Turn **Monster autopilot** off, reload. Expected: no robot buttons, goblins do nothing on their turn.
 - [ ] A9. Previous turn: with the autopilot on, after the goblins acted, the GM presses **previous turn** back onto their turn. Expected: nothing replays. Next turn from there: the Rogue's turn, nothing from the goblins.
 - [ ] A10. Large monster (an Ogre from the SRD, 2x2) at (10,4), Rogue at (4,4) with the Fighter beside it at (5,4). Expected: the Ogre walks to a 2x2 spot touching the Rogue (diagonal counts) without overlapping anyone, whispers **Ogre: Greatclub vs Rogue (expected ...)** and attacks. Variant: Rogue at (16,4), Goblin 1 at (14,4) in between, Ogre at (10,4). Expected: the Ogre reaches a free 2x2 spot touching the Rogue (above or below the goblin) and attacks; report its exact path if it stays put.
@@ -152,7 +164,10 @@ E1 ...
 E10 ...
 A1 ...
 ...
-A8 ...
+A11 ...
+B1 ...
+...
+B7 ...
 Console lines containing [bg3-flow]:
 <paste>
 Other console errors during the run:
