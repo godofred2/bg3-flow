@@ -150,3 +150,34 @@ test("an area aims at the enemy that covers the most, friendly fire subtracts, a
   b.enemies = [b.enemies[0]]; b.allies = [g("g2", 550), g("g3", 350)]; // one enemy, two allies in every blast that reaches it
   assert.equal(pickTarget(b, fireball), null);
 });
+
+test("heals: the most wounded ally in range, self-only heals only the monster, full hp scores nothing", () => {
+  const cure = { id: "cw", uuid: "A.cw", name: "Cure Wounds", kind: "heal", slot: "action", range: 5, healing: 9, affects: "creature" };
+  const ally = (id, hp, distance = 5) => ({ id, uuid: `T.${id}`, name: id, cx: 0, cy: 0, w: 1, hp, maxHp: 20, ac: 15, saves: {}, distance, elevation: 0 });
+  const b = { ...board({ enemies: [pc("rogue", 5, { ac: 30 })], activities: [scimitar, cure] }), allies: [ally("g2", 4), ally("g3", 15), ally("m", 7)], grid: { px: 100, ft: 5 } };
+  b.me = { ...b.me, hp: 7, maxHp: 7, cx: 0, cy: 0, w: 1 };
+  const p = planTurn(b);
+  assert.deepEqual(p.actions, [{ activityId: "cw", targetIds: ["g2"] }]); // 9 healed beats 0.25 * 5 on AC 30
+  assert.equal(pickTarget(b, { ...cure, affects: "self" }), null); // the monster is at full hp
+  b.me.hp = 1; b.allies.find((a) => a.id === "m").hp = 1;
+  assert.equal(pickTarget(b, { ...cure, affects: "self" }).enemy.id, "m");
+});
+
+test("planTurn with slot bonus picks the best bonus activity from where it stands, or nothing", () => {
+  const word = { id: "hw", uuid: "A.hw", name: "Healing Word", kind: "heal", slot: "bonus", range: 60, healing: 4.5, affects: "creature" };
+  const b = { ...board({ budget: 0, enemies: [pc("rogue", 5)], activities: [scimitar, word] }), allies: [{ id: "g2", uuid: "T.g2", name: "g2", cx: 0, cy: 0, w: 1, hp: 2, maxHp: 7, ac: 15, saves: {}, distance: 30, elevation: 0 }], grid: { px: 100, ft: 5 } };
+  assert.deepEqual(planTurn(b, { slot: "bonus" }).actions, [{ activityId: "hw", targetIds: ["g2"] }]);
+  assert.deepEqual(planTurn(b).actions, [{ activityId: "sc", targetIds: ["rogue"] }]);
+  b.allies[0].hp = 7;
+  assert.deepEqual(planTurn(b, { slot: "bonus" }), { move: null, actions: [], reason: "no bonus action" });
+});
+
+test("a clever archer next to an enemy steps back to a free square 10 ft away before shooting; a dumb one shoots at disadvantage", () => {
+  const retreat = { x: 0, y: 100, elevation: 0, cost: 5, waypoints: [{ x: 0, y: 100, elevation: 0 }], distances: { rogue: 10 } };
+  const smart = { ...board({ intelligence: 10, enemies: [pc("rogue", 5)], activities: [bow] }), retreats: [retreat] };
+  const p = planTurn(smart);
+  assert.deepEqual([at(p.move), p.actions, p.reason], [{ x: 0, y: 100, elevation: 0 }, [{ activityId: "bw", targetIds: ["rogue"] }], "Shortbow vs rogue (expected 2.5)"]);
+  const dumb = planTurn({ ...smart, me: { ...smart.me, intelligence: 3 } });
+  assert.deepEqual([dumb.move, dumb.reason], [null, "Shortbow vs rogue (expected 1.3)"]);
+  assert.equal(planTurn({ ...smart, retreats: [] }).move, null);
+});

@@ -74,12 +74,20 @@ function distanceFrom(board, from, enemy) {
   return (board.paths[enemy.id] ?? []).find((s) => s.x === from.x && s.y === from.y)?.distance ?? Infinity;
 }
 
-/** Best visible, living enemy for one activity: from where the monster stands or, without `from`, from the first path square in range. */
+/** Who a heal may target: wounded allies, or only the monster itself (with the board's own hit points) for self heals. */
+function healPool(board, activity) {
+  const allies = board.allies ?? [];
+  if (activity.affects === "self") { const me = allies.find((a) => a.id === board.me.id) ?? { ...board.me, distance: 0 }; return [{ ...me, hp: board.me.hp, maxHp: board.me.maxHp }]; }
+  return allies.filter((a) => a.hp < a.maxHp);
+}
+
+/** Best target for one activity (an enemy, or a wounded ally for a heal): from where the monster stands or, without `from`, from the first path square in range. */
 export function pickTarget(board, activity, from = null) {
   const smart = board.me.intelligence >= board.threshold;
+  const heal = activity.kind === "heal";
   let best = null;
-  for (const enemy of board.enemies) {
-    if (!enemy.visible || enemy.hp <= 0) continue;
+  for (const enemy of heal ? healPool(board, activity) : board.enemies) {
+    if (heal ? enemy.hp >= enemy.maxHp : (!enemy.visible || enemy.hp <= 0)) continue;
     let square = null;
     if (from) { if (distanceFrom(board, from, enemy) > activity.range) continue; }
     else if (enemy.distance > activity.range) {
@@ -97,26 +105,36 @@ export function pickTarget(board, activity, from = null) {
       targets = hit.filter((c) => live.includes(c));
       value = targets.reduce((s, c) => s + expectedValue(activity, c), 0) - hit.filter((c) => !live.includes(c)).reduce((s, c) => s + expectedValue(activity, c), 0);
       if (value <= 0) continue;
-    } else value = expectedValue(activity, enemy, { disadvantage: !!activity.ranged && near });
+    } else {
+      value = expectedValue(activity, enemy, { disadvantage: !!activity.ranged && near });
+      // A clever archer next to an enemy looks at the free squares 10 ft from everyone before shooting.
+      if (!from && smart && activity.ranged && near) for (const r of board.retreats ?? []) {
+        const d = r.distances?.[enemy.id] ?? Infinity;
+        if (r.cost > board.me.budget || d > activity.range || board.reserved.has(key(r))) continue;
+        const v = expectedValue(activity, enemy, { disadvantage: d <= 5 });
+        if (v > value) { value = v; square = r; }
+      }
+    }
     const pick = { enemy, square, value, targets };
     if (!best) { best = pick; continue; }
     const d = value - best.value;
     if (Math.abs(d) > 1e-9) { if (d > 0) best = pick; continue; }
-    const tie = smart ? enemy.hp - best.enemy.hp : enemy.distance - best.enemy.distance;
+    const tie = heal ? enemy.hp / enemy.maxHp - best.enemy.hp / best.enemy.maxHp : smart ? enemy.hp - best.enemy.hp : enemy.distance - best.enemy.distance;
     if (tie < 0 || (tie === 0 && enemy.distance < best.enemy.distance)) best = pick;
   }
   return best;
 }
 
-/** The turn: the option with the highest expected value (single activities and the Multiattack sequence), else approach. */
-export function planTurn(board) {
-  const actions = board.activities.filter((a) => a.slot === "action");
+/** The turn: the option with the highest expected value (single activities and the Multiattack sequence), else approach.
+ *  With `slot: "bonus"`: the best bonus-action activity from where the monster stands, or nothing. */
+export function planTurn(board, { slot = "action" } = {}) {
+  const actions = board.activities.filter((a) => a.slot === slot);
   const options = [];
   for (const a of actions) {
     const p = pickTarget(board, a);
     if (p && p.value > 0) options.push({ name: a.name, value: p.value, square: p.square, actions: [{ activityId: a.id, targetIds: p.targets.map((t) => t.id) }] });
   }
-  if (board.multiattack) {
+  if (board.multiattack && slot === "action") {
     const attacks = actions.filter((a) => a.kind === "attack");
     const { count, names } = parseMultiattack(board.multiattack, attacks.map((a) => a.name));
     let seq = names.map((n) => attacks.find((a) => a.name.toLowerCase() === n)).filter(Boolean);
@@ -138,12 +156,13 @@ export function planTurn(board) {
     }
   }
   options.sort(byValue);
-  const nameOf = (id) => board.enemies.find((e) => e.id === id)?.name ?? id;
+  const nameOf = (id) => [...board.enemies, ...(board.allies ?? [])].find((e) => e.id === id)?.name ?? id;
   if (options.length) {
     const [w, ...rest] = options;
     const also = rest.slice(0, 3).map((o) => `${o.name} ${o.value.toFixed(1)}`).join(", ");
     return { move: w.square ? moveTo(w.square) : null, actions: w.actions, reason: `${w.name} vs ${nameOf(w.actions[0].targetIds[0])} (expected ${w.value.toFixed(1)})${also ? `; also: ${also}` : ""}` };
   }
+  if (slot !== "action") return { move: null, actions: [], reason: "no bonus action" };
   const visible = board.enemies.filter((e) => e.visible && e.hp > 0).sort((a, b) => a.distance - b.distance);
   if (!visible.length) return { move: null, actions: [], reason: "no visible enemy" };
   const target = visible[0];
