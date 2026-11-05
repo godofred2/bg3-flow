@@ -50,7 +50,7 @@ globalThis.canvas = {
 };
 
 let n = 0;
-function act({ type, activation = "action", toHit = "+0", parts = [], item = {}, range = null, save = null, uses = null, spell = null, affects = "creature", template = null, canUse = true, name = "X", siblings = 1, attackType = "melee" } = {}) {
+function act({ type, activation = "action", toHit = "+0", parts = [], item = {}, range = null, save = null, uses = null, spell = null, affects = "creature", template = null, size = "", canUse = true, name = "X", siblings = 1, attackType = "melee", recharge = false } = {}) {
   const id = `a${++n}`;
   const actor = { system: { spells: { spell1: { value: spell?.slots ?? 0 } } } };
   // dnd5e gives every item's default activity the same id (dnd5eactivity000) and Midi names it "Midi Attack": only the uuid and the item name tell them apart.
@@ -58,8 +58,8 @@ function act({ type, activation = "action", toHit = "+0", parts = [], item = {},
   return {
     id: "dnd5eactivity000", uuid: `A.${id}`, name: "Midi Attack", type, item: it, actor, canUse,
     activation: { type: activation }, range: range ?? { value: null, units: "", override: false },
-    target: { affects: { type: affects }, template: { type: template } },
-    uses: { max: uses?.max ?? "", value: uses?.value ?? 0 },
+    target: { affects: { type: affects }, template: { type: template, size: template ? String(size) : "", width: "" } },
+    uses: { max: uses?.max ?? "", value: uses?.value ?? 0, spent: 0, recovery: recharge ? [{ period: "recharge", formula: "5" }] : [] },
     requiresSpellSlot: !!spell, labels: { toHit }, attack: type === "attack" ? { type: { value: attackType } } : undefined,
     save: save && { dc: { value: save.dc }, ability: new Set([save.ability]) }, damage: { onSave: save?.onSave },
     getDamageConfig: () => ({ rolls: parts.map(([f, d]) => ({ parts: [f], data: d })) })
@@ -91,7 +91,7 @@ const { activityInfo, snapshot } = await import("../scripts/ai/board.js");
 test("activityInfo: a goblin's scimitar and shortbow as Plutonium imports them", () => {
   n = 0;
   const scimitar = act({ name: "Scimitar", type: "attack", toHit: "+4", parts: [["1d6 + @mod", { mod: 2 }]], item: { type: "weapon", range: { reach: 5, value: null } } });
-  assert.deepEqual(activityInfo(scimitar), { id: "A.a1", uuid: "A.a1", name: "Scimitar", kind: "attack", slot: "action", range: 5, bonus: 4, dc: undefined, saveAbility: undefined, onSave: undefined, damage: 5.5, healing: 0, ranged: false });
+  assert.deepEqual(activityInfo(scimitar), { id: "A.a1", uuid: "A.a1", name: "Scimitar", kind: "attack", slot: "action", range: 5, bonus: 4, dc: undefined, saveAbility: undefined, onSave: undefined, damage: 5.5, healing: 0, ranged: false, area: null, affects: "creature", recharge: false });
   assert.equal(activityInfo(act({ name: "Dagger", type: "attack", siblings: 2 })).name, "Dagger (Midi Attack)"); // an item with several activities keeps the activity's name
   const bow = act({ name: "Shortbow", type: "attack", toHit: "+4", parts: [["1d6 + 2", {}]], item: { type: "weapon", range: { reach: null, value: 80, long: 320 } }, attackType: "ranged" });
   assert.deepEqual([activityInfo(bow).range, activityInfo(bow).ranged], [80, true]);
@@ -104,9 +104,9 @@ test("activityInfo: save activity, spell slot check, uses, self targets, areas, 
   assert.equal(activityInfo(act({ type: "attack", spell: { level: 1, slots: 1 } })).kind, "attack");
   assert.equal(activityInfo(act({ type: "attack", uses: { max: 1, value: 0 } })), null);
   assert.equal(activityInfo(act({ type: "attack", uses: { max: 1, value: 1 } })).kind, "attack");
-  assert.equal(activityInfo(act({ type: "heal", activation: "bonus", affects: "self" })), null);
-  assert.equal(activityInfo(act({ type: "heal", activation: "bonus", parts: [["1d4 + 2", {}]] })), null); // heals aim at allies: 4b
-  assert.equal(activityInfo(act({ type: "save", template: "cone" })), null);
+  assert.equal(activityInfo(act({ type: "heal", activation: "bonus", affects: "self" })).affects, "self"); // self heals are allowed since 4b
+  assert.equal(activityInfo(act({ type: "heal", activation: "bonus", parts: [["1d4 + 2", {}]] })).healing, 4.5);
+  assert.equal(activityInfo(act({ type: "save", template: "cone", size: 15 })).area.shape, "cone"); // areas are options since 4b
   assert.equal(activityInfo(act({ type: "utility" })), null);
   assert.equal(activityInfo(act({ type: "attack", activation: "legendary" })), null);
   assert.equal(activityInfo(act({ type: "attack", canUse: false })), null);
@@ -196,4 +196,34 @@ test("snapshot: when the enemy's own square gives no path (a Large mover, an all
   assert.ok(spot, `no attack square in ${JSON.stringify(b.paths.rogue.map((s) => [s.x, s.y, s.distance, s.occupied]))}`);
   assert.ok(spot.cost <= 40);
   assert.equal(spot.y, 100); // the route went below the goblin
+});
+
+test("activityInfo: Fireball sphere, breath cone from self, Cure Wounds heal, Healing Word bonus, recharge flag, self emanation out", () => {
+  const fb = activityInfo(act({ name: "Fireball", type: "save", save: { dc: 15, ability: "dex", onSave: "half" }, parts: [["8d6", {}]], range: { value: 150, units: "ft" }, template: "sphere", size: 20 }));
+  assert.deepEqual([fb.area, fb.range, fb.affects], [{ shape: "sphere", size: 20, width: 5 }, 150, "creature"]);
+  const breath = activityInfo(act({ name: "Fire Breath", type: "save", save: { dc: 13, ability: "dex", onSave: "half" }, parts: [["7d6", {}]], range: { value: null, units: "self" }, template: "cone", size: 30, affects: "", recharge: true, uses: { max: 1, value: 1 } }));
+  assert.deepEqual([breath.area.shape, breath.range, breath.recharge], ["cone", 30, true]);
+  assert.equal(activityInfo(act({ name: "Fire Breath", type: "save", template: "cone", size: 30, recharge: true, uses: { max: 1, value: 0 } })), null); // spent: rolled back at the turn start
+  const cure = activityInfo(act({ name: "Cure Wounds", type: "heal", parts: [["1d8 + 3", {}]], range: { value: null, units: "touch" } }));
+  assert.deepEqual([cure.kind, cure.healing, cure.range, cure.affects], ["heal", 7.5, 5, "creature"]);
+  assert.equal(activityInfo(act({ name: "Healing Word", type: "heal", activation: "bonus", parts: [["1d4 + 3", {}]], range: { value: 60, units: "ft" } })).slot, "bonus");
+  assert.equal(activityInfo(act({ name: "Second Wind", type: "heal", activation: "bonus", parts: [["1d10", {}]], affects: "self" })).affects, "self");
+  assert.equal(activityInfo(act({ name: "Spirit Guardians", type: "save", template: "radius", size: 15, affects: "self" })), null);
+  assert.equal(activityInfo(act({ name: "Scimitar", type: "attack", item: { type: "weapon", range: { reach: 5 } } })).recharge, false);
+});
+
+test("snapshot: grid, centres, allies with paths to the wounded ones, retreat squares away from enemies", async () => {
+  // Row 1 (the stub's wall sits below y 300): goblin at (300,100) speed 30; goblin2 (ally, hp 3/7) at (600,100); rogue at (400,100) adjacent on the right; wizard at (0,100) far left.
+  const goblin = token("goblin", { x: 300, y: 100, disposition: -1, hp: 7, maxHp: 7 }), goblin2 = token("goblin2", { x: 600, y: 100, disposition: -1, hp: 3, maxHp: 7 });
+  const rogue = token("rogue", { x: 400, y: 100, disposition: 1 }), wizard = token("wizard", { x: 0, y: 100, disposition: 1 });
+  canvas.scene.tokens.contents = [goblin, goblin2, rogue, wizard];
+  const b = await snapshot({ combatants: [goblin, goblin2, rogue, wizard].map((t) => combatantOf(t)) }, combatantOf(goblin));
+  assert.deepEqual(b.grid, { px: 100, ft: 5 });
+  assert.deepEqual([b.me.cx, b.me.cy, b.me.w], [350, 150, 1]);
+  assert.deepEqual(b.enemies.map((e) => [e.cx, e.cy, e.w]), [[450, 150, 1], [50, 150, 1]]);
+  assert.deepEqual(b.allies.map((a) => [a.id, a.hp, a.maxHp, a.distance]), [["goblin", 7, 7, 0], ["goblin2", 3, 7, 15]]);
+  assert.deepEqual(b.paths.goblin2.slice(0, 2).map((s) => [s.x, s.occupied]), [[400, true], [500, false]]); // through the rogue's square (occupied), one free square short of the ally, then branch squares
+  // retreats: neighbours of (1,3) that keep 10 ft from the rogue at (1,4) and 10 ft from the wizard: column 2 only
+  assert.deepEqual(b.retreats.map((r) => [r.x, r.y, r.cost, r.distances.rogue]).sort(), [[200, 0, 5, 10], [200, 100, 5, 10], [200, 200, 5, 10]]);
+  assert.deepEqual(b.retreats[0].waypoints, [{ x: b.retreats[0].x, y: b.retreats[0].y, elevation: 0 }]);
 });

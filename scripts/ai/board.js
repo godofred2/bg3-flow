@@ -4,7 +4,8 @@ import { speedLimit } from "../rules.js";
 import { sees, distanceFt } from "../encounters.js";
 import { averageOf } from "./plan.js";
 
-const KINDS = new Set(["attack", "save", "damage"]); // heals aim at allies: 4b
+const KINDS = new Set(["attack", "save", "damage", "heal"]);
+const hasRecharge = (uses) => (uses?.recovery ?? []).some((r) => r.period === "recharge");
 const SLOTS = new Set(["action", "bonus"]);
 const spent = (uses) => Number(uses?.max) > 0 && !(uses.value > 0);
 
@@ -24,21 +25,25 @@ function rangeOf(activity) {
   return activity.range?.value ?? 5;
 }
 
-/** The planner's view of one activity, or null when 4a cannot use it (areas, self, heals, legendary, spent, no slot). */
+/** The planner's view of one activity, or null when the autopilot cannot use it (self emanations, legendary, spent, no slot). */
 export function activityInfo(activity) {
   if (!KINDS.has(activity.type) || !SLOTS.has(activity.activation?.type) || activity.canUse === false) return null;
-  if (activity.target?.affects?.type === "self" || activity.target?.template?.type) return null;
+  const affects = activity.target?.affects?.type ?? "", template = activity.target?.template;
+  const area = template?.type ? { shape: template.type, size: Number(template.size) || 0, width: Number(template.width) || 5 } : null;
+  if (affects === "self" && (activity.type !== "heal" || area)) return null; // self emanations (Spirit Guardians) are Midi regions, not uses
   if (spent(activity.item?.system?.uses) || spent(activity.uses)) return null;
   if (activity.requiresSpellSlot && !(activity.actor?.system?.spells?.[`spell${activity.item?.system?.level}`]?.value > 0)) return null;
   // dnd5e gives every item's default activity the same id (dnd5eactivity000) and Midi names it "Midi Attack": the uuid is the identity, the item the name.
   const siblings = activity.item?.system?.activities?.size ?? activity.item?.system?.activities?.length ?? 1;
   const name = activity.item?.name ? (siblings > 1 && activity.name ? `${activity.item.name} (${activity.name})` : activity.item.name) : activity.name;
+  const avg = averageDamage(activity), heal = activity.type === "heal";
   return {
     id: activity.uuid, uuid: activity.uuid, name, kind: activity.type, slot: activity.activation.type,
-    range: rangeOf(activity), bonus: parseInt(activity.labels?.toHit) || 0,
+    range: area && activity.range?.units === "self" ? area.size : rangeOf(activity), bonus: parseInt(activity.labels?.toHit) || 0,
     dc: activity.save?.dc?.value, saveAbility: activity.save?.ability?.first?.() ?? [...(activity.save?.ability ?? [])][0], onSave: activity.damage?.onSave,
-    damage: averageDamage(activity), healing: 0,
-    ranged: activity.attack?.type?.value === "ranged"
+    damage: heal ? 0 : avg, healing: heal ? avg : 0,
+    ranged: activity.attack?.type?.value === "ranged", area, affects,
+    recharge: hasRecharge(activity.uses) || hasRecharge(activity.item?.system?.uses)
   };
 }
 
@@ -142,19 +147,44 @@ export async function snapshot(combat, combatant, reserved = new Set()) {
   // Every visible token on the scene occupies its squares, in the combat or not.
   const taken = new Set((canvas.scene?.tokens?.contents ?? []).filter((t) => t !== doc && !t.hidden).flatMap((t) => footprint(tlOffset(t), widthOf(t), Math.max(1, Math.round(t.height ?? 1)))));
   const budget = budgetOf(combatant, doc);
-  const myFoot = footOf(doc);
-  const me = { id: doc.id, name: doc.name, intelligence: actor?.system?.abilities?.int?.value ?? 10, hp: hpOf(doc).value ?? 0, maxHp: hpOf(doc).max ?? 0, x: doc.x, y: doc.y, elevation: doc.elevation ?? 0, budget };
-  const enemies = [], paths = {};
+  const myFoot = footOf(doc), myCentre = doc.getCenterPoint();
+  const grid = { px: canvas.dimensions.size, ft: canvas.dimensions.distance };
+  const creature = (t) => {
+    const saves = Object.fromEntries(Object.entries(t.actor?.system?.abilities ?? {}).map(([k, a]) => [k, a?.save?.value ?? (typeof a?.save === "number" ? a.save : 0)]));
+    const c = t.getCenterPoint();
+    return { id: t.id, uuid: t.uuid, name: t.name, x: t.x, y: t.y, elevation: t.elevation ?? 0, cx: c.x, cy: c.y, w: widthOf(t), hp: hpOf(t).value, maxHp: hpOf(t).max ?? hpOf(t).value, ac: t.actor?.system?.attributes?.ac?.value ?? 10, saves, distance: t === doc ? 0 : reachFt(myFoot, footOf(t)) };
+  };
+  const me = { ...creature(doc), intelligence: actor?.system?.abilities?.int?.value ?? 10, hp: hpOf(doc).value ?? 0, maxHp: hpOf(doc).max ?? 0, budget };
+  const enemies = [], allies = [me], paths = {}, tokensById = {};
   for (const c of combat.combatants) {
     const t = c.token;
-    if (!onScene(t) || t === doc || t.hidden || c.isDefeated || (t.disposition ?? 0) * mine >= 0 || !((hpOf(t).value ?? 0) > 0)) continue;
-    const saves = Object.fromEntries(Object.entries(t.actor?.system?.abilities ?? {}).map(([k, a]) => [k, a?.save?.value ?? (typeof a?.save === "number" ? a.save : 0)]));
-    const e = { id: t.id, uuid: t.uuid, name: t.name, x: t.x, y: t.y, elevation: t.elevation ?? 0, hp: hpOf(t).value, maxHp: hpOf(t).max ?? hpOf(t).value, ac: t.actor?.system?.attributes?.ac?.value ?? 10, saves, distance: reachFt(myFoot, footOf(t)), visible: sees(doc, t) };
+    if (!onScene(t) || t === doc || t.hidden || c.isDefeated || !((hpOf(t).value ?? 0) > 0)) continue;
+    tokensById[t.id] = t;
+    if ((t.disposition ?? 0) === mine) { // an ally: a path only when it is wounded (heals)
+      const a = creature(t);
+      allies.push(a);
+      if (a.hp < a.maxHp) paths[t.id] = await pathTo(doc, t, taken, budget);
+      continue;
+    }
+    if ((t.disposition ?? 0) * mine >= 0) continue; // neutral: nobody is its enemy
+    const e = { ...creature(t), visible: sees(doc, t) };
     enemies.push(e);
     if (e.visible) paths[t.id] = await pathTo(doc, t, taken, budget);
+  }
+  // Retreat squares: free neighbours of the monster that keep 10 ft from every visible enemy (a clever archer steps back there).
+  const w = widthOf(doc), h = Math.max(1, Math.round(doc.height ?? 1)), rect = canvas.dimensions.sceneRect, seen = enemies.filter((e) => e.visible);
+  const retreats = [];
+  for (const o of canvas.grid.getAdjacentOffsets(tlOffset(doc))) {
+    const tl = canvas.grid.getTopLeftPoint(o);
+    if (rect && (tl.x < rect.x || tl.y < rect.y || tl.x >= rect.x + rect.width || tl.y >= rect.y + rect.height)) continue;
+    const foot = footprint(o, w, h);
+    if (foot.some((k) => taken.has(k))) continue;
+    const distances = Object.fromEntries(enemies.map((e) => [e.id, reachFt(foot, footOf(tokensById[e.id]))]));
+    if (seen.some((e) => distances[e.id] < 2 * grid.ft)) continue;
+    retreats.push({ x: tl.x, y: tl.y, elevation: doc.elevation ?? 0, cost: distanceFt(myCentre, doc.getCenterPoint(tl)), waypoints: [{ x: tl.x, y: tl.y, elevation: doc.elevation ?? 0 }], distances });
   }
   const activities = [];
   for (const item of actor?.items ?? []) for (const a of item.system?.activities ?? []) { const info = activityInfo(a); if (info) activities.push(info); }
   const multi = [...(actor?.items ?? [])].find((i) => String(i.name).trim().toLowerCase() === "multiattack");
-  return { me, enemies, activities, multiattack: multi ? stripHtml(multi.system?.description?.value) : null, paths, reserved, threshold: game.settings.get(MODULE_ID, "intelligenceThreshold") ?? 6 };
+  return { me, enemies, allies, activities, multiattack: multi ? stripHtml(multi.system?.description?.value) : null, paths, retreats, grid, reserved, threshold: game.settings.get(MODULE_ID, "intelligenceThreshold") ?? 6 };
 }
