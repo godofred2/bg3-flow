@@ -103,7 +103,7 @@ export function drawEncounters() {
 // ---- Detection (GM client, outside combat) ----
 
 const isLive = (t) => !t.hidden && (t.actor?.system?.attributes?.hp?.value ?? 1) > 0;
-const distanceFt = (a, b) => canvas.grid.measurePath([a, b]).distance;
+export const distanceFt = (a, b) => canvas.grid.measurePath([a, b]).distance;
 const hasLineOfSight = (a, b) => !CONFIG.Canvas.polygonBackends.sight.testCollision(a, b, { type: "sight", mode: "any" });
 /** The scene's global illumination at this darkness: "bright", "dim" or null (off, or outside its darkness range). */
 function globalLight(darkness) {
@@ -119,6 +119,20 @@ function lightAt(p, darkness) {
   return { bright, dim: bright || !!global || canvas.effects.testInsideLight(p), darknessSource: canvas.effects.testInsideDarkness(p) };
 }
 
+/** Does `spotter` (a token doc) see `target` (a token doc) standing at `center` (default: where it is)? BG3 sight rules. */
+export function sees(spotter, target, center = target.getCenterPoint()) {
+  const p = { x: center.x, y: center.y, elevation: target.elevation ?? 0 };
+  const darkness = canvas.effects.getDarknessLevel(p);
+  const level = obscurity({ dark: darkness >= game.settings.get(MODULE_ID, "obscuredDarkness"), ...lightAt(p, darkness) });
+  const stealth = stealthOf(target), from = spotter.getCenterPoint();
+  return spotsBg3({
+    hidden: !!stealth?.hidden, stealth: stealth?.value ?? 0, level,
+    los: hasLineOfSight(from, center),
+    passive: spotter.actor?.system?.skills?.prc?.passive ?? 10,
+    darkvision: distanceFt(from, center) <= (spotter.actor?.system?.attributes?.senses?.ranges?.darkvision ?? 0) // dnd5e 6: senses.ranges
+  });
+}
+
 /** moveToken: enemies of each group near the moved player token try to spot it (BG3 sight rules). First spotter starts the encounter. */
 export async function onMoveToken(doc, movement, operation, user, deps = {}) {
   const { start = startEncounter } = deps;
@@ -126,19 +140,10 @@ export async function onMoveToken(doc, movement, operation, user, deps = {}) {
   if (doc.parent?.id !== canvas?.scene?.id) return; // measured against the GM's canvas: only its scene
   // The hook fires before the document position changes: measure where the token is going.
   const center = doc.getCenterPoint(movement?.destination ?? {});
-  const p = { x: center.x, y: center.y, elevation: doc.elevation ?? 0 };
-  const darkness = canvas.effects.getDarknessLevel(p);
-  const level = obscurity({ dark: darkness >= game.settings.get(MODULE_ID, "obscuredDarkness"), ...lightAt(p, darkness) });
-  const stealth = stealthOf(doc);
   for (const [groupId, members] of encounterGroups(canvas.scene.tokens.contents)) {
     const near = members.filter((e) => isLive(e) && withinRadius(distanceFt(e.getCenterPoint(), center), encounterOf(e).radius));
     if (!near.length) continue;
-    const spotter = near.find((e) => spotsBg3({
-      hidden: !!stealth?.hidden, stealth: stealth?.value ?? 0, level,
-      los: hasLineOfSight(e.getCenterPoint(), center),
-      passive: e.actor?.system?.skills?.prc?.passive ?? 10,
-      darkvision: distanceFt(e.getCenterPoint(), center) <= (e.actor?.system?.attributes?.senses?.ranges?.darkvision ?? 0) // dnd5e 6: senses.ranges
-    }));
+    const spotter = near.find((e) => sees(e, doc, center));
     if (!spotter) { log(`${doc.name} unseen by group ${groupId}`); continue; }
     const go = start(canvas.scene.id, groupId); // called before the first await: a second move in the same tick sees `starting`
     await ChatMessage.create({ content: L("Encounter.Spotted", { enemy: spotter.name, name: doc.name }) });
