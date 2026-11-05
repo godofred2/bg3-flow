@@ -1,0 +1,184 @@
+# BG3 Flow piece 4: monster autopilot (design spec)
+
+Date: 2026-11-04. Status: approved in conversation, pending written review.
+Parent spec: `2026-11-02-bg3-flow-design.md` (pieces 1 to 3, server-tested at v0.5.1).
+
+## Goal
+
+In combat, every combatant that no player owns plays its own turn like a Baldur's Gate 3 enemy:
+it moves, picks the ability with the best expected result against the targets it can see, uses it
+through Midi QOL, and the turn passes. The GM watches, can pause before each attack, and can
+take any monster back by hand. Plutonium-imported stat blocks work as imported: nothing to
+configure per monster.
+
+## Environment
+
+Same as the parent spec (Foundry v14, dnd5e 6.0.x, Midi QOL 14.6) plus **Gambit's Premades 3.x**
+with its *Opportunity Attack* automation enabled: it prompts the player when a monster leaves
+their reach and already accounts for Sentinel, War Caster, Polearm Master, Mobile and Disengage.
+The autopilot never implements opportunity attacks itself.
+
+All module code runs on the GM's client (the lead GM, `game.users.activeGM?.isSelf`), like the
+rest of the module. The planning cost is tens of activities times a few targets and squares;
+Foundry's pathfinding also runs on the client. No server work.
+
+## Decisions taken with the user
+
+| Topic | Decision |
+|---|---|
+| GM role | Spectator by default: monsters move and act with no pauses. Setting `pauseBeforeAttack` (off) asks the GM before each use. Per-combatant switch to take a monster by hand. |
+| Who is driven | Every combatant whose actor has no player owner (hostile and friendly NPCs alike). Switch per combatant in the combat tracker, default from `enableAutopilot`. |
+| Brain | Expected-value scoring: for each available activity and each visible target, probability times average damage (or healing, counted as damage avoided), summed over the creatures an area covers. Highest wins. Heal and flee are not separate ladders: healing competes in the score; fleeing is a fixed rule on top. |
+| Tie-break | Intelligence >= `intelligenceThreshold` (6): the target with the fewest hit points. Below: the nearest target. Second tie-break always nearest. |
+| Resources | Spend everything: best available ability every turn, highest spell slot first. Recharge abilities are rolled at the start of the monster's turn (dnd5e recharge rules) and used as soon as they are back. |
+| Multiattack | Parse the trait text ("makes two attacks: one with its bite and one with its spear"): count and attack names, used in order. Unparseable names: repeat the best attack *count* times. No count: a single attack. |
+| Flee | Fixed rule, setting `fleeEnabled` (on), threshold `fleeThreshold` (25 % of max HP). Unintelligent: flee below the threshold even with allies up. Intelligent: flee below the threshold only when losing (more enemies standing than allies). A creature alone from the start of the combat (boss) never flees. |
+| Escape routes | A Region whose name contains `escapeRegionName` ("escape", case-insensitive). A fleeing monster Dashes toward the nearest reachable one; on entering it the monster has escaped: removed from the combat, token hidden, chat line. No region: the reachable square farthest from all enemies. |
+| Positioning | Stop at the first square of the path that puts the chosen ability in range. Intelligent creatures add two rules: a ranged attacker adjacent to an enemy steps out of melee reach first (4b), and only if what it gains beats the expected opportunity-attack damage (4c); areas aim at the enemy square covering the most enemies. |
+| Group turns | With the shared turn of piece 2, movement of the whole group is planned at once (each monster sees its allies' reserved destinations as occupied) and animated together; actions then run one monster at a time. |
+| Pacing | No fixed delay. The next action starts when Midi completes the use and Dice So Nice finishes animating its messages; movements wait for the token to arrive. |
+| End of turn | Setting `autoNextTurn` (on): when every active combatant was on autopilot, pass the turn. Any manual member: finish the automatic ones and wait for the GM. |
+| Legendary and lair actions | Out of scope: piece 5. |
+| Sight | A monster only targets what the piece 3 rules let it see (`spotsBg3`: line of sight, light, darkvision, hidden Stealth vs passive Perception). |
+| Transparency | One chat line whispered to the GM per monster and turn: decision, expected value, discarded alternatives. Players see only the move and Midi's cards. |
+
+## Sub-pieces (each one a release and a server run)
+
+- **4a core**: tracker switch, board snapshot, scoring of single-target attack and save activities,
+  Multiattack from text, move and stop in range, approach when nothing scores, GM chat line,
+  pause before attack, auto next turn.
+- **4b**: areas, heals, bonus actions, recharge, smart positioning (ranged steps out, areas aim at
+  clusters), waiting for Gambit's opportunity attack, Sentinel stop.
+- **4c**: flee and morale, escape regions, opportunity-attack damage estimate before leaving reach.
+- Piece 5 (later): legendary and lair actions.
+
+## Architecture
+
+New files, same conventions as the rest of the module (ES modules, every hook body wrapped in
+`safe()`, world settings in `main.js`, strings in `lang/*.json`):
+
+```
+scripts/ai/board.js   Foundry-bound, read only: builds the board snapshot (tokens, activities, paths, sight)
+scripts/ai/plan.js    pure functions, no Foundry globals: scoring, target and square choice, Multiattack, flee
+scripts/ai/run.js     executes a plan: moves tokens, uses activities through Midi, waits, pauses, passes the turn; hooks
+test/board.test.mjs   Foundry stubs (as test/encounters.test.mjs)
+test/plan.test.mjs    invented boards
+test/run.test.mjs     stubs for the sequencing
+```
+
+Settings (world): `enableAutopilot` (on), `pauseBeforeAttack` (off), `autoNextTurn` (on),
+`intelligenceThreshold` (6), `fleeEnabled` (on), `fleeThreshold` (25), `escapeRegionName`
+("escape").
+
+## Board snapshot (`board.js`)
+
+**Per combatant token:** id, side (disposition), position and elevation, hp and max hp, AC, saving
+throw bonuses, Intelligence score, speeds, defeated, and the set of enemies it sees (`spotsBg3`
+from piece 3, with the same light and wall inputs as `encounters.js`). For the acting monster:
+the path to every enemy (Foundry pathfinding, cut at the movement budget) with the cost per
+square, and the reserved destinations of its group.
+
+**Per activity of the acting monster**, walking every item as Plutonium imports them (dnd5e 6
+activities): kind (attack, save, heal, damage, utility), action slot (action, bonus, reaction;
+legendary ignored), reach or range, area shape and size, attack bonus or save DC and ability,
+half damage on a successful save, average damage (dice average plus flat, including the weapon's
+base damage for attack activities), average healing, and availability: remaining uses, pending
+recharge, a free spell slot of the needed level, ammunition. Unavailable activities are not in the
+snapshot. A utility with no damage or healing (Nimble Escape) does not score; Multiattack is
+detected by name and its description text is handed to the planner.
+
+**Not in the snapshot:** target resistances and vulnerabilities, conditions (advantage or
+disadvantage never enter the probability, except the fixed adjacent-archer rule), the players'
+opportunity attacks (4c adds the enemy's best melee attack as an estimate).
+
+**Probabilities:** hit = (21 + bonus - AC) / 20; save failed = (DC - 1 - save bonus) / 20; both
+clamped to [0.05, 0.95]. Expected damage = probability times average damage (plus half the
+average on a successful save when the activity says so), summed over every creature inside an
+area. Expected healing = average healing capped at the target's missing hit points.
+
+## Planner (`plan.js`)
+
+Input: the snapshot plus the turn state (movement left, action and bonus action spent or not,
+reserved destinations). Output:
+`{ move: [squares], action: { activityId, targets }, bonus: { activityId, targets }, reason }`,
+any part absent.
+
+1. Flee (4c): if the rule fires, the plan is movement only (Dash toward the escape region or the
+   farthest square) and stops.
+2. For every available action activity and every visible target: the square it is used from (the
+   first square of the path to the target that is in range; areas aim at an enemy's square and
+   count everyone covered; heals aim at allies). Not reachable this turn: score 0. Score as above.
+3. Multiattack: when present and its named attacks are available, it scores as the sum of those
+   attacks, each against the best target in range from the same square, and competes as one more
+   option.
+4. Tie-break by Intelligence as decided. Second tie-break: nearest.
+5. Smart positioning (4b, intelligent only): a ranged attacker adjacent to an enemy leaves melee
+   reach first when it has the movement; in 4c only when the gain beats the opportunity-attack
+   estimate.
+6. Bonus action: the best available bonus-action activity, scored the same way from the final
+   square.
+7. Nothing scores: Dash toward the nearest visible enemy. Nobody visible: stay, and the reason
+   says so.
+
+Group: movement of every member is planned in initiative order, each seeing the earlier members'
+destinations as occupied. Actions are re-planned one by one with the real final positions.
+Re-planning: after every executed action the rest of the turn is planned again (a dead target is
+replaced).
+
+## Execution (`run.js`)
+
+**Trigger:** `combatTurnChange` on the lead GM, after piece 2 has reset the group's movement.
+Active combatants = `activeIds(combat)` (piece 2) whose actor has no player owner, not defeated,
+autopilot not switched off.
+
+**Movement phase:** plan every member's movement, execute all moves at once with Foundry 14's
+token movement API, tagging the operation as the autopilot's so the piece 2 lock and budget treat
+it as a normal on-turn move. Each move is awaited until the token reaches its destination or the
+move is cut, with a 45 s cap (30 s reaction timeout plus margin): Gambit's opportunity attack
+holds the move while the player answers. A reaction hit from an actor with a *Sentinel* item
+stops that monster where it is.
+
+**Action phase:** monster by monster in initiative order: re-plan, set the targets on the GM
+client, use the activity through Midi with those targets, await its `midi-qol.RollComplete`, wait
+for Dice So Nice (`game.dice3d.waitFor3DAnimationByMessageID`), then the bonus action the same
+way. Multiattack is several uses in a row.
+
+**Pause:** with `pauseBeforeAttack`, before each use a DialogV2 for the GM:
+"Goblin: Scimitar vs Rogue (expected 4.2)" with **Execute**, **Skip** (this action) and
+**Take over** (switches that monster's autopilot off for the rest of the combat and stops there).
+
+**End of turn:** every active member was on autopilot and `autoNextTurn` on: `combat.nextTurn()`.
+Otherwise the autopilot finishes its monsters and waits for the GM.
+
+**Safety:** one run at a time. The run checks `combat.turn` before every step and stops silently
+if the GM moved the turn by hand. Any error is logged, whispered to the GM, and leaves that monster
+to the GM; the other monsters continue.
+
+**Controls:** one icon per NPC combatant in the combat tracker toggling flag
+`bg3-flow.autopilot` on the combatant (default from `enableAutopilot`). The whispered decision line.
+
+## Testing
+
+- `test/plan.test.mjs`: clamped hit and fail probabilities; attack expected damage; save with half
+  damage; an area on two targets beating a single-target attack; healing as damage avoided;
+  Multiattack from three SRD texts (gnoll, dragon, "makes two attacks") and the repeat fallback;
+  Intelligence tie-break; stop at the first square in range; adjacent archer steps out only when
+  intelligent; flee by type and toward the escape region; group with reserved destinations;
+  "nobody visible".
+- `test/board.test.mjs` with Foundry stubs: a Plutonium goblin's activities (scimitar, shortbow),
+  a caster with slots, a spent breath weapon absent from the snapshot, sight filtering a hidden PC.
+- `test/run.test.mjs` with stubs: moves before actions, the pause's three buttons, abort when the
+  turn changes, next turn only when everyone was on autopilot.
+- `docs/SERVER-TESTING.md` section 7 per sub-piece on the existing goblin scene: a goblin that
+  closes and attacks, an archer that stays at range, a group of two moving together, the pause,
+  the tracker icon, an opportunity attack through Gambit, and in 4c a flight to an "Escape" region.
+- README: what the autopilot does in one screen, the settings, how to mark an escape route,
+  enabling Opportunity Attack in Gambit's Premades, and the list of what is not counted.
+
+## Out of scope
+
+Legendary and lair actions (piece 5); resistances and vulnerabilities in the score; advantage and
+disadvantage in the probability; attack-then-retreat; summons cast by the autopilot itself;
+feats that exist only as text (whatever Gambit, Chris's Premades, Midi or DAE automate as
+activities or effects applies on its own, because the autopilot uses the sheet's activities and
+Midi does the rest).
