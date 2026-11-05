@@ -49,7 +49,7 @@ function deps({ plans, enemies = () => [enemy("rogue")], use, pause } = {}) {
 }
 function reset() { order = []; moves = []; uses = []; calls.chat = []; settings.pauseBeforeAttack = false; settings.autoNextTurn = true; settings.enableTurns = true; game.user.isGM = true; }
 
-const { isAuto, runTurn, onCombatTurnChange, onRenderCombatTracker, pauseDialog, registerAutopilot } = await import("../scripts/ai/run.js");
+const { isAuto, runTurn, onCombatTurnChange, onRenderCombatTracker, pauseDialog, registerAutopilot, arrive } = await import("../scripts/ai/run.js");
 
 test("isAuto: on unless the flag says false or a player owns the actor", () => {
   assert.equal(isAuto(combatant("g")), true);
@@ -265,4 +265,26 @@ test("runTurn: the GM changed the turn while the pause dialog was open: the use 
   await runTurn(combat, deps({ plans: { g1: attackPlan() }, pause: async () => { combat.turn = 1; return "execute"; } }));
   assert.deepEqual(uses, []);
   assert.equal(combat.nextTurns, 0);
+});
+
+test("arrive waits until the token's sprite reaches the document position (move() resolves before the animation ends)", async () => {
+  const doc = { x: 400, y: 0, object: { x: 0, y: 0 } };
+  setTimeout(() => { doc.object.x = 400; order.push("sprite arrived"); }, 15);
+  order = [];
+  await arrive(doc, { poll: 2 });
+  order.push("arrive resolved");
+  assert.deepEqual(order, ["sprite arrived", "arrive resolved"]);
+  await arrive({ x: 1, y: 1, object: null }); // no sprite on this client: nothing to wait for
+  const stuck = { x: 400, y: 0, object: { x: 0, y: 0 } };
+  await arrive(stuck, { poll: 1, cap: 5 }); // the cap ends the wait
+});
+
+test("runTurn waits for every mover to arrive before the actions and before passing the turn", async () => {
+  reset();
+  const g1 = combatant("g1");
+  g1.token.object = { x: 0, y: 0 };
+  g1.token.move = async (wp) => { order.push("move g1"); g1.token.x = wp.at(-1).x; g1.token.y = 0; setTimeout(() => { g1.token.object.x = wp.at(-1).x; order.push("sprite g1"); }, 15); return true; }; // the document moves at once, the sprite later
+  const combat = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]);
+  await runTurn(combat, { ...deps({ plans: { g1: attackPlan() } }), poll: 2 });
+  assert.deepEqual(order, ["clear g1", "move g1", "sprite g1", "use T.rogue"]);
 });

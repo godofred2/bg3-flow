@@ -50,12 +50,13 @@ globalThis.canvas = {
 };
 
 let n = 0;
-function act({ type, activation = "action", toHit = "+0", parts = [], item = {}, range = null, save = null, uses = null, spell = null, affects = "creature", template = null, canUse = true, name = "X" } = {}) {
+function act({ type, activation = "action", toHit = "+0", parts = [], item = {}, range = null, save = null, uses = null, spell = null, affects = "creature", template = null, canUse = true, name = "X", siblings = 1 } = {}) {
   const id = `a${++n}`;
   const actor = { system: { spells: { spell1: { value: spell?.slots ?? 0 } } } };
-  const it = { type: item.type ?? "feat", name, system: { range: item.range ?? {}, uses: { max: "", value: 0 }, level: spell?.level ?? 0 }, actor };
+  // dnd5e gives every item's default activity the same id (dnd5eactivity000) and Midi names it "Midi Attack": only the uuid and the item name tell them apart.
+  const it = { type: item.type ?? "feat", name, system: { range: item.range ?? {}, uses: { max: "", value: 0 }, level: spell?.level ?? 0, activities: { size: siblings } }, actor };
   return {
-    id, uuid: `A.${id}`, name, type, item: it, actor, canUse,
+    id: "dnd5eactivity000", uuid: `A.${id}`, name: "Midi Attack", type, item: it, actor, canUse,
     activation: { type: activation }, range: range ?? { value: null, units: "", override: false },
     target: { affects: { type: affects }, template: { type: template } },
     uses: { max: uses?.max ?? "", value: uses?.value ?? 0 },
@@ -89,7 +90,8 @@ const { activityInfo, snapshot } = await import("../scripts/ai/board.js");
 test("activityInfo: a goblin's scimitar and shortbow as Plutonium imports them", () => {
   n = 0;
   const scimitar = act({ name: "Scimitar", type: "attack", toHit: "+4", parts: [["1d6 + @mod", { mod: 2 }]], item: { type: "weapon", range: { reach: 5, value: null } } });
-  assert.deepEqual(activityInfo(scimitar), { id: "a1", uuid: "A.a1", name: "Scimitar", kind: "attack", slot: "action", range: 5, bonus: 4, dc: undefined, saveAbility: undefined, onSave: undefined, damage: 5.5, healing: 0 });
+  assert.deepEqual(activityInfo(scimitar), { id: "A.a1", uuid: "A.a1", name: "Scimitar", kind: "attack", slot: "action", range: 5, bonus: 4, dc: undefined, saveAbility: undefined, onSave: undefined, damage: 5.5, healing: 0 });
+  assert.equal(activityInfo(act({ name: "Dagger", type: "attack", siblings: 2 })).name, "Dagger (Midi Attack)"); // an item with several activities keeps the activity's name
   const bow = act({ name: "Shortbow", type: "attack", toHit: "+4", parts: [["1d6 + 2", {}]], item: { type: "weapon", range: { reach: null, value: 80, long: 320 } } });
   assert.equal(activityInfo(bow).range, 80);
 });
@@ -168,4 +170,16 @@ test("snapshot: a Large monster is placed by its top-left, measures reach from i
   assert.equal(b.enemies[0].distance, 15); // centres 17.5 ft apart, minus half the ogre's extra width
   const main = b.paths.rogue.filter((s) => s.y === 0);
   assert.deepEqual(main.map((s) => [s.x, s.cost, s.distance, s.occupied]), [[100, 5, 10, false], [200, 10, 5, false]]); // 300 would overlap the rogue: dropped
+});
+
+test("snapshot: a Large monster reaches a Medium enemy from a diagonal square (reach is squares between footprints, not centre snapping)", async () => {
+  // A10 on the server (shifted to row 0, the stub's wall sits below y 300): Ogre 2x2 at (10,0), Rogue at (4,0), Fighter at (5,0). The free 2x2 spots touching the Rogue are below it.
+  const ogre = token("ogre", { x: 1000, y: 0, disposition: -1, width: 2, speed: 40 });
+  const rogue = token("rogue", { x: 400, y: 0, disposition: 1 });
+  const fighter = token("fighter", { x: 500, y: 0, disposition: 1 });
+  canvas.scene.tokens.contents = [ogre, rogue, fighter];
+  const b = await snapshot({ combatants: [combatantOf(ogre), combatantOf(rogue), combatantOf(fighter)] }, combatantOf(ogre));
+  const spot = b.paths.rogue.find((s) => s.x === 400 && s.y === 100);
+  assert.deepEqual([spot.distance, spot.occupied, spot.cost], [5, false, 30]);
+  assert.equal(b.paths.rogue.find((s) => s.x === 500 && s.y === 0).occupied, true); // the Fighter's square
 });

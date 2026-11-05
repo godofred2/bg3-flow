@@ -129,9 +129,9 @@ With **Monster autopilot** on, every combatant whose actor has no player owner p
 
 The GM gets a whispered line per monster ("Goblin: Scimitar vs Rogue (expected 2.5); also: Shortbow 2.0"). The robot button on each NPC row of the combat tracker switches that monster's autopilot off (or back on) for the combat. **Pause before each monster action** opens a dialog before every use: Execute, Skip, or Take over (switches that monster off and stops).
 
-Moving monsters trigger opportunity attacks through **Gambit's Premades** (enable its *Opportunity Attack* automation): the monster's move waits while the player answers. A use Midi refuses or an error leaves that monster to the GM with a whispered note; the others continue.
+Moving monsters trigger opportunity attacks through **Gambit's Premades** (enable its *Opportunity Attack* automation, then reload: Gambit reads that setting when the world loads): the monster's move waits for the sprite to arrive, so a reaction hold is respected. Reach and range are counted in squares between the two creatures' footprints (a diagonal neighbour is 5 ft, a Large creature reaches from its edge). A use Midi refuses or an error leaves that monster to the GM with a whispered note; the others continue.
 
-Not counted yet: areas, heals, bonus actions, recharge abilities, fleeing, resistances and vulnerabilities, advantage or disadvantage, legendary and lair actions, ammunition, difficult terrain cost, gridless scenes. Large creatures are placed by their top-left square and measure reach from their edge.
+Not counted yet: areas, heals, bonus actions, recharge abilities, fleeing, resistances and vulnerabilities, advantage or disadvantage, legendary and lair actions, ammunition, difficult terrain cost, gridless scenes.
 
 ## Settings
 

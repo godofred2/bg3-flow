@@ -33,10 +33,18 @@ export async function pauseDialog({ name, reason }) {
 }
 
 let running = false;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** move() resolves when the server applied the move; the sprite (and a Gambit reaction hold) may still be on its way. */
+export async function arrive(doc, { poll = 100, cap = 45000 } = {}) {
+  const obj = doc.object;
+  const t0 = Date.now();
+  while (obj && (Math.abs(obj.x - doc.x) > 1 || Math.abs(obj.y - doc.y) > 1) && Date.now() - t0 < cap) await sleep(poll);
+}
 
 /** Play the active group's automatic members: all moves at once, then actions in initiative order. */
 export async function runTurn(combat, deps = {}) {
-  const { snap = snapshot, plan = planTurn, pick = pickTarget, use = useActivity, pause = pauseDialog } = deps;
+  const { snap = snapshot, plan = planTurn, pick = pickTarget, use = useActivity, pause = pauseDialog, poll = 100 } = deps;
   const ids = game.settings.get(MODULE_ID, "enableTurns") === false ? new Set([combat.combatant?.id]) : activeIds(combat); // groups only exist with piece 2
   const active = combat.turns.filter((c) => ids.has(c.id) && !c.isDefeated);
   const members = active.filter((c) => isAuto(c) && c.token && c.token.parent?.id === canvas.scene?.id);
@@ -59,6 +67,7 @@ export async function runTurn(combat, deps = {}) {
     if (stale()) return;
     const walk = (m) => (m.waypoints ?? [m]).map((w) => ({ x: w.x, y: w.y, elevation: w.elevation, action: "walk" }));
     await Promise.all(plans.map(([c, p]) => p.move && c.token.move(walk(p.move), { autoRotate: true, showRuler: false, bg3Autopilot: true })));
+    await Promise.all(plans.map(([c, p]) => p.move && arrive(c.token, { poll })));
     for (const [c] of plans) {
       if (stale()) return;
       try {

@@ -205,3 +205,10 @@ disadvantage in the probability; attack-then-retreat; summons cast by the autopi
 feats that exist only as text (whatever Gambit, Chris's Premades, Midi or DAE automate as
 activities or effects applies on its own, because the autopilot uses the sheet's activities and
 Midi does the rest).
+
+## Amendment 2026-11-05 (v0.6.0 server run, fixed in v0.6.1)
+
+- dnd5e gives every item's default activity the same id (`dnd5eactivity000`) and Midi names it "Midi Attack": activities are identified by uuid and named after their item (plus the activity name when the item has several).
+- `TokenDocument#move` resolves when the server applied the move, before the sprite arrives and before a Gambit reaction hold ends: the autopilot waits for the sprite to reach the document position (45 s cap) before acting or passing the turn.
+- Reach and range are the fewest squares between the two creatures' footprints times the grid distance (5/5/5): `measurePath` snaps a Large token's centre (a grid vertex) to a whole square and put a diagonal neighbour at 7.5 ft.
+- Observed, not changed: Midi's reaction prompts (Uncanny Dodge) hold the autopilot like any other use; the autopilot fires on combat start when a monster has the first turn; starting a combat reveals hidden tokens (piece 3 rule).
