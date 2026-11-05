@@ -11,11 +11,32 @@ const whisper = (content) => ChatMessage.create({ content, whisper: [game.user.i
 /** On unless the combatant flag says false or a player owns the actor. */
 export const isAuto = (c) => c.getFlag(MODULE_ID, "autopilot") !== false && !c.actor?.hasPlayerOwner;
 
-/** One use through Midi with the targets fixed: resolves when the workflow is done, `undefined` when Midi refused it. */
-export async function useActivity(info, targetUuid) {
+/** One use through Midi with the targets fixed (every covered creature for an area, no template placed): resolves when the workflow is done, `undefined` when Midi refused it. */
+export async function useActivity(info, targetUuids) {
   const activity = fromUuidSync(info.uuid);
   if (!activity) throw new Error(`activity ${info.uuid} not found`);
-  return MidiQOL.completeActivityUse(activity, { midiOptions: { targetUuids: [targetUuid], ignoreUserTargets: true } });
+  return MidiQOL.completeActivityUse(activity, { create: { measuredTemplate: false }, midiOptions: { targetUuids, ignoreUserTargets: true } });
+}
+
+const rechargeable = (uses) => (uses?.recovery ?? []).some((r) => r.period === "recharge") && uses.spent > 0;
+/** Roll recharge (5-6) for the monster's spent recharge abilities, unless dnd5e's own NPC auto recharge already does it at turn start. */
+export async function rollRecharge(combatant) {
+  if (game.settings.get("dnd5e", "autoRecharge") !== "no") return;
+  for (const item of combatant.actor?.items ?? []) {
+    if (rechargeable(item.system?.uses)) await item.system.uses.rollRecharge();
+    for (const a of item.system?.activities ?? []) if (rechargeable(a.uses)) await a.uses.rollRecharge();
+  }
+}
+
+/** While `movers` walk: a reaction hit by someone with Sentinel stops the hit monster where it is. Returns the unregister function. */
+export function sentinelWatch(movers) {
+  const ids = new Map(movers.map((c) => [c.token.id, c]));
+  const fn = (workflow) => {
+    if (![...(workflow?.actor?.items ?? [])].some((i) => String(i.name).trim().toLowerCase() === "sentinel")) return;
+    for (const t of workflow.hitTargets ?? []) ids.get(t.document?.id ?? t.id)?.token.stopMovement?.();
+  };
+  const id = Hooks.on("midi-qol.RollComplete", fn);
+  return () => Hooks.off("midi-qol.RollComplete", id);
 }
 
 /** GM dialog before a use: "execute", "skip" (also when closed) or "manual". */
@@ -43,7 +64,7 @@ export async function arrive(doc, { poll = 100, cap = 45000 } = {}) {
   while (obj?.movementAnimationPromise && Date.now() - t0 < cap) await Promise.race([obj.movementAnimationPromise, sleep(poll)]);
 }
 
-const brief = (b) => `${b.me.name} hp ${b.me.hp} budget ${b.me.budget}; activities: ${b.activities.map((a) => `${a.name}[${a.kind} r${a.range} +${a.bonus} dmg${a.damage.toFixed(1)}${a.ranged ? " ranged" : ""}]`).join(" ") || "none"}; enemies: ${b.enemies.map((e) => `${e.name}[d${e.distance} ac${e.ac} hp${e.hp}${e.visible ? "" : " unseen"} path${(b.paths[e.id] ?? []).length}]`).join(" ") || "none"}`;
+const brief = (b) => `${b.me.name} hp ${b.me.hp} budget ${b.me.budget}; activities: ${b.activities.map((a) => `${a.name}[${a.kind}${a.slot === "bonus" ? " bonus" : ""} r${a.range} +${a.bonus ?? 0} ${a.kind === "heal" ? `heal${(a.healing ?? 0).toFixed(1)}` : `dmg${(a.damage ?? 0).toFixed(1)}`}${a.area ? ` ${a.area.shape}${a.area.size}` : ""}${a.ranged ? " ranged" : ""}${a.recharge ? " recharge" : ""}]`).join(" ") || "none"}; enemies: ${b.enemies.map((e) => `${e.name}[d${e.distance} ac${e.ac} hp${e.hp}${e.visible ? "" : " unseen"} path${(b.paths[e.id] ?? []).length}]`).join(" ") || "none"}; allies: ${(b.allies ?? []).filter((a) => a.id !== b.me.id).map((a) => `${a.name}[hp${a.hp}/${a.maxHp}]`).join(" ") || "none"}; retreats ${(b.retreats ?? []).length}`;
 
 /** Play the active group's automatic members: all moves at once, then actions in initiative order. */
 export async function runTurn(combat, deps = {}) {
@@ -58,6 +79,7 @@ export async function runTurn(combat, deps = {}) {
   const failed = async (c, err) => { console.error(`[${MODULE_ID}]`, err); clean = false; await whisper(L("Autopilot.Error", { name: c.token.name, error: err?.message ?? String(err) })); };
   running = true;
   try {
+    for (const c of members) { try { await rollRecharge(c); } catch (err) { await failed(c, err); } }
     await Promise.all(members.map((c) => c.token.clearMovementHistory?.())); // piece 2 clears without awaiting: do it ourselves
     const reserved = new Set(), plans = [];
     for (const c of members) {
@@ -72,31 +94,49 @@ export async function runTurn(combat, deps = {}) {
     }
     if (stale()) return;
     const walk = (m) => (m.waypoints ?? [m]).map((w) => ({ x: w.x, y: w.y, elevation: w.elevation, action: "walk" }));
-    await Promise.all(plans.map(([c, p]) => p.move && c.token.move(walk(p.move), { autoRotate: true, showRuler: false, bg3Autopilot: true })));
-    await Promise.all(plans.map(([c, p]) => p.move && arrive(c.token, { poll })));
+    const movers = plans.filter(([, p]) => p.move).map(([c]) => c);
+    const unwatch = sentinelWatch(movers);
+    try {
+      await Promise.all(plans.map(([c, p]) => p.move && c.token.move(walk(p.move), { autoRotate: true, showRuler: false, bg3Autopilot: true })));
+      await Promise.all(plans.map(([c, p]) => p.move && arrive(c.token, { poll })));
+    } finally { unwatch(); }
+    // Run one plan's uses from where the monster stands. Returns false when the GM took the monster over.
+    const act = async (c, board, p) => {
+      await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason }));
+      for (const a of p.actions) {
+        if (stale()) return null;
+        const activity = board.activities.find((x) => x.id === a.activityId);
+        if (!activity) continue;
+        const live = (t) => t && t.hp > 0 && (activity.kind === "heal" || t.visible);
+        const pool = activity.kind === "heal" ? board.allies ?? [] : board.enemies;
+        let targets = (a.targetIds ?? []).map((id) => pool.find((t) => t.id === id)).filter(live);
+        if (!targets.length) { const t = pick(board, activity, board.me)?.enemy; targets = t ? [t] : []; } // re-pick: the planned target died or vanished
+        if (!targets.length) continue;
+        if (game.settings.get(MODULE_ID, "pauseBeforeAttack")) {
+          const choice = await pause({ name: c.token.name, reason: `${activity.name} vs ${targets.map((t) => t.name).join(", ")}` });
+          if (choice === "skip") continue;
+          if (choice === "manual") { await c.setFlag(MODULE_ID, "autopilot", false); return false; }
+          if (stale()) return null; // the GM moved on while the dialog was open
+        }
+        if ((await use(activity, targets.map((t) => t.uuid))) === undefined) throw new Error("Midi refused the use");
+        board = await snap(combat, c, reserved); // fresh hit points and sight for the next use
+      }
+      return true;
+    };
     for (const [c] of plans) {
       if (stale()) return;
       try {
-        let board = await snap(combat, c, reserved);
+        const board = await snap(combat, c, reserved);
         if (board.me.hp <= 0) continue; // dropped on the way (an opportunity attack): no action
-        const p = plan({ ...board, me: { ...board.me, budget: 0 } }); // act from where it stands: a move that fell short never fires out of reach
-        await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason }));
-        for (const a of p.actions) {
-          if (stale()) return;
-          const activity = board.activities.find((x) => x.id === a.activityId);
-          if (!activity) continue;
-          let target = board.enemies.find((e) => e.id === (a.targetIds?.[0] ?? a.targetId));
-          if (!target || target.hp <= 0 || !target.visible) target = pick(board, activity, board.me)?.enemy; // re-pick: the planned target died or vanished
-          if (!target) continue;
-          if (game.settings.get(MODULE_ID, "pauseBeforeAttack")) {
-            const choice = await pause({ name: c.token.name, reason: `${activity.name} vs ${target.name}` });
-            if (choice === "skip") continue;
-            if (choice === "manual") { await c.setFlag(MODULE_ID, "autopilot", false); clean = false; break; }
-            if (stale()) return; // the GM moved on while the dialog was open
-          }
-          if ((await use(activity, target.uuid)) === undefined) throw new Error("Midi refused the use");
-          board = await snap(combat, c, reserved); // fresh hit points and sight for the next use
-        }
+        const still = { ...board, me: { ...board.me, budget: 0 } }; // act from where it stands: a move that fell short never fires out of reach
+        const done = await act(c, still, plan(still));
+        if (done === null) return;
+        if (done === false) { clean = false; continue; }
+        const after = await snap(combat, c, reserved);
+        if (after.me.hp <= 0) continue;
+        const bonusBoard = { ...after, me: { ...after.me, budget: 0 } };
+        const bonus = plan(bonusBoard, { slot: "bonus" });
+        if (bonus.actions.length) { const r = await act(c, bonusBoard, bonus); if (r === null) return; if (r === false) clean = false; }
       } catch (err) { await failed(c, err); }
     }
     pass = clean && !stale() && game.settings.get(MODULE_ID, "autoNextTurn");

@@ -3,13 +3,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const calls = { chat: [], hooks: [], render: 0 };
-globalThis.Hooks = { once() {}, on: (name) => calls.hooks.push(name), callAll() {} };
+const hookFns = {};
+globalThis.Hooks = { once() {}, on: (name, fn) => { calls.hooks.push(name); hookFns[name] = fn; return 1; }, off: (name) => { delete hookFns[name]; }, callAll() {} };
 globalThis.ui = { notifications: { info() {}, warn() {} }, controls: { render() {} }, combat: { render: () => calls.render++ } };
 globalThis.ChatMessage = { create: async (d) => calls.chat.push(d) };
 globalThis.CONFIG = { time: { turnTime: 6, roundTime: 60 }, Token: { movement: { actions: { walk: {} } } }, DND5E: { movementTypes: { walk: {} } } };
 globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: { wait: async () => null } } }, utils: { escapeHTML: (s) => s } };
 globalThis.canvas = { ready: true, scene: { id: "scene", tokens: { contents: [] } } };
-const settings = { pauseBeforeAttack: false, autoNextTurn: true, intelligenceThreshold: 6, enableTurns: true };
+const settings = { pauseBeforeAttack: false, autoNextTurn: true, intelligenceThreshold: 6, enableTurns: true, autoRecharge: "no" };
 globalThis.game = {
   i18n: { localize: (k) => k, format: (k, d) => `${k}:${JSON.stringify(d)}` },
   user: { id: "gm", isGM: true }, users: { activeGM: { isSelf: true } }, combat: null,
@@ -35,21 +36,23 @@ function makeCombat(turns, turn = 0) {
 }
 const sc = { id: "sc", uuid: "A.sc", name: "Scimitar", kind: "attack", slot: "action", range: 5, bonus: 4, damage: 5 };
 const enemy = (id, hp = 10, visible = true) => ({ id, uuid: `T.${id}`, name: id, hp, maxHp: 10, ac: 15, saves: {}, distance: 5, visible });
-const boardFor = (c, enemies) => ({ me: { id: c.id, name: c.id, intelligence: 10, hp: 7, maxHp: 7, x: 0, y: 0, elevation: 0, budget: 30 }, enemies, activities: [sc], multiattack: null, paths: {}, reserved: new Set(), threshold: 6 });
+const hw = { id: "hw", uuid: "A.hw", name: "Healing Word", kind: "heal", slot: "bonus", range: 60, healing: 4.5, affects: "creature" };
+const fb = { id: "fb", uuid: "A.fb", name: "Fireball", kind: "save", slot: "action", range: 150, dc: 13, saveAbility: "dex", onSave: "half", damage: 28, area: { shape: "sphere", size: 20 }, affects: "creature" };
+const boardFor = (c, enemies, allies = []) => ({ me: { id: c.id, name: c.id, intelligence: 10, hp: 7, maxHp: 7, x: 0, y: 0, elevation: 0, cx: 50, cy: 50, w: 1, budget: 30 }, enemies, allies, activities: [sc, hw, fb], multiattack: null, paths: {}, retreats: [], grid: { px: 100, ft: 5 }, reserved: new Set(), threshold: 6 });
 const attackPlan = (target = "rogue", n = 1) => ({ move: { x: 400, y: 0, elevation: 0, waypoints: [{ x: 200, y: 0, elevation: 0 }, { x: 400, y: 0, elevation: 0 }] }, actions: Array(n).fill({ activityId: "sc", targetIds: [target] }), reason: `Scimitar vs ${target} (expected 2.5)` });
 const approachPlan = { move: { x: 200, y: 0, elevation: 0 }, actions: [], reason: "approach rogue" };
 const emptyPlan = { move: null, actions: [], reason: "no visible enemy" };
-function deps({ plans, enemies = () => [enemy("rogue")], use, pause } = {}) {
+function deps({ plans, bonus = {}, enemies = () => [enemy("rogue")], allies = () => [], use, pause } = {}) {
   return {
-    snap: async (combat, c) => boardFor(c, enemies()),
-    plan: (board) => plans[board.me.id],
-    use: use ?? (async (a, uuid) => { uses.push([a.id, uuid]); order.push(`use ${uuid}`); return {}; }),
+    snap: async (combat, c) => boardFor(c, enemies(), allies()),
+    plan: (board, opts) => (opts?.slot === "bonus" ? bonus[board.me.id] ?? { move: null, actions: [], reason: "no bonus action" } : plans[board.me.id]),
+    use: use ?? (async (a, uuids) => { uses.push([a.id, String(uuids)]); order.push(`use ${uuids}`); return {}; }),
     pause: pause ?? (async () => "execute")
   };
 }
-function reset() { order = []; moves = []; uses = []; calls.chat = []; settings.pauseBeforeAttack = false; settings.autoNextTurn = true; settings.enableTurns = true; game.user.isGM = true; }
+function reset() { order = []; moves = []; uses = []; calls.chat = []; settings.pauseBeforeAttack = false; settings.autoNextTurn = true; settings.enableTurns = true; settings.autoRecharge = "no"; game.user.isGM = true; }
 
-const { isAuto, runTurn, onCombatTurnChange, onRenderCombatTracker, pauseDialog, registerAutopilot, arrive } = await import("../scripts/ai/run.js");
+const { isAuto, runTurn, onCombatTurnChange, onRenderCombatTracker, pauseDialog, registerAutopilot, arrive, useActivity, rollRecharge, sentinelWatch } = await import("../scripts/ai/run.js");
 
 test("isAuto: on unless the flag says false or a player owns the actor", () => {
   assert.equal(isAuto(combatant("g")), true);
@@ -98,11 +101,11 @@ test("runTurn: the target died during a Multiattack: the next use is re-picked, 
   const g1 = combatant("g1");
   const combat = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]);
   let rogueHp = 10;
-  const d = deps({ plans: { g1: attackPlan("rogue", 2) }, enemies: () => [enemy("rogue", rogueHp), enemy("wizard")], use: async (a, uuid) => { uses.push([a.id, uuid]); rogueHp = 0; return {}; } });
+  const d = deps({ plans: { g1: attackPlan("rogue", 2) }, enemies: () => [enemy("rogue", rogueHp), enemy("wizard")], use: async (a, uuid) => { uses.push([a.id, String(uuid)]); rogueHp = 0; return {}; } });
   await runTurn(combat, d);
   assert.deepEqual(uses.map((u) => u[1]), ["T.rogue", "T.wizard"]);
   reset(); rogueHp = 10;
-  const alone = deps({ plans: { g1: attackPlan("rogue", 2) }, enemies: () => [enemy("rogue", rogueHp)], use: async (a, uuid) => { uses.push([a.id, uuid]); rogueHp = 0; return {}; } });
+  const alone = deps({ plans: { g1: attackPlan("rogue", 2) }, enemies: () => [enemy("rogue", rogueHp)], use: async (a, uuid) => { uses.push([a.id, String(uuid)]); rogueHp = 0; return {}; } });
   await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), alone);
   assert.deepEqual(uses.map((u) => u[1]), ["T.rogue"]);
 });
@@ -111,7 +114,7 @@ test("runTurn: a use that throws (or Midi refusing) whispers the error, the next
   reset();
   const g1 = combatant("g1"), g2 = combatant("g2");
   const combat = makeCombat([g1, g2, combatant("pc", { disposition: 1, playerOwner: true })]);
-  await runTurn(combat, deps({ plans: { g1: attackPlan(), g2: attackPlan() }, use: async (a, uuid) => { if (order.push(`use ${uuid}`) && uses.push(uuid) === 1) throw new Error("boom"); return {}; } }));
+  await runTurn(combat, deps({ plans: { g1: attackPlan(), g2: attackPlan() }, use: async (a, uuid) => { if (order.push(`use ${uuid}`) && uses.push(String(uuid)) === 1) throw new Error("boom"); return {}; } }));
   assert.deepEqual(uses, ["T.rogue", "T.rogue"]);
   assert.ok(calls.chat.some((m) => m.content.includes("Autopilot.Error") && m.content.includes("boom")));
   assert.equal(combat.nextTurns, 0);
@@ -124,7 +127,7 @@ test("runTurn: the GM changed the turn mid-run: no more uses, no next turn", asy
   reset();
   const g1 = combatant("g1"), g2 = combatant("g2");
   const combat = makeCombat([g1, g2, combatant("pc", { disposition: 1, playerOwner: true })]);
-  await runTurn(combat, deps({ plans: { g1: attackPlan(), g2: attackPlan() }, use: async (a, uuid) => { uses.push(uuid); combat.turn = 2; return {}; } }));
+  await runTurn(combat, deps({ plans: { g1: attackPlan(), g2: attackPlan() }, use: async (a, uuid) => { uses.push(String(uuid)); combat.turn = 2; return {}; } }));
   assert.deepEqual(uses, ["T.rogue"]);
   assert.equal(combat.nextTurns, 0);
 });
@@ -153,7 +156,7 @@ test("onCombatTurnChange runs only on the lead GM with a started combat", async 
   await onCombatTurnChange({ ...makeCombat([g1]), started: false }, ...step, d);
   assert.equal(snaps, 0);
   await onCombatTurnChange(makeCombat([g1]), ...step, d);
-  assert.equal(snaps, 2); // one snapshot before moving, one before acting
+  assert.equal(snaps, 3); // one snapshot before moving, one before acting, one before the bonus action
 });
 
 test("onRenderCombatTracker appends an active robot button to NPC rows only, click toggles the flag", async () => {
@@ -234,7 +237,7 @@ test("onCombatTurnChange ignores a step backwards (previous turn) and plays a st
   assert.equal(snaps, 0);
   await onCombatTurnChange(makeCombat([g1]), { round: 1, turn: 2 }, { round: 2, turn: 0 }, d);
   await onCombatTurnChange(makeCombat([g1]), { round: 0, turn: null }, { round: 1, turn: 0 }, d);
-  assert.equal(snaps, 4);
+  assert.equal(snaps, 6); // three per played turn
 });
 
 test("runTurn: with BG3 turn flow off only the current combatant acts", async () => {
@@ -304,4 +307,80 @@ test("runTurn: a monster at 0 hit points (dropped by an opportunity attack on th
   assert.deepEqual(order, ["clear g1", "clear g2", "move g1", "move g2", "use T.rogue"]);
   assert.ok(!calls.chat.some((m) => m.content.includes("Autopilot.Error")));
   assert.equal(combat.nextTurns, 1);
+});
+
+test("an area use sends every covered target to Midi in one call", async () => {
+  reset();
+  const g1 = combatant("g1");
+  const combat = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]);
+  await runTurn(combat, deps({ plans: { g1: { move: null, actions: [{ activityId: "fb", targetIds: ["rogue", "wiz"] }], reason: "Fireball vs rogue (expected 20.0)" } }, enemies: () => [enemy("rogue"), enemy("wiz")] }));
+  assert.deepEqual(uses, [["fb", "T.rogue,T.wiz"]]);
+});
+
+test("useActivity passes create.measuredTemplate false and the target uuids to Midi", async () => {
+  const cfgs = [];
+  globalThis.MidiQOL = { completeActivityUse: async (a, cfg) => { cfgs.push([a, cfg]); return {}; } };
+  globalThis.fromUuidSync = (uuid) => ({ uuid });
+  await useActivity({ uuid: "A.fb" }, ["T.rogue", "T.wiz"]);
+  assert.deepEqual(cfgs, [[{ uuid: "A.fb" }, { create: { measuredTemplate: false }, midiOptions: { targetUuids: ["T.rogue", "T.wiz"], ignoreUserTargets: true } }]]);
+});
+
+test("the bonus phase runs after the action from a fresh snapshot and whispers its own line", async () => {
+  reset();
+  const g1 = combatant("g1");
+  const combat = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]);
+  const g2 = { id: "g2", uuid: "T.g2", name: "g2", cx: 0, cy: 0, w: 1, hp: 2, maxHp: 7, ac: 15, saves: {}, distance: 30, elevation: 0 };
+  await runTurn(combat, deps({ plans: { g1: attackPlan() }, bonus: { g1: { move: null, actions: [{ activityId: "hw", targetIds: ["g2"] }], reason: "Healing Word vs g2 (expected 4.5)" } }, allies: () => [g2] }));
+  assert.deepEqual(order.slice(-2), ["use T.rogue", "use T.g2"]);
+  assert.equal(calls.chat.filter((m) => m.content.includes("g1")).length, 2);
+  assert.equal(combat.nextTurns, 1);
+});
+
+test("rollRecharge rolls spent recharge items and activities only when dnd5e's autoRecharge is no", async () => {
+  const rolled = [];
+  const item = (name, spent, recharge, activities = []) => ({ name, system: { uses: { spent, recovery: recharge ? [{ period: "recharge" }] : [], rollRecharge: async () => rolled.push(name) }, activities } });
+  const breathAct = { uses: { spent: 1, recovery: [{ period: "recharge" }], rollRecharge: async () => rolled.push("Act") } };
+  const c = combatant("d");
+  c.actor.items = [item("Breath", 1, true), item("Bite", 0, false), item("Unspent", 0, true), item("Holder", 0, false, [breathAct])];
+  settings.autoRecharge = "no";
+  await rollRecharge(c);
+  assert.deepEqual(rolled, ["Breath", "Act"]);
+  rolled.length = 0; settings.autoRecharge = "silent";
+  await rollRecharge(c);
+  assert.deepEqual(rolled, []);
+});
+
+test("runTurn rolls recharge for its members before planning", async () => {
+  reset();
+  const g1 = combatant("g1");
+  g1.actor.items = [{ name: "Breath", system: { uses: { spent: 1, recovery: [{ period: "recharge" }], rollRecharge: async () => order.push("recharge g1") }, activities: [] } }];
+  await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), deps({ plans: { g1: emptyPlan } }));
+  assert.deepEqual(order.slice(0, 2), ["recharge g1", "clear g1"]);
+});
+
+test("a Sentinel hit on a moving member stops its movement; a hit by someone without Sentinel or on a standing member does nothing", async () => {
+  const g1 = combatant("g1"), g2 = combatant("g2");
+  const stopped = [];
+  for (const c of [g1, g2]) c.token.stopMovement = () => stopped.push(c.id);
+  const off = sentinelWatch([g1]); // only g1 moves
+  const fn = hookFns["midi-qol.RollComplete"];
+  assert.equal(typeof fn, "function");
+  fn({ actor: { items: [{ name: "Longsword" }] }, hitTargets: new Set([{ id: "tok-g1" }]) });
+  assert.deepEqual(stopped, []);
+  fn({ actor: { items: [{ name: "sentinel" }] }, hitTargets: new Set([{ document: { id: "tok-g2" } }]) });
+  assert.deepEqual(stopped, []);
+  fn({ actor: { items: [{ name: "Sentinel" }] }, hitTargets: new Set([{ id: "tok-g1" }]) });
+  assert.deepEqual(stopped, ["g1"]);
+  off();
+  assert.equal(hookFns["midi-qol.RollComplete"], undefined);
+});
+
+test("runTurn watches for Sentinel while the group moves and stops watching afterwards", async () => {
+  reset();
+  const g1 = combatant("g1");
+  let seen = null;
+  g1.token.move = async () => { order.push("move g1"); seen = typeof hookFns["midi-qol.RollComplete"]; return true; };
+  await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), deps({ plans: { g1: attackPlan() } }));
+  assert.equal(seen, "function");
+  assert.equal(hookFns["midi-qol.RollComplete"], undefined);
 });
