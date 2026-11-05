@@ -362,7 +362,7 @@ test("a Sentinel hit on a moving member stops its movement; a hit by someone wit
   const g1 = combatant("g1"), g2 = combatant("g2");
   const stopped = [];
   for (const c of [g1, g2]) c.token.stopMovement = () => stopped.push(c.id);
-  const off = sentinelWatch([g1]); // only g1 moves
+  const off = sentinelWatch([g1], { g1: boardFor(g1, [{ ...enemy("fighter"), sentinel: true }]) }); // only g1 moves, next to a Sentinel fighter
   const fn = hookFns["midi-qol.RollComplete"];
   assert.equal(typeof fn, "function");
   fn({ actor: { items: [{ name: "Longsword" }] }, hitTargets: new Set([{ id: "tok-g1" }]) });
@@ -379,8 +379,35 @@ test("runTurn watches for Sentinel while the group moves and stops watching afte
   reset();
   const g1 = combatant("g1");
   let seen = null;
-  g1.token.move = async () => { order.push("move g1"); seen = typeof hookFns["midi-qol.RollComplete"]; return true; };
+  g1.token.move = async () => { order.push("move g1"); seen = [typeof hookFns["midi-qol.RollComplete"], typeof hookFns["updateActor"]]; return true; };
   await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), deps({ plans: { g1: attackPlan() } }));
-  assert.equal(seen, "function");
+  assert.deepEqual(seen, ["function", "function"]);
   assert.equal(hookFns["midi-qol.RollComplete"], undefined);
+  assert.equal(hookFns["updateActor"], undefined);
+});
+
+test("a Sentinel wielder next to the mover hits it on the player's client: the GM sees the hit points drop and stops the monster; no Sentinel nearby or no drop means no stop", async () => {
+  const g1 = combatant("g1"), g2 = combatant("g2");
+  g1.actor = { ...g1.actor, id: "act-g1", system: { attributes: { hp: { value: 7 } } } };
+  g2.actor = { ...g2.actor, id: "act-g2", system: { attributes: { hp: { value: 7 } } } };
+  const stopped = [];
+  for (const c of [g1, g2]) c.token.stopMovement = () => stopped.push(c.id);
+  const boards = { g1: boardFor(g1, [{ ...enemy("fighter"), sentinel: true, distance: 5 }]), g2: boardFor(g2, [{ ...enemy("rogue"), sentinel: false, distance: 5 }]) };
+  const off = sentinelWatch([g1, g2], boards);
+  const fn = hookFns["updateActor"];
+  fn(g1.actor, { system: { attributes: { hp: { value: 7 } } } }); // no drop
+  fn(g2.actor, { system: { attributes: { hp: { value: 1 } } } }); // drop, but nobody with Sentinel next to g2
+  assert.deepEqual(stopped, []);
+  fn(g1.actor, { system: { attributes: { hp: { value: 2 } } } });
+  assert.deepEqual(stopped, ["g1"]);
+  off();
+});
+
+test("an area use sends covered allies to Midi too, mapped from the allies pool", async () => {
+  reset();
+  const g1 = combatant("g1");
+  const combat = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]);
+  const g2 = { id: "g2", uuid: "T.g2", name: "g2", cx: 550, cy: 50, w: 1, hp: 7, maxHp: 7, ac: 15, saves: {}, distance: 25, elevation: 0 };
+  await runTurn(combat, deps({ plans: { g1: { move: null, actions: [{ activityId: "fb", targetIds: ["rogue", "g2"] }], reason: "Fireball vs rogue (expected 10.0)" } }, allies: () => [g2] }));
+  assert.deepEqual(uses, [["fb", "T.rogue,T.g2"]]);
 });

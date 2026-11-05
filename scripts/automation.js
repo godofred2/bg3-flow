@@ -55,6 +55,7 @@ async function promptFriendOrFoe() {
  */
 export async function onPreTargeting({ workflow, usage }) {
   const activity = workflow?.activity;
+  if (usage?.midiOptions?.targetUuids?.length) return; // targets already decided (the autopilot's areas): nothing to ask
   if (!shouldPrompt({ choice: activity?.target?.affects?.choice, templateType: activity?.target?.template?.type })) return;
   // Midi forces its own confirmation dialog for "Allow choosing targets"; this is the documented way to skip it.
   workflow.workflowOptions.targetConfirmation = "none";

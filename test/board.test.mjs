@@ -209,6 +209,7 @@ test("activityInfo: Fireball sphere, breath cone from self, Cure Wounds heal, He
   assert.equal(activityInfo(act({ name: "Healing Word", type: "heal", activation: "bonus", parts: [["1d4 + 3", {}]], range: { value: 60, units: "ft" } })).slot, "bonus");
   assert.equal(activityInfo(act({ name: "Second Wind", type: "heal", activation: "bonus", parts: [["1d10", {}]], affects: "self" })).affects, "self");
   assert.equal(activityInfo(act({ name: "Spirit Guardians", type: "save", template: "radius", size: 15, affects: "self" })), null);
+  assert.equal(activityInfo(act({ name: "Wall of Fire", type: "save", template: "wall", size: 60 })), null); // a wall is not a blast
   assert.equal(activityInfo(act({ name: "Scimitar", type: "attack", item: { type: "weapon", range: { reach: 5 } } })).recharge, false);
 });
 
@@ -226,4 +227,13 @@ test("snapshot: grid, centres, allies with paths to the wounded ones, retreat sq
   // retreats: neighbours of (1,3) that keep 10 ft from the rogue at (1,4) and 10 ft from the wizard: column 2 only
   assert.deepEqual(b.retreats.map((r) => [r.x, r.y, r.cost, r.distances.rogue]).sort(), [[200, 0, 5, 10], [200, 100, 5, 10], [200, 200, 5, 10]]);
   assert.deepEqual(b.retreats[0].waypoints, [{ x: b.retreats[0].x, y: b.retreats[0].y, elevation: 0 }]);
+});
+
+test("snapshot: a downed ally is still an ally (a heal target), and enemies carry a Sentinel flag", async () => {
+  const goblin = token("goblin", { x: 300, y: 100, disposition: -1 }), down = token("goblin2", { x: 600, y: 100, disposition: -1, hp: 0, maxHp: 7 });
+  const fighter = token("fighter", { x: 400, y: 100, disposition: 1, items: [{ name: "Sentinel", type: "feat", system: { activities: [] } }] });
+  canvas.scene.tokens.contents = [goblin, down, fighter];
+  const b = await snapshot({ combatants: [goblin, down, fighter].map((t) => combatantOf(t)) }, combatantOf(goblin));
+  assert.deepEqual(b.allies.map((a) => [a.id, a.hp]), [["goblin", 10], ["goblin2", 0]]);
+  assert.deepEqual(b.enemies.map((e) => [e.id, e.sentinel]), [["fighter", true]]);
 });

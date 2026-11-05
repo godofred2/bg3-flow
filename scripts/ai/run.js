@@ -28,15 +28,28 @@ export async function rollRecharge(combatant) {
   }
 }
 
-/** While `movers` walk: a reaction hit by someone with Sentinel stops the hit monster where it is. Returns the unregister function. */
-export function sentinelWatch(movers) {
+/**
+ * While `movers` walk: a reaction hit by someone with Sentinel stops the hit monster where it is. Two routes, because Midi's
+ * hooks are client-local: the workflow when the GM rolled it, and a drop in the monster's hit points (documents replicate to
+ * every client) when it set off next to a Sentinel wielder. Returns the unregister function.
+ */
+export function sentinelWatch(movers, boards = {}) {
   const ids = new Map(movers.map((c) => [c.token.id, c]));
-  const fn = (workflow) => {
+  const onRoll = (workflow) => {
     if (![...(workflow?.actor?.items ?? [])].some((i) => String(i.name).trim().toLowerCase() === "sentinel")) return;
     for (const t of workflow.hitTargets ?? []) ids.get(t.document?.id ?? t.id)?.token.stopMovement?.();
   };
-  const id = Hooks.on("midi-qol.RollComplete", fn);
-  return () => Hooks.off("midi-qol.RollComplete", id);
+  const threatened = movers.filter((c) => (boards[c.id]?.enemies ?? []).some((e) => e.visible && e.distance <= 5 && e.sentinel)).map((c) => ({ c, hp: boards[c.id].me.hp }));
+  const onUpdate = (actor, changes) => {
+    const hp = changes?.system?.attributes?.hp?.value;
+    if (typeof hp !== "number") return;
+    const m = threatened.find((t) => t.c.actor === actor || (actor?.uuid && t.c.actor?.uuid === actor.uuid));
+    if (!m) return;
+    if (hp < m.hp) m.c.token.stopMovement?.();
+    m.hp = hp;
+  };
+  const a = Hooks.on("midi-qol.RollComplete", onRoll), b = Hooks.on("updateActor", onUpdate);
+  return () => { Hooks.off("midi-qol.RollComplete", a); Hooks.off("updateActor", b); };
 }
 
 /** GM dialog before a use: "execute", "skip" (also when closed) or "manual". */
@@ -81,10 +94,11 @@ export async function runTurn(combat, deps = {}) {
   try {
     for (const c of members) { try { await rollRecharge(c); } catch (err) { await failed(c, err); } }
     await Promise.all(members.map((c) => c.token.clearMovementHistory?.())); // piece 2 clears without awaiting: do it ourselves
-    const reserved = new Set(), plans = [];
+    const reserved = new Set(), plans = [], boards = {};
     for (const c of members) {
       try {
         const board = await snap(combat, c, reserved);
+        boards[c.id] = board;
         log(brief(board)); // what the planner saw: the first thing to read when a monster does something odd
         if (board.me.hp <= 0) continue; // down before its turn: nothing to play
         const p = plan(board);
@@ -95,7 +109,7 @@ export async function runTurn(combat, deps = {}) {
     if (stale()) return;
     const walk = (m) => (m.waypoints ?? [m]).map((w) => ({ x: w.x, y: w.y, elevation: w.elevation, action: "walk" }));
     const movers = plans.filter(([, p]) => p.move).map(([c]) => c);
-    const unwatch = sentinelWatch(movers);
+    const unwatch = sentinelWatch(movers, boards);
     try {
       await Promise.all(plans.map(([c, p]) => p.move && c.token.move(walk(p.move), { autoRotate: true, showRuler: false, bg3Autopilot: true })));
       await Promise.all(plans.map(([c, p]) => p.move && arrive(c.token, { poll })));
@@ -107,8 +121,9 @@ export async function runTurn(combat, deps = {}) {
         if (stale()) return null;
         const activity = board.activities.find((x) => x.id === a.activityId);
         if (!activity) continue;
-        const live = (t) => t && t.hp > 0 && (activity.kind === "heal" || t.visible);
-        const pool = activity.kind === "heal" ? board.allies ?? [] : board.enemies;
+        const allies = board.allies ?? [];
+        const live = (t) => t && (allies.includes(t) ? activity.kind !== "heal" || t.hp < t.maxHp : t.hp > 0 && t.visible);
+        const pool = activity.kind === "heal" ? allies : activity.area ? [...board.enemies, ...allies] : board.enemies; // an area hits covered allies too
         let targets = (a.targetIds ?? []).map((id) => pool.find((t) => t.id === id)).filter(live);
         if (!targets.length) { const t = pick(board, activity, board.me)?.enemy; targets = t ? [t] : []; } // re-pick: the planned target died or vanished
         if (!targets.length) continue;

@@ -31,6 +31,7 @@ export function activityInfo(activity) {
   const affects = activity.target?.affects?.type ?? "", template = activity.target?.template;
   const area = template?.type ? { shape: template.type, size: Number(template.size) || 0, width: Number(template.width) || 5 } : null;
   if (affects === "self" && (activity.type !== "heal" || area)) return null; // self emanations (Spirit Guardians) are Midi regions, not uses
+  if (area && ["wall", "ring"].includes(area.shape)) return null; // not blasts
   if (spent(activity.item?.system?.uses) || spent(activity.uses)) return null;
   if (activity.requiresSpellSlot && !(activity.actor?.system?.spells?.[`spell${activity.item?.system?.level}`]?.value > 0)) return null;
   // dnd5e gives every item's default activity the same id (dnd5eactivity000) and Midi names it "Midi Attack": the uuid is the identity, the item the name.
@@ -152,21 +153,22 @@ export async function snapshot(combat, combatant, reserved = new Set()) {
   const creature = (t) => {
     const saves = Object.fromEntries(Object.entries(t.actor?.system?.abilities ?? {}).map(([k, a]) => [k, a?.save?.value ?? (typeof a?.save === "number" ? a.save : 0)]));
     const c = t.getCenterPoint();
-    return { id: t.id, uuid: t.uuid, name: t.name, x: t.x, y: t.y, elevation: t.elevation ?? 0, cx: c.x, cy: c.y, w: widthOf(t), hp: hpOf(t).value, maxHp: hpOf(t).max ?? hpOf(t).value, ac: t.actor?.system?.attributes?.ac?.value ?? 10, saves, distance: t === doc ? 0 : reachFt(myFoot, footOf(t)) };
+    const sentinel = [...(t.actor?.items ?? [])].some((i) => String(i.name).trim().toLowerCase() === "sentinel");
+    return { id: t.id, uuid: t.uuid, name: t.name, x: t.x, y: t.y, elevation: t.elevation ?? 0, cx: c.x, cy: c.y, w: widthOf(t), hp: hpOf(t).value, maxHp: hpOf(t).max ?? hpOf(t).value, ac: t.actor?.system?.attributes?.ac?.value ?? 10, saves, distance: t === doc ? 0 : reachFt(myFoot, footOf(t)), sentinel };
   };
   const me = { ...creature(doc), intelligence: actor?.system?.abilities?.int?.value ?? 10, hp: hpOf(doc).value ?? 0, maxHp: hpOf(doc).max ?? 0, budget };
   const enemies = [], allies = [me], paths = {}, tokensById = {};
   for (const c of combat.combatants) {
     const t = c.token;
-    if (!onScene(t) || t === doc || t.hidden || c.isDefeated || !((hpOf(t).value ?? 0) > 0)) continue;
+    if (!onScene(t) || t === doc || t.hidden || c.isDefeated) continue;
     tokensById[t.id] = t;
-    if ((t.disposition ?? 0) === mine) { // an ally: a path only when it is wounded (heals)
+    if ((t.disposition ?? 0) === mine) { // an ally, downed ones included (heals): a path only when it is wounded
       const a = creature(t);
       allies.push(a);
       if (a.hp < a.maxHp) paths[t.id] = await pathTo(doc, t, taken, budget);
       continue;
     }
-    if ((t.disposition ?? 0) * mine >= 0) continue; // neutral: nobody is its enemy
+    if ((t.disposition ?? 0) * mine >= 0 || !((hpOf(t).value ?? 0) > 0)) continue; // neutral: nobody is its enemy; downed: no target
     const e = { ...creature(t), visible: sees(doc, t) };
     enemies.push(e);
     if (e.visible) paths[t.id] = await pathTo(doc, t, taken, budget);

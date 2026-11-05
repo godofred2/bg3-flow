@@ -71,3 +71,12 @@ test("no choice flag: untouched", async () => {
   assert.equal(w.targets.size, 2);
   assert.equal(calls.setTargets, null);
 });
+
+test("no friend-or-foe prompt for a use whose targets are already fixed (the autopilot's areas)", async () => {
+  const w = { activity: { target: { affects: { choice: true }, template: { type: "sphere" } }, updateSource() {} }, workflowOptions: {} };
+  let prompted = false;
+  globalThis.foundry.applications.api.DialogV2.wait = async () => { prompted = true; return "enemies"; };
+  await onPreTargeting({ workflow: w, usage: { midiOptions: { targetUuids: ["T.rogue"] } } });
+  assert.equal(prompted, false);
+  assert.equal(w.bg3flowChoice, undefined);
+});

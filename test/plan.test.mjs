@@ -133,6 +133,9 @@ test("coverage: sphere by distance, cube by Chebyshev, cone by angle and length,
   assert.deepEqual(ids(coverage({ area: { shape: "sphere", size: 20 }, origin: c("m", 50, 50), aim: { cx: 450, cy: 50 }, creatures: all, grid })), ["a", "b", "c"]);
   assert.deepEqual(ids(coverage({ area: { shape: "cube", size: 10 }, origin: c("m", 50, 50), aim: { cx: 450, cy: 50 }, creatures: all, grid })), ["a"]);
   assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 30 }, origin: c("m", 50, 50), aim: { cx: 450, cy: 50 }, creatures: all, grid })), ["a", "b"]);
+  // cone and line lengths are grid distance, like reach: the Fighter one row off at the cone's full length is still inside
+  assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 15 }, origin: c("m", 150, 50), aim: { cx: 450, cy: 50 }, creatures: [c("rogue", 450, 50), c("fighter", 450, 150)], grid })), ["rogue", "fighter"]);
+  assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 15 }, origin: c("m", 50, 50), aim: { cx: 350, cy: 350 }, creatures: [c("diag", 350, 350)], grid })), ["diag"]); // 3 squares diagonally: 15 ft
   assert.deepEqual(ids(coverage({ area: { shape: "line", size: 60, width: 5 }, origin: c("m", 50, 50), aim: { cx: 450, cy: 50 }, creatures: all, grid })), ["a", "b", "d"]);
 });
 
@@ -147,6 +150,7 @@ test("an area aims at the enemy that covers the most, friendly fire subtracts, a
   const g = (id, x) => ({ id, name: id, cx: x, cy: 50, w: 1, ac: 15, saves: { dex: 1 }, hp: 7, maxHp: 7 });
   b.allies = [g("g2", 550)]; // a goblin between r1 and r2
   assert.ok(pickTarget(b, fireball).value < pickTarget({ ...b, allies: [] }, fireball).value); // worth less with the ally inside
+  assert.deepEqual(pickTarget(b, fireball).targets.map((t) => t.id), ["r1", "r2", "g2"]); // and the goblin is sent to Midi too: friendly fire is real
   b.enemies = [b.enemies[0]]; b.allies = [g("g2", 550), g("g3", 350)]; // one enemy, two allies in every blast that reaches it
   assert.equal(pickTarget(b, fireball), null);
 });
@@ -180,4 +184,30 @@ test("a clever archer next to an enemy steps back to a free square 10 ft away be
   const dumb = planTurn({ ...smart, me: { ...smart.me, intelligence: 3 } });
   assert.deepEqual([dumb.move, dumb.reason], [null, "Shortbow vs rogue (expected 1.3)"]);
   assert.equal(planTurn({ ...smart, retreats: [] }).move, null);
+});
+
+test("a breath weapon walks to the square whose cone covers the most, the caster counts itself from the firing square, the reason names the aim", () => {
+  const breath = { id: "br", uuid: "A.br", name: "Fire Breath", kind: "save", slot: "action", range: 15, dc: 13, saveAbility: "dex", onSave: "half", damage: 24, area: { shape: "cone", size: 15 }, affects: "" };
+  const e = (id, x, y, hp = 10) => ({ ...pc(id, 0, { hp }), cx: x, cy: y, w: 1, distance: Math.max(Math.abs(x - 50), Math.abs(y - 50)) / 20 });
+  const path = (xs) => xs.map((x, k) => ({ x: x - 50, y: 0, elevation: 0, cost: 5 * (k + 1), distance: (450 - x) / 20, occupied: false, waypoints: [{ x: x - 50, y: 0, elevation: 0 }] }));
+  // B1: Wyrmling at the left, Rogue 4 squares ahead on the row, Fighter beside the Rogue one row down. From the first square in range only the Rogue is in the cone; one square closer both are.
+  const b = { ...board({ enemies: [e("rogue", 450, 50), e("fighter", 450, 150)], activities: [breath] }), allies: [], grid: { px: 100, ft: 5 }, paths: { rogue: path([150, 250, 350]), fighter: path([150, 250, 350]) } };
+  b.me = { ...b.me, cx: 50, cy: 50, w: 1 };
+  const p = planTurn(b);
+  assert.deepEqual(p.actions[0].targetIds.sort(), ["fighter", "rogue"]);
+  assert.ok(p.reason.startsWith("Fire Breath vs rogue"));
+  // a self-centred burst next to the aim: the caster inside its own blast at the firing square counts against it (and is a target)
+  const burst = { ...breath, name: "Thunder Burst", area: { shape: "sphere", size: 10 }, range: 10 };
+  const one = { ...b, enemies: [e("rogue", 450, 50)], activities: [burst], allies: [{ ...b.me, id: "m", name: "Goblin", ac: 15, saves: { dex: 10 }, hp: 7, maxHp: 7 }] }; // a nimble caster: its own blast still costs less than it deals
+  const pick = pickTarget(one, burst);
+  assert.ok(pick.targets.some((t) => t.id === "m"));
+});
+
+test("a Multiattack from a retreat square counts its follow-up shots", () => {
+  const retreat = { x: 0, y: 100, elevation: 0, cost: 5, waypoints: [{ x: 0, y: 100, elevation: 0 }], distances: { rogue: 10 } };
+  const b = { ...board({ intelligence: 10, enemies: [pc("rogue", 5)], activities: [bow], multiattack: "The scout makes two attacks." }), retreats: [retreat] };
+  const p = planTurn(b);
+  assert.deepEqual(at(p.move), { x: 0, y: 100, elevation: 0 });
+  assert.equal(p.actions.length, 2);
+  assert.ok(p.reason.startsWith("Multiattack vs rogue (expected 5.0)"));
 });

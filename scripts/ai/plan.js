@@ -47,16 +47,18 @@ export function parseMultiattack(text, names) {
   return { count, names: out };
 }
 
-/** Creatures whose centre lies in an area: centred shapes around `aim`, cones and lines from `origin` toward `aim`. Pure geometry on centres. */
+/** Creatures whose centre lies in an area: centred shapes around `aim`, cones and lines from `origin` toward `aim`. Pure geometry on centres.
+ *  Cone and line lengths are grid distance (squares), like reach, so a breath aimed at a creature in reach always covers it. */
 export function coverage({ area, origin, aim, creatures, grid }) {
   const ft = (px) => px / grid.px * grid.ft;
   const dx = aim.cx - origin.cx, dy = aim.cy - origin.cy, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
   return creatures.filter((c) => {
     const extra = ((c.w ?? 1) - 1) * grid.ft / 2; // a Large creature's centre sits half a square further in
+    const vx = c.cx - origin.cx, vy = c.cy - origin.cy, squares = ft(Math.max(Math.abs(vx), Math.abs(vy)));
     switch (area.shape) {
       case "cube": case "square": return ft(Math.max(Math.abs(c.cx - aim.cx), Math.abs(c.cy - aim.cy))) <= area.size / 2 + extra;
-      case "cone": { const vx = c.cx - origin.cx, vy = c.cy - origin.cy, d = Math.hypot(vx, vy); if (d === 0 || ft(d) > area.size + extra) return false; return Math.acos((vx * ux + vy * uy) / d) <= 26.57 * Math.PI / 180; }
-      case "line": { const vx = c.cx - origin.cx, vy = c.cy - origin.cy, along = vx * ux + vy * uy; if (along <= 0 || ft(along) > area.size + extra) return false; return ft(Math.abs(vx * uy - vy * ux)) <= (area.width || 5) / 2 + extra; }
+      case "cone": { const d = Math.hypot(vx, vy); if (d === 0 || squares > area.size + extra) return false; return Math.acos(Math.min(1, (vx * ux + vy * uy) / d)) <= 26.57 * Math.PI / 180; }
+      case "line": { const along = vx * ux + vy * uy; if (along <= 0 || squares > area.size + extra) return false; return ft(Math.abs(vx * uy - vy * ux)) <= (area.width || 5) / 2 + extra; }
       default: return ft(Math.hypot(c.cx - aim.cx, c.cy - aim.cy)) <= area.size + extra; // sphere, cylinder, circle, radius
     }
   });
@@ -71,7 +73,19 @@ const byValue = (a, b) => b.value - a.value;
  *  ponytail: a square is only known along the paths that cross it; good enough for a Multiattack's follow-up attacks. */
 function distanceFrom(board, from, enemy) {
   if (!from || from === board.me) return enemy.distance;
+  if (from.distances) return from.distances[enemy.id] ?? Infinity; // a retreat square knows every enemy
   return (board.paths[enemy.id] ?? []).find((s) => s.x === from.x && s.y === from.y)?.distance ?? Infinity;
+}
+
+/** An area aimed at `enemy` from `square` (null: where the monster stands): everyone covered, value = enemies minus allies (the monster at the firing square). */
+function areaFrom(board, activity, enemy, square) {
+  const half = (board.me.w ?? 1) * board.grid.px / 2;
+  const origin = square ? { cx: square.x + half, cy: square.y + half } : board.me;
+  const live = board.enemies.filter((e) => e.hp > 0 && e.visible);
+  const allies = (board.allies ?? []).map((a) => a.id === board.me.id ? { ...a, cx: origin.cx, cy: origin.cy } : a);
+  const hit = coverage({ area: activity.area, origin, aim: enemy, creatures: [...live, ...allies], grid: board.grid });
+  const value = hit.reduce((s, c) => s + (live.includes(c) ? 1 : -1) * expectedValue(activity, c), 0);
+  return { square, value, targets: hit };
 }
 
 /** Who a heal may target: wounded allies, or only the monster itself (with the board's own hit points) for self heals. */
@@ -89,22 +103,22 @@ export function pickTarget(board, activity, from = null) {
   for (const enemy of heal ? healPool(board, activity) : board.enemies) {
     if (heal ? enemy.hp >= enemy.maxHp : (!enemy.visible || enemy.hp <= 0)) continue;
     let square = null;
+    const reachable = (board.paths[enemy.id] ?? []).filter((s) => s.distance <= activity.range && s.cost <= board.me.budget && !s.occupied && !board.reserved.has(key(s)));
     if (from) { if (distanceFrom(board, from, enemy) > activity.range) continue; }
     else if (enemy.distance > activity.range) {
-      square = (board.paths[enemy.id] ?? []).find((s) => s.distance <= activity.range && s.cost <= board.me.budget && !s.occupied && !board.reserved.has(key(s)));
+      square = reachable[0];
       if (!square) continue;
     }
     // A ranged attack within 5 ft of its target is at disadvantage (5e); ponytail: only the target counts, not other adjacent enemies.
     const near = (square ? square.distance : from ? distanceFrom(board, from, enemy) : enemy.distance) <= 5;
     let value, targets = [enemy];
     if (activity.area) {
-      // Aim at this enemy: everyone covered counts, allies (the monster included) against.
-      const origin = square ? { cx: square.x + (board.me.w ?? 1) * board.grid.px / 2, cy: square.y + (board.me.w ?? 1) * board.grid.px / 2 } : board.me;
-      const live = board.enemies.filter((e) => e.hp > 0 && e.visible);
-      const hit = coverage({ area: activity.area, origin, aim: enemy, creatures: [...live, ...(board.allies ?? [])], grid: board.grid });
-      targets = hit.filter((c) => live.includes(c));
-      value = targets.reduce((s, c) => s + expectedValue(activity, c), 0) - hit.filter((c) => !live.includes(c)).reduce((s, c) => s + expectedValue(activity, c), 0);
-      if (value <= 0) continue;
+      // Aim at this enemy from every square in range (or from here): the firing square that covers the most wins.
+      const candidates = from ? [null] : [...(enemy.distance <= activity.range ? [null] : []), ...reachable];
+      let best = null;
+      for (const s of candidates) { const r = areaFrom(board, activity, enemy, s); if (!best || r.value > best.value) best = r; }
+      if (!best || best.value <= 0) continue;
+      ({ square, value, targets } = best);
     } else {
       value = expectedValue(activity, enemy, { disadvantage: !!activity.ranged && near });
       // A clever archer next to an enemy looks at the free squares 10 ft from everyone before shooting.
@@ -132,7 +146,7 @@ export function planTurn(board, { slot = "action" } = {}) {
   const options = [];
   for (const a of actions) {
     const p = pickTarget(board, a);
-    if (p && p.value > 0) options.push({ name: a.name, value: p.value, square: p.square, actions: [{ activityId: a.id, targetIds: p.targets.map((t) => t.id) }] });
+    if (p && p.value > 0) options.push({ name: a.name, value: p.value, square: p.square, aimId: p.enemy.id, actions: [{ activityId: a.id, targetIds: p.targets.map((t) => t.id) }] });
   }
   if (board.multiattack && slot === "action") {
     const attacks = actions.filter((a) => a.kind === "attack");
@@ -152,7 +166,7 @@ export function planTurn(board, { slot = "action" } = {}) {
         const p = pickTarget(board, a, from);
         if (p) { value += p.value; acts.push({ activityId: a.id, targetIds: [p.enemy.id] }); }
       }
-      options.push({ name: "Multiattack", value, square: first.square, actions: acts });
+      options.push({ name: "Multiattack", value, square: first.square, aimId: first.enemy.id, actions: acts });
     }
   }
   options.sort(byValue);
@@ -160,7 +174,7 @@ export function planTurn(board, { slot = "action" } = {}) {
   if (options.length) {
     const [w, ...rest] = options;
     const also = rest.slice(0, 3).map((o) => `${o.name} ${o.value.toFixed(1)}`).join(", ");
-    return { move: w.square ? moveTo(w.square) : null, actions: w.actions, reason: `${w.name} vs ${nameOf(w.actions[0].targetIds[0])} (expected ${w.value.toFixed(1)})${also ? `; also: ${also}` : ""}` };
+    return { move: w.square ? moveTo(w.square) : null, actions: w.actions, reason: `${w.name} vs ${nameOf(w.aimId)} (expected ${w.value.toFixed(1)})${also ? `; also: ${also}` : ""}` };
   }
   if (slot !== "action") return { move: null, actions: [], reason: "no bonus action" };
   const visible = board.enemies.filter((e) => e.visible && e.hp > 0).sort((a, b) => a.distance - b.distance);
