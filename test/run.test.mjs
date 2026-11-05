@@ -326,25 +326,39 @@ test("useActivity: no configuration dialog, the target uuids, and no dnd5e templ
   assert.deepEqual(cfgs, [[{ uuid: "A.sc" }, { create: { measuredTemplate: false }, midiOptions: { targetUuids: ["T.rogue"], ignoreUserTargets: true } }, { configure: false }]]);
 });
 
-test("useActivity on an area places the template itself (cone from the caster toward the aim, sphere on the aim), hands its uuid to Midi and deletes an instantaneous one afterwards", async () => {
+test("useActivity on an area builds the template data itself (no dnd5e placement API: TemplatePlacement.fromActivity is interactive), hands the region uuid to Midi and deletes an instantaneous one afterwards", async () => {
   const cfgs = [], created = [], deleted = [];
-  const activity = { uuid: "A.br", duration: { units: "inst" } };
+  const activity = { uuid: "A.br", duration: { units: "inst" }, item: { uuid: "I.br", system: { level: 0 } }, actor: { uuid: "Ac.d" }, target: { template: { type: "cone", size: "15", width: "" } } };
   globalThis.MidiQOL = { completeActivityUse: async (a, cfg, dialog) => { cfgs.push(cfg); return {}; } };
-  globalThis.game.system = { canvas: { TemplatePlacement: { fromActivity: (a, opts) => [{ document: { toObject: () => ({ t: opts.t ?? "cone", distance: 15, ...opts }) } }] } } };
+  globalThis.game.user = { ...globalThis.game.user, id: "gm", color: "#ff0000" };
+  CONFIG.DND5E.areaTargetTypes = { cone: { template: "cone" }, sphere: { template: "circle" }, cube: { template: "rect" }, line: { template: "ray" }, radius: { template: "emanation" } };
+  CONFIG.MeasuredTemplate = { defaults: { angle: 53.13 } };
+  settings.gridAlignedSquareTemplates = true;
+  globalThis.canvas.dimensions = { size: 100, distance: 5 };
   globalThis.canvas.scene.createEmbeddedDocuments = async (type, [data]) => { created.push([type, data]); return [{ _id: "tpl1", uuid: "Scene.s.MeasuredTemplate.tpl1" }]; };
-  globalThis.canvas.scene.regions = { get: (id) => ({ uuid: `Scene.s.Region.${id}`, delete: async () => deleted.push(id) }) };
+  globalThis.canvas.scene.regions = { get: (id) => ({ uuid: `Scene.s.Region.${id}` }) };
   globalThis.fromUuidSync = (uuid) => uuid === "A.br" ? activity : uuid.includes("Region") ? { uuid, delete: async () => deleted.push(uuid) } : null;
-  await useActivity({ uuid: "A.br", area: { shape: "cone", size: 15 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 350 } });
-  assert.deepEqual([created[0][0], created[0][1].x, created[0][1].y, created[0][1].direction], ["MeasuredTemplate", 150, 50, 45]);
+  await useActivity({ uuid: "A.br", area: { shape: "cone", size: 15, width: 5 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 350 } });
+  const cone = created[0][1];
+  assert.deepEqual([created[0][0], cone.t, cone.x, cone.y, cone.direction, cone.distance, cone.angle, cone.flags.dnd5e.origin, cone.flags["midi-qol"].actorUuid], ["MeasuredTemplate", "cone", 150, 50, 45, 15, 53.13, "A.br", "Ac.d"]);
   assert.equal(cfgs[0].midiOptions.workflowOptions.templateUuid, "Scene.s.Region.tpl1");
   assert.deepEqual(deleted, ["Scene.s.Region.tpl1"]);
   created.length = 0;
-  await useActivity({ uuid: "A.br", area: { shape: "sphere", size: 20 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 350 } });
-  assert.deepEqual([created[0][1].x, created[0][1].y], [450, 350]);
+  activity.target.template = { type: "sphere", size: "20", width: "" };
+  await useActivity({ uuid: "A.br", area: { shape: "sphere", size: 20, width: 5 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 350 } });
+  assert.deepEqual([created[0][1].t, created[0][1].x, created[0][1].y, created[0][1].distance], ["circle", 450, 350, 20]);
+  created.length = 0;
+  activity.target.template = { type: "cube", size: "10", width: "" };
+  await useActivity({ uuid: "A.br", area: { shape: "cube", size: 10, width: 5 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 350 } });
+  assert.deepEqual([created[0][1].t, created[0][1].x, created[0][1].y, created[0][1].direction, Math.round(created[0][1].distance * 100) / 100, created[0][1].width], ["rect", 350, 250, 45, 14.14, 10]); // grid-aligned cube: from its corner, along the diagonal
+  created.length = 0;
+  activity.target.template = { type: "line", size: "60", width: "5" };
+  await useActivity({ uuid: "A.br", area: { shape: "line", size: 60, width: 5 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 50 } });
+  assert.deepEqual([created[0][1].t, created[0][1].x, created[0][1].direction, created[0][1].width], ["ray", 150, 0, 5]);
   activity.duration.units = "minute"; deleted.length = 0;
-  await useActivity({ uuid: "A.br", area: { shape: "sphere", size: 20 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 350 } });
+  await useActivity({ uuid: "A.br", area: { shape: "line", size: 60, width: 5 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 50 } });
   assert.deepEqual(deleted, []); // a lasting area keeps its template
-  delete globalThis.canvas.scene.createEmbeddedDocuments; delete globalThis.canvas.scene.regions; delete globalThis.game.system;
+  delete globalThis.canvas.scene.createEmbeddedDocuments; delete globalThis.canvas.scene.regions;
 });
 
 test("the bonus phase runs after the action from a fresh snapshot and whispers its own line", async () => {
@@ -445,4 +459,38 @@ test("a Sentinel hit that only burns temporary hit points still stops the mover"
   hookFns["updateActor"](g1.actor, { system: { attributes: { hp: { temp: 7 } } } });
   assert.deepEqual(stopped, ["g1"]);
   off();
+});
+
+test("a monster that did not move in the movement phase may still move when it acts (its heal target walked away)", async () => {
+  reset();
+  const g1 = combatant("g1");
+  const combat = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]);
+  let calls = 0;
+  const d = deps({ plans: {} });
+  d.plan = (board, opts) => { if (opts?.slot === "bonus") return { move: null, actions: [], reason: "no bonus action" }; calls++; return calls === 1 ? { move: null, actions: [], reason: "approach rogue" } : attackPlan(); }; // nothing from here at first, a move once it acts
+  await runTurn(combat, d);
+  assert.deepEqual(order, ["clear g1", "move g1", "use T.rogue"]);
+  assert.equal(combat.nextTurns, 1);
+});
+
+test("a monster that already moved acts from where it stands even if the fresh plan wants to walk on", async () => {
+  reset();
+  const g1 = combatant("g1");
+  const combat = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]);
+  const d = deps({ plans: { g1: attackPlan() } }); // the same plan with a move every time
+  await runTurn(combat, d);
+  assert.deepEqual(order.filter((o) => o.startsWith("move")), ["move g1"]);
+});
+
+test("after the move a token left off the grid (a reaction stopped it) is snapped to the square under its centre", async () => {
+  reset();
+  const g1 = combatant("g1");
+  const updates = [];
+  g1.token.x = 1090; g1.token.y = 400;
+  g1.token.getCenterPoint = () => ({ x: 1140, y: 450 });
+  g1.token.update = async (u) => updates.push(u);
+  globalThis.canvas.grid = { getOffset: (p) => ({ i: Math.floor(p.y / 100), j: Math.floor(p.x / 100) }), getTopLeftPoint: (o) => ({ x: o.j * 100, y: o.i * 100 }) };
+  await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), deps({ plans: { g1: attackPlan() } }));
+  assert.deepEqual(updates, [{ x: 1100, y: 400 }]);
+  delete globalThis.canvas.grid;
 });

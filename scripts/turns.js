@@ -59,7 +59,8 @@ export async function onCombatTurnChange(combat, prior, current) {
     await c.token?.clearMovementHistory?.();
     if (isDash(c)) await c.unsetFlag(MODULE_ID, "dash");
   }
-  await ChatMessage.create({ content: L("Turns.Shared", { names: members.map((c) => c.token?.name ?? c.name).join(", ") }) });
+  const shown = members.filter((c) => !c.token?.hidden); // a GM-hidden token gives nothing away in the public line
+  if (shown.length) await ChatMessage.create({ content: L("Turns.Shared", { names: shown.map((c) => c.token?.name ?? c.name).join(", ") }) });
 }
 
 /** preMoveToken (initiating client): veto off-turn moves and moves beyond the speed budget. */

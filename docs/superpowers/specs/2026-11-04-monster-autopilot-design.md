@@ -233,3 +233,11 @@ Midi does the rest).
 - A clever archer steps back on a tie between shooting from 10 ft and swinging adjacent (archers keep their distance).
 - Sentinel stop also watches temporary hit points.
 - Reach circles (piece 2) show for every active token the user can see; the GM sees them all.
+
+## Amendment 2026-11-05 (v0.7.1 server run, fixed in v0.7.2)
+
+- dnd5e 6's `TemplatePlacement.fromActivity` is an interactive preview (and `AbilityTemplate.fromActivity` is deprecated): the autopilot builds the template data itself (shape from `CONFIG.DND5E.areaTargetTypes`, size, direction, cone angle, ray width, dnd5e origin flags) and creates the document directly.
+- A monster that stayed put during the group's movement phase keeps its budget and may still walk when it acts (its touch-heal target may have walked off with the group).
+- A token a reaction left between squares is snapped to the square under its centre after the move.
+- The public shared-turn line leaves GM-hidden tokens out.
+- Deferred: a one-square step out of reach finishes before Gambit's prompt opens, so the archer may shoot before the opportunity attack resolves; no GM-side signal of a pending player prompt exists.

@@ -231,3 +231,15 @@ test("every active token the user can see gets a circle, selected or not; the GM
   globalThis.canvas = null; game.user.isGM = false;
 });
 
+
+test("the shared-turn chat line leaves GM-hidden tokens out", async () => {
+  calls.chat = [];
+  game.users = { activeGM: { isSelf: true } };
+  const hiddenGoblin = combatant("g2", -1); hiddenGoblin.token.hidden = true; hiddenGoblin.token.name = "Goblin 2";
+  const goblin = combatant("g1", -1); goblin.token.name = "Goblin 1";
+  const c = combat([goblin, hiddenGoblin], 0);
+  c.started = true;
+  await onCombatTurnChange(c, { round: 0, turn: null }, { round: 1, turn: 0 });
+  assert.ok(calls.chat[0].content.includes("Goblin 1"));
+  assert.ok(!calls.chat[0].content.includes("Goblin 2"));
+});

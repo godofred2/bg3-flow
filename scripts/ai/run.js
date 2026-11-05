@@ -13,25 +13,41 @@ export const isAuto = (c) => c.getFlag(MODULE_ID, "autopilot") !== false && !c.a
 
 /**
  * Place an area's template where the planner aimed it (a cone or line from the caster toward the aim, anything else centred on
- * the aim), the way Midi places its own emanations. Returns the document Midi should use (a Region in Foundry 14), or null.
+ * the aim). The data is built here the way dnd5e's own placement builds it: dnd5e 6's TemplatePlacement.fromActivity is an
+ * interactive preview and must not be called. Returns the document Midi should use (a Region in Foundry 14), or null.
  */
 async function placeArea(activity, info, { origin, aim }) {
-  const factory = game.system?.canvas?.TemplatePlacement ?? game.system?.canvas?.AbilityTemplate;
-  if (!factory?.fromActivity) return null;
+  const kind = CONFIG.DND5E?.areaTargetTypes?.[info.area.shape]?.template;
+  if (!kind) return null;
+  const tpl = activity.target?.template ?? {};
   const fromCaster = ["cone", "line"].includes(info.area.shape);
-  const direction = Math.atan2(aim.cy - origin.cy, aim.cx - origin.cx) * 180 / Math.PI;
-  const [tpl] = [].concat(factory.fromActivity(activity, { x: fromCaster ? origin.cx : aim.cx, y: fromCaster ? origin.cy : aim.cy, direction: fromCaster ? direction : 0 }) ?? []);
-  if (!tpl) return null;
-  const data = tpl.document.toObject();
-  if (["cube", "square"].includes(info.area.shape)) { // dnd5e draws cubes from a corner: a rotated rect, or a ray as wide as it is long
-    const half = info.area.size / canvas.dimensions.distance * canvas.dimensions.size / 2;
-    data.x = aim.cx - half;
-    data.y = data.t === "ray" ? aim.cy : aim.cy - half;
-    data.direction = data.t === "ray" ? 0 : 45;
-  }
-  data.flags = { ...data.flags, "midi-qol": { ...data.flags?.["midi-qol"], actorUuid: activity.actor?.uuid, itemUuid: activity.item?.uuid } };
+  const size = info.area.size, half = size / canvas.dimensions.distance * canvas.dimensions.size / 2;
+  const data = {
+    t: kind === "emanation" ? "circle" : kind, user: game.user.id, distance: size,
+    direction: fromCaster ? Math.atan2(aim.cy - origin.cy, aim.cx - origin.cx) * 180 / Math.PI : 0,
+    x: fromCaster ? origin.cx : aim.cx, y: fromCaster ? origin.cy : aim.cy, fillColor: game.user.color,
+    flags: {
+      dnd5e: { dimensions: { size, width: tpl.width, height: tpl.height }, item: activity.item?.uuid, origin: activity.uuid, spellLevel: activity.item?.system?.level },
+      "midi-qol": { actorUuid: activity.actor?.uuid, itemUuid: activity.item?.uuid }
+    }
+  };
+  if (data.t === "cone") data.angle = CONFIG.MeasuredTemplate?.defaults?.angle ?? 53.13;
+  if (data.t === "rect") { // dnd5e draws cubes from a corner: along the diagonal when grid-aligned, else as a ray as wide as it is long
+    data.width = size;
+    if (game.settings.get("dnd5e", "gridAlignedSquareTemplates")) { data.distance = Math.hypot(size, size); data.direction = 45; data.x = aim.cx - half; data.y = aim.cy - half; }
+    else { data.t = "ray"; data.direction = 0; data.x = aim.cx - half; data.y = aim.cy; }
+  } else if (data.t === "ray") data.width = info.area.width || canvas.dimensions.distance;
   const [td] = await canvas.scene.createEmbeddedDocuments("MeasuredTemplate", [data]);
   return canvas.scene.regions?.get?.(td._id ?? td.id) ?? td;
+}
+
+/** A reaction may leave a token between squares: put it on the square under its centre. */
+async function snapToGrid(doc) {
+  const g = canvas.grid;
+  if (!g?.getOffset || typeof doc.x !== "number" || !doc.update) return;
+  const half = (g.size ?? canvas.dimensions?.size ?? 0) / 2;
+  const tl = g.getTopLeftPoint(g.getOffset({ x: doc.x + half, y: doc.y + half }));
+  if (Math.abs(tl.x - doc.x) > 1 || Math.abs(tl.y - doc.y) > 1) await doc.update({ x: tl.x, y: tl.y });
 }
 
 /**
@@ -140,12 +156,17 @@ export async function runTurn(combat, deps = {}) {
     }
     if (stale()) return;
     const walk = (m) => (m.waypoints ?? [m]).map((w) => ({ x: w.x, y: w.y, elevation: w.elevation, action: "walk" }));
-    const movers = plans.filter(([, p]) => p.move).map(([c]) => c);
-    const unwatch = sentinelWatch(movers, boards);
-    try {
-      await Promise.all(plans.map(([c, p]) => p.move && c.token.move(walk(p.move), { autoRotate: true, showRuler: false, bg3Autopilot: true })));
-      await Promise.all(plans.map(([c, p]) => p.move && arrive(c.token, { poll })));
-    } finally { unwatch(); }
+    const moveAll = async (list) => { // [combatant, plan] pairs: move together, wait for every sprite, snap what a reaction left between squares
+      const movers = list.filter(([, p]) => p.move).map(([c]) => c);
+      if (!movers.length) return;
+      const unwatch = sentinelWatch(movers, boards);
+      try {
+        await Promise.all(list.map(([c, p]) => p.move && c.token.move(walk(p.move), { autoRotate: true, showRuler: false, bg3Autopilot: true })));
+        await Promise.all(list.map(([c, p]) => p.move && arrive(c.token, { poll })));
+      } finally { unwatch(); }
+      for (const c of movers) await snapToGrid(c.token);
+    };
+    await moveAll(plans);
     // Run one plan's uses from where the monster stands. Returns false when the GM took the monster over.
     const act = async (c, board, p) => {
       await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason }));
@@ -172,11 +193,15 @@ export async function runTurn(combat, deps = {}) {
       }
       return true;
     };
-    for (const [c] of plans) {
+    for (const [c, first] of plans) {
       if (stale()) return;
       try {
-        const board = await snap(combat, c, reserved);
+        let board = await snap(combat, c, reserved);
         if (board.me.hp <= 0) continue; // dropped on the way (an opportunity attack): no action
+        if (!first.move) { // it stayed put while the others moved: the board changed under it (an ally walked off), so it may still walk now
+          const again = plan(board);
+          if (again.move) { boards[c.id] = board; await moveAll([[c, again]]); if (stale()) return; board = await snap(combat, c, reserved); if (board.me.hp <= 0) continue; }
+        }
         const still = { ...board, me: { ...board.me, budget: 0 } }; // act from where it stands: a move that fell short never fires out of reach
         const done = await act(c, still, plan(still));
         if (done === null) return;
