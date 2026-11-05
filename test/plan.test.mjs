@@ -76,16 +76,16 @@ test("planTurn: best expected value wins, reason lists the alternatives", () => 
   const p = planTurn(b);
   assert.deepEqual(at(p.move), { x: 400, y: 0, elevation: 0 });
   assert.deepEqual(p.move.waypoints, [{ x: 400, y: 0, elevation: 0 }]); // the square's own route
-  assert.deepEqual(p.actions, [{ activityId: "sc", targetId: "rogue" }]);
+  assert.deepEqual(p.actions, [{ activityId: "sc", targetIds: ["rogue"] }]);
   assert.equal(p.reason, "Scimitar vs rogue (expected 2.5); also: Shortbow 2.0");
 });
 
 test("planTurn: Multiattack sums the named attacks, repeats the best when unnamed", () => {
   const bite = { ...scimitar, id: "bi", name: "Bite", damage: 3 }, spear = { ...scimitar, id: "sp", name: "Spear", damage: 4 };
   const b = board({ enemies: [pc("rogue", 5)], activities: [bite, spear], multiattack: "The gnoll makes two attacks: one with its bite and one with its spear." });
-  assert.deepEqual(planTurn(b).actions, [{ activityId: "bi", targetId: "rogue" }, { activityId: "sp", targetId: "rogue" }]);
+  assert.deepEqual(planTurn(b).actions, [{ activityId: "bi", targetIds: ["rogue"] }, { activityId: "sp", targetIds: ["rogue"] }]);
   const two = board({ enemies: [pc("rogue", 5)], activities: [bite, spear], multiattack: "The veteran makes two attacks." });
-  assert.deepEqual(planTurn(two).actions, [{ activityId: "sp", targetId: "rogue" }, { activityId: "sp", targetId: "rogue" }]);
+  assert.deepEqual(planTurn(two).actions, [{ activityId: "sp", targetIds: ["rogue"] }, { activityId: "sp", targetIds: ["rogue"] }]);
 });
 
 test("planTurn: nothing in range walks the budget toward the nearest visible enemy, nobody visible stays", () => {
@@ -122,4 +122,31 @@ test("a ranged attack next to its target has disadvantage: the scimitar wins whe
   assert.equal(planTurn(far).reason, "Shortbow vs rogue (expected 2.5)");
   const walkIn = board({ enemies: [pc("rogue", 25)], activities: [bow], paths: { rogue: [sq(400, 20, 5)] } });
   assert.equal(pickTarget(walkIn, bow).square, null); // shoots from here rather than walking into melee
+});
+
+const { coverage } = await import("../scripts/ai/plan.js");
+const grid = { px: 100, ft: 5 };
+const c = (id, x, y, w = 1) => ({ id, cx: x, cy: y, w });
+test("coverage: sphere by distance, cube by Chebyshev, cone by angle and length, line by width and length", () => {
+  const all = [c("a", 450, 50), c("b", 650, 50), c("c", 450, 450), c("d", 1050, 50), c("e", 1050, 350)];
+  const ids = (r) => r.map((x) => x.id);
+  assert.deepEqual(ids(coverage({ area: { shape: "sphere", size: 20 }, origin: c("m", 50, 50), aim: { cx: 450, cy: 50 }, creatures: all, grid })), ["a", "b", "c"]);
+  assert.deepEqual(ids(coverage({ area: { shape: "cube", size: 10 }, origin: c("m", 50, 50), aim: { cx: 450, cy: 50 }, creatures: all, grid })), ["a"]);
+  assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 30 }, origin: c("m", 50, 50), aim: { cx: 450, cy: 50 }, creatures: all, grid })), ["a", "b"]);
+  assert.deepEqual(ids(coverage({ area: { shape: "line", size: 60, width: 5 }, origin: c("m", 50, 50), aim: { cx: 450, cy: 50 }, creatures: all, grid })), ["a", "b", "d"]);
+});
+
+test("an area aims at the enemy that covers the most, friendly fire subtracts, allies-only blasts are dropped", () => {
+  const fireball = { id: "fb", uuid: "A.fb", name: "Fireball", kind: "save", slot: "action", range: 150, dc: 13, saveAbility: "dex", onSave: "half", damage: 28, area: { shape: "sphere", size: 20 }, affects: "creature" };
+  const e = (id, x, y, hp = 10) => ({ ...pc(id, 30, { hp }), cx: x, cy: y, w: 1 });
+  const b = { ...board({ enemies: [e("r1", 450, 50), e("r2", 650, 50), e("r3", 1450, 50)], activities: [fireball] }), allies: [], grid };
+  b.me = { ...b.me, cx: 50, cy: 50, w: 1 };
+  const p = planTurn(b);
+  assert.deepEqual(p.actions, [{ activityId: "fb", targetIds: ["r1", "r2"] }]);
+  assert.equal(p.move, null);
+  const g = (id, x) => ({ id, name: id, cx: x, cy: 50, w: 1, ac: 15, saves: { dex: 1 }, hp: 7, maxHp: 7 });
+  b.allies = [g("g2", 550)]; // a goblin between r1 and r2
+  assert.ok(pickTarget(b, fireball).value < pickTarget({ ...b, allies: [] }, fireball).value); // worth less with the ally inside
+  b.enemies = [b.enemies[0]]; b.allies = [g("g2", 550), g("g3", 350)]; // one enemy, two allies in every blast that reaches it
+  assert.equal(pickTarget(b, fireball), null);
 });

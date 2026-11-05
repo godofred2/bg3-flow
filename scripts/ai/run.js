@@ -85,7 +85,7 @@ export async function runTurn(combat, deps = {}) {
           if (stale()) return;
           const activity = board.activities.find((x) => x.id === a.activityId);
           if (!activity) continue;
-          let target = board.enemies.find((e) => e.id === a.targetId);
+          let target = board.enemies.find((e) => e.id === (a.targetIds?.[0] ?? a.targetId));
           if (!target || target.hp <= 0 || !target.visible) target = pick(board, activity, board.me)?.enemy; // re-pick: the planned target died or vanished
           if (!target) continue;
           if (game.settings.get(MODULE_ID, "pauseBeforeAttack")) {

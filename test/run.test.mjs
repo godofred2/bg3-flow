@@ -36,7 +36,7 @@ function makeCombat(turns, turn = 0) {
 const sc = { id: "sc", uuid: "A.sc", name: "Scimitar", kind: "attack", slot: "action", range: 5, bonus: 4, damage: 5 };
 const enemy = (id, hp = 10, visible = true) => ({ id, uuid: `T.${id}`, name: id, hp, maxHp: 10, ac: 15, saves: {}, distance: 5, visible });
 const boardFor = (c, enemies) => ({ me: { id: c.id, name: c.id, intelligence: 10, hp: 7, maxHp: 7, x: 0, y: 0, elevation: 0, budget: 30 }, enemies, activities: [sc], multiattack: null, paths: {}, reserved: new Set(), threshold: 6 });
-const attackPlan = (target = "rogue", n = 1) => ({ move: { x: 400, y: 0, elevation: 0, waypoints: [{ x: 200, y: 0, elevation: 0 }, { x: 400, y: 0, elevation: 0 }] }, actions: Array(n).fill({ activityId: "sc", targetId: target }), reason: `Scimitar vs ${target} (expected 2.5)` });
+const attackPlan = (target = "rogue", n = 1) => ({ move: { x: 400, y: 0, elevation: 0, waypoints: [{ x: 200, y: 0, elevation: 0 }, { x: 400, y: 0, elevation: 0 }] }, actions: Array(n).fill({ activityId: "sc", targetIds: [target] }), reason: `Scimitar vs ${target} (expected 2.5)` });
 const approachPlan = { move: { x: 200, y: 0, elevation: 0 }, actions: [], reason: "approach rogue" };
 const emptyPlan = { move: null, actions: [], reason: "no visible enemy" };
 function deps({ plans, enemies = () => [enemy("rogue")], use, pause } = {}) {
