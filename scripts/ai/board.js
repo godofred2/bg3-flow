@@ -55,6 +55,21 @@ function footprint(o, w, h) {
 const tlOffset = (t) => canvas.grid.getOffset({ x: t.x, y: t.y });
 const chebyshev = (a, b) => Math.max(Math.abs(a.i - b.i), Math.abs(a.j - b.j));
 const parse = (k) => { const [i, j] = k.split(",").map(Number); return { i, j }; };
+/** Top-left offsets from which a w x h mover touches the enemy's footprint without overlapping anyone. */
+function goalsAround(enemyFoot, w, h, taken, start) {
+  const cells = [...enemyFoot].map(parse);
+  const is = cells.map((c) => c.i), js = cells.map((c) => c.j);
+  const out = [];
+  for (let i = Math.min(...is) - h; i <= Math.max(...is) + 1; i++) for (let j = Math.min(...js) - w; j <= Math.max(...js) + 1; j++) {
+    if (i === start.i && j === start.j) continue;
+    const tl = canvas.grid.getTopLeftPoint({ i, j }), r = canvas.dimensions.sceneRect;
+    if (r && (tl.x < r.x || tl.y < r.y || tl.x >= r.x + r.width || tl.y >= r.y + r.height)) continue; // off the scene
+    const foot = footprint({ i, j }, w, h);
+    if (foot.some((k) => enemyFoot.has(k) || taken.has(k))) continue;
+    if (foot.some((k) => cells.some((c) => chebyshev(parse(k), c) === 1))) out.push({ i, j });
+  }
+  return out;
+}
 /** Distance between two footprints in scene units: the fewest squares between any two of their squares (5/5/5, like reach at the table).
  *  measurePath would snap a Large token's centre (a grid vertex) to a whole square and put a diagonal neighbour out of reach. */
 function reachFt(footA, footB) {
@@ -72,9 +87,19 @@ const footOf = (t) => footprint(tlOffset(t), widthOf(t), Math.max(1, Math.round(
 async function pathTo(me, enemy, taken, budget) {
   const w = widthOf(me), h = Math.max(1, Math.round(me.height ?? 1));
   const wps = [{ x: me.x, y: me.y, elevation: me.elevation }, { x: enemy.x, y: enemy.y, elevation: enemy.elevation }];
-  const found = (await me.object?.findMovementPath?.(wps)?.promise) ?? wps;
-  const offsets = canvas.grid.getDirectPath((found.length ? found : wps).map((p) => ({ x: p.x, y: p.y })));
   const start = tlOffset(me), enemyFoot = new Set(footOf(enemy));
+  const find = async (goal) => (await me.object?.findMovementPath?.([wps[0], goal])?.promise) ?? null;
+  let found = await find(wps[1]);
+  if (!found || found.length < 2) {
+    // The enemy's own square is no goal for a Large mover, or something stands in the only corridor: route to the free squares touching the enemy instead.
+    const tries = await Promise.all(goalsAround(enemyFoot, w, h, taken, start).map(async (o) => {
+      const tl = canvas.grid.getTopLeftPoint(o);
+      const p = await find({ x: tl.x, y: tl.y, elevation: me.elevation });
+      return p && p.length >= 2 ? { p, cost: canvas.grid.measurePath(p.map((q) => me.getCenterPoint(q))).distance } : null;
+    }));
+    found = tries.filter(Boolean).sort((a, b) => a.cost - b.cost)[0]?.p ?? wps;
+  }
+  const offsets = canvas.grid.getDirectPath(found.map((p) => ({ x: p.x, y: p.y })));
   const overlapsEnemy = (o) => footprint(o, w, h).some((k) => enemyFoot.has(k));
   const main = offsets.filter((o) => !(o.i === start.i && o.j === start.j) && !overlapsEnemy(o));
   const last = main.at(-1);

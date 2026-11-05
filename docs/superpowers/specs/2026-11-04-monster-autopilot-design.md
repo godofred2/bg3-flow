@@ -219,3 +219,8 @@ Midi does the rest).
 - A monster at 0 hit points (an opportunity attack on the way) plays nothing more.
 - A ranged attack within 5 ft of its target counts its disadvantage (hit chance squared), which also settles the Scimitar/Shortbow tie next to the target.
 - One `[bg3-flow]` console line per monster turn with the board the planner saw (activities, enemies, distances, path lengths): the Ogre's "approach" with a touching square could not be explained from the compendium data, so the next run reports that line.
+
+## Amendment 2026-11-05 (v0.6.2 server run, fixed in v0.6.3)
+
+- Foundry's pathfinder returns only the start when the goal cannot be reached, and the enemy's own square is never a reachable goal for a Large mover (nor for anyone when an ally fills the only corridor): the board then path-finds to every free square touching the enemy and keeps the shortest route. The Ogre's `path0` came from this.
+- Thrown weapons keep counting as melee (the Javelin shows reach 5); deferred.

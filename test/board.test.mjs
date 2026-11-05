@@ -24,7 +24,7 @@ globalThis.CONFIG = {
   Canvas: { polygonBackends: { sight: { testCollision: (a, b) => b.y > 300 } } }
 };
 globalThis.canvas = {
-  ready: true, dimensions: { size: SIZE, distance: FT },
+  ready: true, dimensions: { size: SIZE, distance: FT, sceneRect: { x: 0, y: 0, width: 3000, height: 3000 } },
   scene: { id: "scene", tokens: { contents: [] }, environment: { globalLight: { enabled: false } } },
   effects: { getDarknessLevel: () => 0, testInsideLight: () => false, testInsideDarkness: () => false },
   grid: {
@@ -37,7 +37,7 @@ globalThis.canvas = {
       for (let k = 1; k < points.length; k++) {
         const a = off(points[k - 1]), b = off(points[k]);
         const n = Math.max(Math.abs(b.i - a.i), Math.abs(b.j - a.j));
-        for (let s = k === 1 ? 0 : 1; s <= n; s++) out.push({ i: a.i + Math.sign(b.i - a.i) * s, j: a.j + Math.sign(b.j - a.j) * s });
+        for (let s = k === 1 ? 0 : 1; s <= n; s++) out.push({ i: a.i + Math.round((b.i - a.i) * s / n), j: a.j + Math.round((b.j - a.j) * s / n) });
       }
       return out;
     },
@@ -72,7 +72,8 @@ function token(id, { x, y = 0, disposition, hp = 10, maxHp = 10, ac = 15, int = 
     flags: { "bg3-flow": flags }, getFlag: (m, k) => doc.flags[m]?.[k],
     getCenterPoint: (d) => ({ x: (d?.x ?? doc.x) + width * SIZE / 2, y: (d?.y ?? doc.y) + width * SIZE / 2 }),
     movementHistory: spent ? [{ cost: spent }] : [],
-    object: { findMovementPath: (wps) => ({ promise: Promise.resolve(wps) }) }
+    // Foundry returns only the start when the goal cannot be reached; this stub cannot squeeze a Large mover past a token on the same row.
+    object: { findMovementPath: (wps) => { const blocked = width > 1 && wps[0].y === wps[1].y && canvas.scene.tokens.contents.some((t) => t !== doc && t.y === wps[0].y && t.x > Math.min(wps[0].x, wps[1].x) && t.x < Math.max(wps[0].x, wps[1].x)); return { promise: Promise.resolve(blocked ? [wps[0]] : wps) }; } }
   };
   doc.actor = {
     name: id, items, hasPlayerOwner: disposition > 0,
@@ -179,7 +180,20 @@ test("snapshot: a Large monster reaches a Medium enemy from a diagonal square (r
   const fighter = token("fighter", { x: 500, y: 0, disposition: 1 });
   canvas.scene.tokens.contents = [ogre, rogue, fighter];
   const b = await snapshot({ combatants: [combatantOf(ogre), combatantOf(rogue), combatantOf(fighter)] }, combatantOf(ogre));
-  const spot = b.paths.rogue.find((s) => s.x === 400 && s.y === 100);
-  assert.deepEqual([spot.distance, spot.occupied, spot.cost], [5, false, 30]);
-  assert.equal(b.paths.rogue.find((s) => s.x === 500 && s.y === 0).occupied, true); // the Fighter's square
+  const spot = b.paths.rogue.find((s) => s.distance === 5 && !s.occupied);
+  assert.ok(spot, `no attack square in ${JSON.stringify(b.paths.rogue.map((s) => [s.x, s.y, s.distance, s.occupied]))}`);
+  assert.ok(spot.cost <= 40 && spot.y === 100); // reached below the Fighter
+});
+
+test("snapshot: when the enemy's own square gives no path (a Large mover, an ally in the way), paths to the free squares touching the enemy are tried", async () => {
+  // A10 part 2 on the server: Ogre 2x2 at (10,0), Goblin at (14,0) in the way, Rogue at (16,0). The straight route is blocked; a route to a 2x2 spot below the Rogue exists.
+  const ogre = token("ogre", { x: 1000, y: 0, disposition: -1, width: 2, speed: 40 });
+  const goblin = token("goblin", { x: 1400, y: 0, disposition: -1 });
+  const rogue = token("rogue", { x: 1600, y: 0, disposition: 1 });
+  canvas.scene.tokens.contents = [ogre, goblin, rogue];
+  const b = await snapshot({ combatants: [combatantOf(ogre), combatantOf(goblin), combatantOf(rogue)] }, combatantOf(ogre));
+  const spot = b.paths.rogue.find((s) => s.distance === 5 && !s.occupied);
+  assert.ok(spot, `no attack square in ${JSON.stringify(b.paths.rogue.map((s) => [s.x, s.y, s.distance, s.occupied]))}`);
+  assert.ok(spot.cost <= 40);
+  assert.equal(spot.y, 100); // the route went below the goblin
 });

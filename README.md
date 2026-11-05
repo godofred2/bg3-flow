@@ -131,7 +131,9 @@ The GM gets a whispered line per monster ("Goblin: Scimitar vs Rogue (expected 2
 
 Moving monsters trigger opportunity attacks through **Gambit's Premades** (enable its *Opportunity Attack* automation, then reload: Gambit reads that setting when the world loads): the monster's move waits for the sprite to arrive, so a reaction hold is respected. Reach and range are counted in squares between the two creatures' footprints (a diagonal neighbour is 5 ft, a Large creature reaches from its edge). A use Midi refuses or an error leaves that monster to the GM with a whispered note; the others continue.
 
-Not counted yet: areas, heals, bonus actions, recharge abilities, fleeing, resistances and vulnerabilities, advantage or disadvantage, legendary and lair actions, ammunition, difficult terrain cost, gridless scenes.
+When no route reaches the enemy's own square (a Large monster, an ally in the only corridor), routes to the free squares touching the enemy are tried and the shortest wins.
+
+Not counted yet: areas, heals, bonus actions, recharge abilities, fleeing, resistances and vulnerabilities, advantage or disadvantage beyond the adjacent-shot rule, legendary and lair actions, ammunition, thrown weapons at range (a javelin counts as melee), difficult terrain cost, gridless scenes.
 
 ## Settings
 
