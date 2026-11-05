@@ -29,3 +29,20 @@ export function expectedValue(activity, target) {
     default: return 0;
   }
 }
+
+const WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5 };
+const num = (w) => WORDS[w] ?? parseInt(w);
+
+/** Multiattack from the trait text: the attack count and the named attacks (lower-cased, repeated by their own count, in text order). */
+export function parseMultiattack(text, names) {
+  const t = String(text ?? "").toLowerCase();
+  const known = names.map((n) => n.toLowerCase());
+  const count = num(t.match(/makes (one|two|three|four|five|[0-9]+) [^.]*?attacks?/)?.[1] ?? "one") || 1;
+  const out = [];
+  for (const m of t.matchAll(/(one|two|three|four|five|\d+) with its ([a-z' -]+?)(?:,| and|\.|$)/g)) {
+    const phrase = m[2].trim(), last = phrase.split(" ").at(-1);
+    const hit = known.find((n) => phrase.includes(n) || n.includes(last));
+    if (hit) for (let i = 0; i < num(m[1]); i++) out.push(hit);
+  }
+  return { count, names: out };
+}

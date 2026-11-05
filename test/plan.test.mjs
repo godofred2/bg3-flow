@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { averageOf, hitChance, failChance, expectedValue } = await import("../scripts/ai/plan.js");
+const { averageOf, hitChance, failChance, expectedValue, parseMultiattack } = await import("../scripts/ai/plan.js");
 
 test("averageOf: dice average plus flat, unknown tokens count as 0", () => {
   assert.equal(averageOf("2d6 + 3"), 10);
@@ -28,4 +28,14 @@ test("expectedValue: attack, save with half, save with none, plain damage, heal 
   assert.equal(expectedValue({ kind: "save", dc: 13, saveAbility: "dex", onSave: "none", damage: 10 }, t), 5.5);
   assert.equal(expectedValue({ kind: "damage", damage: 7 }, t), 7);
   assert.equal(expectedValue({ kind: "heal", healing: 9 }, t), 6);
+});
+
+test("parseMultiattack reads SRD texts", () => {
+  const gnoll = "The gnoll makes two attacks: one with its bite and one with its spear.";
+  assert.deepEqual(parseMultiattack(gnoll, ["Bite", "Spear", "Longbow"]), { count: 2, names: ["bite", "spear"] });
+  const dragon = "The dragon makes three attacks: one with its bite and two with its claws.";
+  assert.deepEqual(parseMultiattack(dragon, ["Bite", "Claw", "Tail"]), { count: 3, names: ["bite", "claw", "claw"] });
+  assert.deepEqual(parseMultiattack("The veteran makes two longsword attacks.", ["Longsword", "Shortsword"]), { count: 2, names: [] });
+  assert.deepEqual(parseMultiattack("The orc makes 2 attacks with its greataxe.", ["Greataxe"]), { count: 2, names: [] });
+  assert.deepEqual(parseMultiattack("Nothing useful here.", ["Bite"]), { count: 1, names: [] });
 });
