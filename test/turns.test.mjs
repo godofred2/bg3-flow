@@ -191,7 +191,7 @@ test("the circle follows the sprite: redrawn at token.center on refreshToken pos
   const circles = [];
   globalThis.PIXI = { Graphics: class { destroyed = false; destroy() { this.destroyed = true; } circle(x, y) { circles.push([x, y]); return this; } fill() { return this; } stroke() { return this; } } };
   const doc = { ...tokenDoc(rogue), movementHistory: [] };
-  const token = { id: rogue.tokenId, document: doc, center: { x: 550, y: 1050 }, controlled: true };
+  const token = { id: rogue.tokenId, document: doc, center: { x: 550, y: 1050 }, controlled: true, visible: true };
   globalThis.canvas = { ready: true, tokens: { controlled: [token] }, scene: { id: "scene" }, interface: { addChild() {} }, dimensions: { distance: 5, size: 100 } };
   game.combat = combat([cleric, rogue], 0);
   const hooks = {};
@@ -205,3 +205,29 @@ test("the circle follows the sprite: redrawn at token.center on refreshToken pos
   globalThis.Hooks.on = () => {};
   globalThis.canvas = null;
 });
+
+test("every active token the user can see gets a circle, selected or not; the GM sees them all; hidden enemies stay hidden to players", () => {
+  const circles = [];
+  globalThis.PIXI = { Graphics: class { destroyed = false; destroy() { this.destroyed = true; } circle(x, y) { circles.push([x, y]); return this; } fill() { return this; } stroke() { return this; } } };
+  const tok = (c, center, visible) => ({ id: c.tokenId, document: { ...tokenDoc(c), movementHistory: [] }, center, visible, controlled: false });
+  const clericToken = tok(cleric, { x: 150, y: 150 }, true), rogueToken = tok(rogue, { x: 550, y: 1050 }, false);
+  globalThis.canvas = { ready: true, tokens: { controlled: [], placeables: [clericToken, rogueToken] }, scene: { id: "scene" }, interface: { addChild() {} }, dimensions: { distance: 5, size: 100 } };
+  game.combat = combat([cleric, rogue], 0); // shared turn: both active
+  game.user.isGM = false;
+  drawReach();
+  assert.deepEqual(circles, [[150, 150]]); // the rogue is out of this player's sight
+  circles.length = 0; game.user.isGM = true;
+  drawReach();
+  assert.deepEqual(circles, [[150, 150], [550, 1050]]);
+  // a move of any active token redraws, not only a selected one
+  const hooks = {};
+  globalThis.Hooks.on = (name, fn) => { hooks[name] = fn; };
+  registerTurns();
+  circles.length = 0;
+  hooks.refreshToken(rogueToken, { refreshPosition: true });
+  assert.equal(circles.length, 2);
+  assert.equal(typeof hooks.sightRefresh, "function"); // vision changes redraw too
+  globalThis.Hooks.on = () => {};
+  globalThis.canvas = null; game.user.isGM = false;
+});
+

@@ -91,6 +91,7 @@ Setup: combat with Cleric, Rogue (Player1), Goblin 1, Goblin 2, Villager. Set in
 - [ ] T9. GM presses next turn. Expected: Villager (no group). Next turn again: round 2, **Shared turn: Cleric, Rogue** again, the Rogue's Dash is gone (a 35 ft move is refused again) and its movement budget is fresh (a 30 ft move is allowed).
 - [ ] T10. GM presses previous turn from the Villager. Expected: pointer lands on Goblin 1 (first of the previous group), not Goblin 2.
 - [ ] T11. Turn off **BG3 turn flow**, reload both windows, press next turn from the Cleric. Expected: pointer goes to the Rogue (Foundry default) and Player1 can move any owned token at any time. Turn it back on.
+- [ ] T12 (v0.7.1). Shared turn of Cleric and Rogue with nothing selected. Expected: Player1 sees a blue circle around both tokens (the Cleric's too, if in sight), the GM as well. On the goblins' turn with Goblin 2 hidden (GM-hidden) or behind the wall out of the Rogue's sight: Player1 sees no circle for it, the GM sees circles for both goblins. Moving any active token redraws its circle.
 
 ## 5. Reactions
 

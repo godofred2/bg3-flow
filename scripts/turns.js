@@ -108,7 +108,7 @@ export async function toggleDash(combatant) {
 }
 
 let reach = null;
-/** Plain circle of remaining movement around controlled tokens that may act now. */
+/** Plain circle of remaining movement around every token that may act now and that this user can see (the GM sees them all). */
 export function drawReach() {
   if (!canvas?.ready) return;
   if (reach && !reach.destroyed) reach.destroy();
@@ -117,9 +117,10 @@ export function drawReach() {
   if (!combat?.started) return;
   const active = activeIds(combat);
   const g = new PIXI.Graphics();
-  for (const token of canvas.tokens.controlled) {
+  for (const token of canvas.tokens.placeables ?? canvas.tokens.controlled) {
     const combatant = combatantFor(combat, token.id, canvas.scene.id);
     if (!combatant || !active.has(combatant.id)) continue;
+    if (!game.user.isGM && !token.visible) continue; // hidden or out of sight: no hint of where it is
     const doc = token.document;
     const limit = limitFor(doc, combatant, doc.movementAction ?? "walk");
     const spent = (doc.movementHistory ?? []).reduce((s, w) => s + (w.cost ?? 0), 0);
@@ -141,8 +142,12 @@ export function registerTurns() {
   Hooks.on("dnd5e.postUseActivity", safe(onPostUseActivity));
   Hooks.on("midi-qol.preTargetingV2", safe(onPreTargetingTurns));
   // moveToken fires before the sprite moves; follow the animation instead.
-  Hooks.on("refreshToken", safeSync((token, flags) => { if (flags?.refreshPosition && token.controlled) drawReach(); }));
-  for (const h of ["controlToken", "combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady"]) {
+  Hooks.on("refreshToken", safeSync((token, flags) => {
+    if (!flags?.refreshPosition) return;
+    const c = combatantFor(game.combat, token.id, canvas?.scene?.id);
+    if (c && activeIds(game.combat).has(c.id)) drawReach();
+  }));
+  for (const h of ["combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady", "sightRefresh"]) {
     Hooks.on(h, safe(drawReach));
   }
   log("turns on");
