@@ -46,3 +46,80 @@ export function parseMultiattack(text, names) {
   }
   return { count, names: out };
 }
+
+const key = (s) => `${s.x},${s.y}`;
+const xyz = (s) => ({ x: s.x, y: s.y, elevation: s.elevation });
+const byValue = (a, b) => b.value - a.value;
+
+/** Where an enemy stands relative to `from`: its own distance when the monster stays put, else the matching square of its path.
+ *  ponytail: a square is only known along the paths that cross it; good enough for a Multiattack's follow-up attacks. */
+function distanceFrom(board, from, enemy) {
+  if (!from || from === board.me) return enemy.distance;
+  return (board.paths[enemy.id] ?? []).find((s) => s.x === from.x && s.y === from.y)?.distance ?? Infinity;
+}
+
+/** Best visible, living enemy for one activity: from where the monster stands or, without `from`, from the first path square in range. */
+export function pickTarget(board, activity, from = null) {
+  const smart = board.me.intelligence >= board.threshold;
+  let best = null;
+  for (const enemy of board.enemies) {
+    if (!enemy.visible || enemy.hp <= 0) continue;
+    let square = null;
+    if (from) { if (distanceFrom(board, from, enemy) > activity.range) continue; }
+    else if (enemy.distance > activity.range) {
+      square = (board.paths[enemy.id] ?? []).find((s) => s.distance <= activity.range && s.cost <= board.me.budget && !s.occupied && !board.reserved.has(key(s)));
+      if (!square) continue;
+    }
+    const value = expectedValue(activity, enemy);
+    const pick = { enemy, square, value };
+    if (!best) { best = pick; continue; }
+    const d = value - best.value;
+    if (Math.abs(d) > 1e-9) { if (d > 0) best = pick; continue; }
+    const tie = smart ? enemy.hp - best.enemy.hp : enemy.distance - best.enemy.distance;
+    if (tie < 0 || (tie === 0 && enemy.distance < best.enemy.distance)) best = pick;
+  }
+  return best;
+}
+
+/** The turn: the option with the highest expected value (single activities and the Multiattack sequence), else approach. */
+export function planTurn(board) {
+  const actions = board.activities.filter((a) => a.slot === "action");
+  const options = [];
+  for (const a of actions) {
+    const p = pickTarget(board, a);
+    if (p && p.value > 0) options.push({ name: a.name, value: p.value, square: p.square, actions: [{ activityId: a.id, targetId: p.enemy.id }] });
+  }
+  if (board.multiattack) {
+    const attacks = actions.filter((a) => a.kind === "attack");
+    const { count, names } = parseMultiattack(board.multiattack, attacks.map((a) => a.name));
+    let seq = names.map((n) => attacks.find((a) => a.name.toLowerCase() === n)).filter(Boolean);
+    if (seq.length !== names.length) seq = [];
+    if (!seq.length && count > 1) {
+      const best = [...options].sort(byValue).map((o) => attacks.find((a) => a.id === o.actions[0].activityId)).find(Boolean);
+      if (best) seq = Array(count).fill(best);
+    }
+    const first = seq.length ? pickTarget(board, seq[0]) : null;
+    if (first && first.value > 0) {
+      const from = first.square ?? board.me;
+      let value = first.value;
+      const acts = [{ activityId: seq[0].id, targetId: first.enemy.id }];
+      for (const a of seq.slice(1)) {
+        const p = pickTarget(board, a, from);
+        if (p) { value += p.value; acts.push({ activityId: a.id, targetId: p.enemy.id }); }
+      }
+      options.push({ name: "Multiattack", value, square: first.square, actions: acts });
+    }
+  }
+  options.sort(byValue);
+  const nameOf = (id) => board.enemies.find((e) => e.id === id)?.name ?? id;
+  if (options.length) {
+    const [w, ...rest] = options;
+    const also = rest.slice(0, 3).map((o) => `${o.name} ${o.value.toFixed(1)}`).join(", ");
+    return { move: w.square ? xyz(w.square) : null, actions: w.actions, reason: `${w.name} vs ${nameOf(w.actions[0].targetId)} (expected ${w.value.toFixed(1)})${also ? `; also: ${also}` : ""}` };
+  }
+  const visible = board.enemies.filter((e) => e.visible && e.hp > 0).sort((a, b) => a.distance - b.distance);
+  if (!visible.length) return { move: null, actions: [], reason: "no visible enemy" };
+  const target = visible[0];
+  const last = [...(board.paths[target.id] ?? [])].reverse().find((s) => s.cost <= board.me.budget && !s.occupied && !board.reserved.has(key(s)));
+  return { move: last ? xyz(last) : null, actions: [], reason: `approach ${target.name}` };
+}
