@@ -329,7 +329,7 @@ test("useActivity: no configuration dialog, the target uuids, and no dnd5e templ
 test("useActivity on an area builds the template data itself (no dnd5e placement API: TemplatePlacement.fromActivity is interactive), hands the region uuid to Midi and deletes an instantaneous one afterwards", async () => {
   const cfgs = [], created = [], deleted = [];
   const activity = { uuid: "A.br", duration: { units: "inst" }, item: { uuid: "I.br", system: { level: 0 } }, actor: { uuid: "Ac.d" }, target: { template: { type: "cone", size: "15", width: "" } } };
-  globalThis.MidiQOL = { completeActivityUse: async (a, cfg, dialog) => { cfgs.push(cfg); return {}; } };
+  globalThis.MidiQOL = { completeActivityUse: async (a, cfg, dialog) => { cfgs.push(cfg); cfgs.templates = a.templates; return {}; } }; // Midi reads activity.templates during the use
   globalThis.game.user = { ...globalThis.game.user, id: "gm", color: "#ff0000" };
   CONFIG.DND5E.areaTargetTypes = { cone: { template: "cone" }, sphere: { template: "circle" }, cube: { template: "rect" }, line: { template: "ray" }, radius: { template: "emanation" } };
   CONFIG.MeasuredTemplate = { defaults: { angle: 53.13 } };
@@ -342,6 +342,8 @@ test("useActivity on an area builds the template data itself (no dnd5e placement
   const cone = created[0][1];
   assert.deepEqual([created[0][0], cone.t, cone.x, cone.y, cone.direction, cone.distance, cone.angle, cone.flags.dnd5e.origin, cone.flags["midi-qol"].actorUuid], ["MeasuredTemplate", "cone", 150, 50, 45, 15, 53.13, "A.br", "Ac.d"]);
   assert.equal(cfgs[0].midiOptions.workflowOptions.templateUuid, "Scene.s.Region.tpl1");
+  assert.deepEqual(cfgs.templates.map((t) => t._id), ["tpl1"]); // the proxy MeasuredTemplate document, as dnd5e's own placement hands it over
+  assert.equal(activity.templates, undefined); // cleared again after the use
   assert.deepEqual(deleted, ["Scene.s.Region.tpl1"]);
   created.length = 0;
   activity.target.template = { type: "sphere", size: "20", width: "" };
@@ -493,4 +495,16 @@ test("after the move a token left off the grid (a reaction stopped it) is snappe
   await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), deps({ plans: { g1: attackPlan() } }));
   assert.deepEqual(updates, [{ x: 1100, y: 400 }]);
   delete globalThis.canvas.grid;
+});
+
+test("a use Midi never finishes is given up after the cap, and the template it placed is removed", async () => {
+  const deleted = [];
+  const activity = { uuid: "A.br", duration: { units: "inst" }, item: { uuid: "I.br", system: { level: 0 } }, actor: { uuid: "Ac.d" }, target: { template: { type: "cone", size: "15", width: "" } } };
+  globalThis.MidiQOL = { completeActivityUse: () => new Promise(() => {}) };
+  globalThis.canvas.scene.createEmbeddedDocuments = async () => [{ _id: "tpl2", uuid: "Scene.s.MeasuredTemplate.tpl2" }];
+  globalThis.canvas.scene.regions = { get: (id) => ({ uuid: `Scene.s.Region.${id}` }) };
+  globalThis.fromUuidSync = (uuid) => uuid === "A.br" ? activity : uuid.includes("Region") ? { uuid, delete: async () => deleted.push(uuid) } : null;
+  await assert.rejects(() => useActivity({ uuid: "A.br", area: { shape: "cone", size: 15, width: 5 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 350 } }, { timeout: 10 }), /did not finish/);
+  assert.deepEqual(deleted, ["Scene.s.Region.tpl2"]);
+  delete globalThis.canvas.scene.createEmbeddedDocuments; delete globalThis.canvas.scene.regions;
 });

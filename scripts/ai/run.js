@@ -38,8 +38,10 @@ async function placeArea(activity, info, { origin, aim }) {
     else { data.t = "ray"; data.direction = 0; data.x = aim.cx - half; data.y = aim.cy; }
   } else if (data.t === "ray") data.width = info.area.width || canvas.dimensions.distance;
   const [td] = await canvas.scene.createEmbeddedDocuments("MeasuredTemplate", [data]);
-  return canvas.scene.regions?.get?.(td._id ?? td.id) ?? td;
+  return { proxy: td, doc: canvas.scene.regions?.get?.(td._id ?? td.id) ?? td }; // Foundry 14 backs the template with a Region
 }
+
+const removeTemplate = async (uuid) => { const live = fromUuidSync(uuid); if (live?.delete) await live.delete(); };
 
 /** A reaction may leave a token between squares: put it on the square under its centre. */
 async function snapToGrid(doc) {
@@ -55,15 +57,26 @@ async function snapToGrid(doc) {
  * template from `placeArea` and Midi targets from it; an instantaneous area's template is removed afterwards.
  * Resolves when the workflow is done, `undefined` when Midi refused it.
  */
-export async function useActivity(info, targetUuids, place = null) {
+export async function useActivity(info, targetUuids, place = null, { timeout = 60000 } = {}) {
   const activity = fromUuidSync(info.uuid);
   if (!activity) throw new Error(`activity ${info.uuid} not found`);
   const template = info.area && place ? await placeArea(activity, info, place) : null;
   const midiOptions = { targetUuids, ignoreUserTargets: true };
-  if (template) midiOptions.workflowOptions = { templateUuid: template.uuid };
-  const result = await MidiQOL.completeActivityUse(activity, { create: { measuredTemplate: false }, midiOptions }, { configure: false });
-  if (template && activity.duration?.units === "inst") { const live = fromUuidSync(template.uuid); if (live?.delete) await live.delete(); }
-  return result;
+  if (template) {
+    midiOptions.workflowOptions = { templateUuid: template.doc.uuid };
+    activity.templates = [template.proxy]; // what dnd5e's own "Place Measured Template" hands Midi: it links, targets and resumes from it
+  }
+  let timer;
+  try {
+    return await Promise.race([
+      MidiQOL.completeActivityUse(activity, { create: { measuredTemplate: false }, midiOptions }, { configure: false }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Midi did not finish the use in ${timeout / 1000} s`)), timeout); })
+    ]);
+  } finally {
+    clearTimeout(timer);
+    delete activity.templates;
+    if (template && activity.duration?.units === "inst") await removeTemplate(template.doc.uuid);
+  }
 }
 
 const rechargeable = (uses) => (uses?.recovery ?? []).some((r) => r.period === "recharge") && uses.spent > 0;

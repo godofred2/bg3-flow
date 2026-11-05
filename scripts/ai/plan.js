@@ -47,18 +47,18 @@ export function parseMultiattack(text, names) {
   return { count, names: out };
 }
 
-/** Creatures whose centre lies in an area: centred shapes around `aim`, cones and lines from `origin` toward `aim`. Pure geometry on centres.
- *  Cone and line lengths are grid distance (squares), like reach, so a breath aimed at a creature in reach always covers it. */
+/** Creatures whose centre lies in an area: centred shapes around `aim`, cones and lines from `origin` toward `aim`. Pure geometry on centres,
+ *  straight-line lengths like the Foundry template Midi targets from (the planner tries every firing square, so a near miss moves it closer). */
 export function coverage({ area, origin, aim, creatures, grid }) {
   const ft = (px) => px / grid.px * grid.ft;
   const dx = aim.cx - origin.cx, dy = aim.cy - origin.cy, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
   return creatures.filter((c) => {
     const extra = ((c.w ?? 1) - 1) * grid.ft / 2; // a Large creature's centre sits half a square further in
-    const vx = c.cx - origin.cx, vy = c.cy - origin.cy, squares = ft(Math.max(Math.abs(vx), Math.abs(vy)));
+    const vx = c.cx - origin.cx, vy = c.cy - origin.cy;
     switch (area.shape) {
       case "cube": case "square": return ft(Math.max(Math.abs(c.cx - aim.cx), Math.abs(c.cy - aim.cy))) <= area.size / 2 + extra;
-      case "cone": { const d = Math.hypot(vx, vy); if (d === 0 || squares > area.size + extra) return false; return Math.acos(Math.min(1, (vx * ux + vy * uy) / d)) <= 26.57 * Math.PI / 180; }
-      case "line": { const along = vx * ux + vy * uy; if (along <= 0 || squares > area.size + extra) return false; return ft(Math.abs(vx * uy - vy * ux)) <= (area.width || 5) / 2 + extra; }
+      case "cone": { const d = Math.hypot(vx, vy); if (d === 0 || ft(d) > area.size + extra) return false; return Math.acos(Math.min(1, (vx * ux + vy * uy) / d)) <= 26.57 * Math.PI / 180; }
+      case "line": { const along = vx * ux + vy * uy; if (along <= 0 || ft(along) > area.size + extra) return false; return ft(Math.abs(vx * uy - vy * ux)) <= (area.width || 5) / 2 + extra; }
       default: return ft(Math.hypot(c.cx - aim.cx, c.cy - aim.cy)) <= area.size + extra; // sphere, cylinder, circle, radius
     }
   });

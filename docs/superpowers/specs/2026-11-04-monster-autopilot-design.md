@@ -241,3 +241,9 @@ Midi does the rest).
 - A token a reaction left between squares is snapped to the square under its centre after the move.
 - The public shared-turn line leaves GM-hidden tokens out.
 - Deferred: a one-square step out of reach finishes before Gambit's prompt opens, so the archer may shoot before the opportunity attack resolves; no GM-side signal of a pending player prompt exists.
+
+## Amendment 2026-11-05 (v0.7.2 server run, fixed in v0.7.3)
+
+- Midi clears the template list right after reading `workflowOptions.templateUuid`, so a pre-placed template left the workflow waiting. The template document is now handed over as `activity.templates` (what dnd5e's own "Place Measured Template" produces): Midi's `processPlacedTemplates` links it, auto-targets from it and resumes.
+- A use Midi never finishes is given up after 60 s (template removed, error whispered, monster left to the GM) so one stall never blocks the session.
+- Cone and line lengths are straight-line distance again, matching the Foundry template Midi targets from; the planner evaluates every firing square, so a near miss moves it one square closer instead of counting a creature the template would not.
