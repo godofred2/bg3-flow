@@ -38,6 +38,7 @@ Foundry's pathfinding also runs on the client. No server work.
 | Group turns | With the shared turn of piece 2, movement of the whole group is planned at once (each monster sees its allies' reserved destinations as occupied) and animated together; actions then run one monster at a time. |
 | Pacing | No fixed delay. The next action starts when Midi completes the use and Dice So Nice finishes animating its messages; movements wait for the token to arrive. |
 | End of turn | Setting `autoNextTurn` (on): when every active combatant was on autopilot, pass the turn. Any manual member: finish the automatic ones and wait for the GM. |
+| Feats by name (4c) | Two player feats the party has get name-based rules. **Sentinel**: Gambit rolls the opportunity attack; the autopilot stops a monster hit by a reaction from a Sentinel PC, and the 4c estimate knows Disengage does not avoid it and that a hit ends the monster's movement. **Tunnel Fighter** (UA fighting style, stance active = an active effect named "Tunnel Fighter" on the PC): opportunity attacks cost no reaction and any move of more than 5 ft inside the PC's reach draws a reaction attack. Gambit does not know this feat, so the autopilot prompts the player itself at the triggers Gambit would not. Both on the same PC: no reaction needed, Disengage useless, first hit stops the monster. |
 | Legendary and lair actions | Out of scope: piece 5. |
 | Sight | A monster only targets what the piece 3 rules let it see (`spotsBg3`: line of sight, light, darkvision, hidden Stealth vs passive Perception). |
 | Transparency | One chat line whispered to the GM per monster and turn: decision, expected value, discarded alternatives. Players see only the move and Midi's cards. |
@@ -49,7 +50,8 @@ Foundry's pathfinding also runs on the client. No server work.
   pause before attack, auto next turn.
 - **4b**: areas, heals, bonus actions, recharge, smart positioning (ranged steps out, areas aim at
   clusters), waiting for Gambit's opportunity attack, Sentinel stop.
-- **4c**: flee and morale, escape regions, opportunity-attack damage estimate before leaving reach.
+- **4c**: flee and morale, escape regions, opportunity-attack damage estimate before leaving reach,
+  Sentinel and Tunnel Fighter rules (estimate and the Tunnel Fighter prompt).
 - Piece 5 (later): legendary and lair actions.
 
 ## Architecture
@@ -89,7 +91,9 @@ detected by name and its description text is handed to the planner.
 
 **Not in the snapshot:** target resistances and vulnerabilities, conditions (advantage or
 disadvantage never enter the probability, except the fixed adjacent-archer rule), the players'
-opportunity attacks (4c adds the enemy's best melee attack as an estimate).
+opportunity attacks (4c adds, per enemy, its best melee attack's expected damage against the
+monster, its reach, whether its reaction is spent (Midi's `hasUsedReaction`), and the flags
+`sentinel` (item named Sentinel) and `tunnelFighter` (active effect named Tunnel Fighter)).
 
 **Probabilities:** hit = (21 + bonus - AC) / 20; save failed = (DC - 1 - save bonus) / 20; both
 clamped to [0.05, 0.95]. Expected damage = probability times average damage (plus half the
@@ -114,7 +118,13 @@ any part absent.
 4. Tie-break by Intelligence as decided. Second tie-break: nearest.
 5. Smart positioning (4b, intelligent only): a ranged attacker adjacent to an enemy leaves melee
    reach first when it has the movement; in 4c only when the gain beats the opportunity-attack
-   estimate.
+   estimate. The estimate (4c) counts, for every enemy along the path, the trigger points its
+   feats allow: leaving its reach costs one attack when its reaction is free, or always with
+   Tunnel Fighter; with Tunnel Fighter every square of the path inside its reach beyond the first
+   is one more attack. Each attack is that enemy's expected melee damage. With Sentinel a hit
+   ends the movement, so the plan also loses whatever the move was going to gain beyond that
+   point, weighted by the hit probability. An intelligent monster adjacent to a Sentinel plus
+   Tunnel Fighter PC therefore stays and fights unless the gain is large.
 6. Bonus action: the best available bonus-action activity, scored the same way from the final
    square.
 7. Nothing scores: Dash toward the nearest visible enemy. Nobody visible: stay, and the reason
@@ -137,6 +147,16 @@ it as a normal on-turn move. Each move is awaited until the token reaches its de
 move is cut, with a 45 s cap (30 s reaction timeout plus margin): Gambit's opportunity attack
 holds the move while the player answers. A reaction hit from an actor with a *Sentinel* item
 stops that monster where it is.
+
+**Tunnel Fighter prompt (4c):** the path is split at the trigger points Gambit does not cover: a
+move of more than 5 ft inside the reach of a PC whose Tunnel Fighter stance is active, or leaving
+that reach when the PC's reaction is already spent. At each one the monster stops and the PC's
+owner gets the module's roll-or-type style prompt ("Fighter: attack Goblin with Tunnel Fighter?"
+with **Attack** and **Pass**, 30 s, GM takeover button as in piece 3). **Attack** uses the PC's
+best melee attack activity against the monster on the owner's client through Midi (socketlib,
+like `promptInitiative`); the autopilot awaits its `RollComplete`, applies the Sentinel stop on a
+hit, and continues the path. Whether Gambit also prompts at the plain leaving-reach trigger when
+the reaction is free is checked on the server; if it does, that trigger stays Gambit's.
 
 **Action phase:** monster by monster in initiative order: re-plan, set the targets on the GM
 client, use the activity through Midi with those targets, await its `midi-qol.RollComplete`, wait
@@ -164,14 +184,17 @@ to the GM; the other monsters continue.
   Multiattack from three SRD texts (gnoll, dragon, "makes two attacks") and the repeat fallback;
   Intelligence tie-break; stop at the first square in range; adjacent archer steps out only when
   intelligent; flee by type and toward the escape region; group with reserved destinations;
-  "nobody visible".
+  "nobody visible"; opportunity-attack estimate: reaction spent means no attack, Tunnel Fighter
+  counts the extra squares inside reach, Sentinel discounts the gain beyond the hit.
 - `test/board.test.mjs` with Foundry stubs: a Plutonium goblin's activities (scimitar, shortbow),
   a caster with slots, a spent breath weapon absent from the snapshot, sight filtering a hidden PC.
 - `test/run.test.mjs` with stubs: moves before actions, the pause's three buttons, abort when the
-  turn changes, next turn only when everyone was on autopilot.
+  turn changes, next turn only when everyone was on autopilot; the path split at Tunnel Fighter
+  triggers, the prompt's Attack and Pass, the Sentinel stop on a hit.
 - `docs/SERVER-TESTING.md` section 7 per sub-piece on the existing goblin scene: a goblin that
   closes and attacks, an archer that stays at range, a group of two moving together, the pause,
-  the tracker icon, an opportunity attack through Gambit, and in 4c a flight to an "Escape" region.
+  the tracker icon, an opportunity attack through Gambit, and in 4c a flight to an "Escape" region
+  plus a monster walking past the Sentinel and Tunnel Fighter PC with the stance active.
 - README: what the autopilot does in one screen, the settings, how to mark an escape route,
   enabling Opportunity Attack in Gambit's Premades, and the list of what is not counted.
 
