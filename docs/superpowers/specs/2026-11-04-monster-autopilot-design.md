@@ -123,7 +123,7 @@ any part absent.
    Tunnel Fighter; with Tunnel Fighter every square of the path inside its reach beyond the first
    is one more attack. Each attack is that enemy's expected melee damage. With Sentinel a hit
    ends the movement, so the plan also loses whatever the move was going to gain beyond that
-   point, weighted by the hit probability. An intelligent monster adjacent to a Sentinel plus
+   point, weighted by the hit probability (a miss leaves the movement intact, so the stop is never counted in full). Simplification: successive trigger points are each counted as if the earlier ones missed. An intelligent monster adjacent to a Sentinel plus
    Tunnel Fighter PC therefore stays and fights unless the gain is large.
 6. Bonus action: the best available bonus-action activity, scored the same way from the final
    square.
