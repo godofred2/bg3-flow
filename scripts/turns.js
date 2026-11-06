@@ -136,7 +136,34 @@ export function drawReach() {
   reach = g;
 }
 
+/**
+ * Foundry's turn marker (v13+) shows on the current combatant only; a shared turn shows it on every member. Wrapper body for
+ * Token#_refreshTurnMarker (MIXED): a member that is not Foundry's current combatant gets the same marker core would give it
+ * (child at index 0, registered in canvas.tokens.turnMarkers so the layer animates it, drawn); anything else is core's call.
+ */
+export function refreshTurnMarker(token, wrapped) {
+  const combat = game.combat;
+  const c = combatantFor(combat, token.id, token.document?.parent?.id ?? canvas?.scene?.id);
+  const member = !!c && combat.combatant?.id !== c.id && activeIds(combat).has(c.id);
+  const enabled = !!CONFIG.Combat?.settings?.turnMarker?.enabled && token.document?.turnMarker?.mode !== CONST.TOKEN_TURN_MARKER_MODES?.DISABLED;
+  const Marker = foundry.canvas?.placeables?.tokens?.TokenTurnMarker;
+  if (!member || !enabled || !Marker) return wrapped();
+  if (!token.turnMarker) token.turnMarker = token.addChildAt(new Marker(token), 0);
+  canvas.tokens.turnMarkers.add(token);
+  token.turnMarker.draw();
+}
+
+/** Core only flags the current combatant's token and the tokens already marked: ask every token to look again when the group changes. */
+export function refreshTurnMarkers() {
+  if (!canvas?.ready) return;
+  for (const t of canvas.tokens?.placeables ?? []) t.renderFlags?.set?.({ refreshTurnMarker: true });
+}
+
 export function registerTurns() {
+  if (typeof libWrapper !== "undefined") {
+    libWrapper.register(MODULE_ID, "foundry.canvas.placeables.Token.prototype._refreshTurnMarker", function (wrapped, ...args) { return refreshTurnMarker(this, () => wrapped(...args)); }, "MIXED");
+  }
+  for (const h of ["combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady"]) Hooks.on(h, safe(refreshTurnMarkers));
   Hooks.on("combatTurn", safeSync(onCombatTurn));
   Hooks.on("combatTurnChange", safe(onCombatTurnChange));
   Hooks.on("preMoveToken", safeSync(onPreMoveToken)); // sync: a Promise would never veto

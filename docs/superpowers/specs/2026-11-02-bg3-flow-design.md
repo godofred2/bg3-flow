@@ -253,3 +253,7 @@ Detection follows Baldur's Gate 3 instead of the passive-plus-active-roll scheme
 
 - Global Illumination (`scene.environment.globalLight`: enabled, within its darkness range) counts as light everywhere: bright when its *bright* flag is set, dim otherwise. A darkness source still wins.
 - Hiding is revealed on `midi-qol.RollComplete` of an attack or save workflow that was not aborted, instead of `dnd5e.postUseActivity`, which also fires when Midi refuses the use (total cover).
+
+## Amendment 2026-11-05 (v0.8.1, turn marker on the whole group)
+
+- Foundry 13+ draws its turn marker on the one current combatant (`Token#_refreshTurnMarker`: marker active iff `game.combat.combatant.tokenId === token.id`; `canvas.tokens.turnMarkers` is the set the TokenLayer animates). The module wraps that method with libWrapper (MIXED): a member of the acting group that is not Foundry's current combatant gets the same marker core would give it (child at index 0, registered for animation, drawn); every other token is core's call. Since core only flags the current token and the already-marked ones, the module flags every token on combatTurnChange, combatStart, deleteCombat, updateCombatant and canvasReady. Core settings and the per-token marker mode are honoured.

@@ -43,7 +43,7 @@ const move = ({ action = "walk", cost = 10, pending = 0, spent = 0 } = {}) => ({
   passed: { cost, waypoints: [{ action }] }, pending: { cost: pending, waypoints: [] }, history: { cost: spent }
 });
 
-const { onCombatTurn, onCombatTurnChange, onPreMoveToken, onPostUseActivity, onPreTargetingTurns, drawReach, registerTurns } = await import("../scripts/turns.js");
+const { onCombatTurn, onCombatTurnChange, onPreMoveToken, onPostUseActivity, onPreTargetingTurns, drawReach, registerTurns, refreshTurnMarker, refreshTurnMarkers } = await import("../scripts/turns.js");
 
 const cleric = combatant("c", 1), rogue = combatant("r", 1), g1 = combatant("g1", -1), g2 = combatant("g2", -1);
 
@@ -242,4 +242,55 @@ test("the shared-turn chat line leaves GM-hidden tokens out", async () => {
   await onCombatTurnChange(c, { round: 0, turn: null }, { round: 1, turn: 0 });
   assert.ok(calls.chat[0].content.includes("Goblin 1"));
   assert.ok(!calls.chat[0].content.includes("Goblin 2"));
+});
+
+// Foundry's turn marker (v13+): core shows it on the current combatant only; the wrapper adds it to the rest of the shared turn.
+class MarkerStub { constructor(token) { this.token = token; this.drawn = 0; } draw() { this.drawn++; } destroy() { this.destroyed = true; } }
+function markerWorld() {
+  globalThis.CONST = { TOKEN_TURN_MARKER_MODES: { DISABLED: 0, DEFAULT: 1, CUSTOM: 2 } };
+  CONFIG.Combat = { settings: { turnMarker: { enabled: true } } };
+  foundry.canvas = { placeables: { tokens: { TokenTurnMarker: MarkerStub } } };
+  globalThis.canvas = { ready: true, scene: { id: "scene" }, tokens: { turnMarkers: new Set(), placeables: [] } };
+  const token = (c) => { const t = { id: c.tokenId, document: { parent: { id: "scene" }, turnMarker: { mode: 1 } }, turnMarker: null, added: [], addChildAt(m, i) { this.added.push([m, i]); return m; }, flags: [] }; t.renderFlags = { set: (f) => t.flags.push(f) }; return t; };
+  return token;
+}
+test("a shared-turn member that is not Foundry's current combatant gets its own turn marker, registered for animation and drawn; core is left alone otherwise", () => {
+  const token = markerWorld();
+  game.combat = combat([cleric, rogue, g1, g2], 0);
+  const t = token(rogue);
+  let wrapped = 0;
+  refreshTurnMarker(t, () => wrapped++);
+  assert.ok(t.turnMarker instanceof MarkerStub);
+  assert.deepEqual([t.added.length, t.added[0][1], t.turnMarker.drawn, canvas.tokens.turnMarkers.has(t), wrapped], [1, 0, 1, true, 0]);
+  refreshTurnMarker(t, () => wrapped++); // again: the same marker, drawn again (as core does), still one child
+  assert.deepEqual([t.added.length, t.turnMarker.drawn, wrapped], [1, 2, 0]);
+  for (const other of [token(cleric), token(g1)]) { refreshTurnMarker(other, () => wrapped++); assert.equal(other.turnMarker, null); } // the current combatant and another group: core's call
+  assert.equal(wrapped, 2);
+  CONFIG.Combat.settings.turnMarker.enabled = false;
+  refreshTurnMarker(token(rogue), () => wrapped++);
+  assert.equal(wrapped, 3); // markers off: core's call (it removes any marker)
+  CONFIG.Combat.settings.turnMarker.enabled = true;
+  const off = token(rogue); off.document.turnMarker.mode = 0;
+  refreshTurnMarker(off, () => wrapped++);
+  assert.deepEqual([off.turnMarker, wrapped], [null, 4]); // this token's marker disabled
+  game.combat = null;
+  refreshTurnMarker(token(rogue), () => wrapped++);
+  assert.equal(wrapped, 5);
+});
+test("refreshTurnMarkers asks every token on the canvas to refresh its marker (core only flags the current one and those already marked)", () => {
+  const token = markerWorld();
+  const a = token(cleric), b = token(g1);
+  canvas.tokens.placeables = [a, b];
+  refreshTurnMarkers();
+  assert.deepEqual([a.flags, b.flags], [[{ refreshTurnMarker: true }], [{ refreshTurnMarker: true }]]);
+  globalThis.canvas = null;
+  refreshTurnMarkers(); // no canvas: nothing
+});
+test("registerTurns wraps Token#_refreshTurnMarker through libWrapper (MIXED) and refreshes the markers on turn changes", () => {
+  const regs = [], hooks = [];
+  globalThis.libWrapper = { register: (...a) => regs.push(a) };
+  const on = Hooks.on; Hooks.on = (name) => hooks.push(name);
+  try { registerTurns(); } finally { Hooks.on = on; delete globalThis.libWrapper; }
+  assert.deepEqual([regs[0][0], regs[0][1], regs[0][3]], ["bg3-flow", "foundry.canvas.placeables.Token.prototype._refreshTurnMarker", "MIXED"]);
+  for (const h of ["combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady"]) assert.ok(hooks.includes(h), h);
 });
