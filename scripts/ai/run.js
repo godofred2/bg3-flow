@@ -336,7 +336,7 @@ export async function onCombatTurnChange(combat, prior, current, deps) {
   if (!leadGm() || !combat?.started) return;
   const r0 = prior?.round ?? 0, r1 = current?.round ?? 0, t0 = prior?.turn ?? -1, t1 = current?.turn ?? 0;
   if (r1 < r0 || (r1 === r0 && t1 <= t0)) return;
-  if (running) { pending = [combat, prior, current, deps]; return; } // busy (a use waiting on Midi): replayed when the run ends, never dropped
+  if (running) { pending = [combat, pending?.[1] ?? prior, current, deps]; return; } // busy (a use waiting on Midi): replayed when the run ends as one change, from the first "before" to the last "after" (rounds stepped past are not replayed; the one landed in keeps its lair)
   const lt = lairTurn(combat, game.settings.get(MODULE_ID, "enableTurns") !== false); // initiative count 20, losing ties
   if (t1 >= lt && (r1 > r0 || t0 < lt)) { // stepping onto (or past) the lair's place in the round, once per round
     running = true;

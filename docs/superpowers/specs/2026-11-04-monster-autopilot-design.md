@@ -309,3 +309,8 @@ Midi does the rest).
 ## Amendment 2026-11-06 (v0.9.2: the lair loses initiative ties)
 
 - User request after reading the lair rules: the lair acts on initiative count 20 and loses ties. The lair phase now fires before the first group whose leader rolled below 20 (lairTurn: with shared turns, a group led by a 20 or more acts whole before the lair; without them, right after the last combatant at 20 or more); at the top of the round when nobody is below 20. Once per round, forward steps only, replayed after a busy run as before.
+
+## Amendment 2026-11-06 (v0.9.2 server run green; v0.9.3)
+
+- L1, L2, L10, L11 (a, b, c and a 20+20 extra case) green on v0.9.2: the lair loses ties exactly as specified.
+- Found by the tester: several next-turn presses while a use waited on Midi kept only the last change, and when that step did not cross the lair's place the landed round lost its lair. Pending changes now merge from the first "before" to the last "after", so the replay sees the round change and fires the landed round's lair once; rounds stepped past are not replayed (the GM passed them).

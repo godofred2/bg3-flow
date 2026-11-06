@@ -745,3 +745,22 @@ test("the lair loses initiative ties: with a PC at 20 or more it acts after that
   await onCombatTurnChange(combat, { round: 2, turn: 0 }, { round: 2, turn: 1 }, d); // then the goblin: the lair first, then its own turn
   assert.deepEqual([uses.map((u) => u[0]), calls.chat[0].content.includes("lair:"), combat.nextTurns], [["A.ap"], true, 1]);
 });
+
+test("several turn changes while the autopilot is busy are replayed as one, from the first 'before' to the last 'after': the round you land in keeps its lair", async () => {
+  reset();
+  const g1 = sheet(combatant("g1")), pc1 = combatant("pc1", { disposition: 1, playerOwner: true });
+  const combat = makeCombat([pc1, g1], 1);
+  const d = lairDeps();
+  d.plan = (board, opts) => (opts?.slot === "lair" ? lairPlan : opts?.slot === "bonus" ? { move: null, actions: [], reason: "no bonus action" } : attackPlan());
+  let pressed = false;
+  d.use = async (a, uuids) => {
+    uses.push([a.id, String(uuids)]);
+    if (a.id === "sc" && !pressed) { pressed = true; // the GM presses next turn twice mid-use: into round 2, then on to the goblin's turn of round 2
+      combat.round = 2; combat.turn = 0; await onCombatTurnChange(combat, { round: 1, turn: 1 }, { round: 2, turn: 0 }, d);
+      combat.turn = 1; await onCombatTurnChange(combat, { round: 2, turn: 0 }, { round: 2, turn: 1 }, d);
+    }
+    return {};
+  };
+  await onCombatTurnChange(combat, { round: 1, turn: 0 }, { round: 1, turn: 1 }, d);
+  assert.deepEqual([uses.map((u) => u[0]), calls.chat.filter((m) => m.content.includes("lair:")).length], [["sc", "A.ap", "sc"], 1]); // one lair for round 2, not zero (the last step alone never crosses the lair's place) and not two; then the goblin's round-2 turn
+});
