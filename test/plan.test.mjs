@@ -340,3 +340,17 @@ test("lair slot: the best lair action from where it stands, anywhere in the lair
   assert.equal(planTurn(lairBoard(), { slot: "action" }).reason, "approach fighter"); // the action slot never sees the lair ones (budget 0, nobody in Scimitar reach: approach)
   assert.equal(planTurn(lairBoard(), { slot: "bonus" }).reason, "no bonus action");
 });
+
+const roots = { id: "gr", uuid: "A.gr", name: "Grasping Roots", kind: "save", slot: "lair", range: Infinity, dc: 15, saveAbility: "dex", damage: 0, affects: "creature", denial: 0.5 };
+const threat = (p, t) => ({ ...p, threat: t });
+test("lair slot: a condition is worth the damage it denies, aimed at the most dangerous PC; half a turn when the sheet names no status; never in the action slot", () => {
+  const b = lairBoard({ activities: [scimitar, roots], enemies: [threat(pc("rogue", 100, { ac: 13 }), 12), threat(pc("fighter", 30, { ac: 19 }), 14), threat(pc("wizard", 60), 0)], me: { lairNames: ["Grasping Roots"] } });
+  let p = planTurn(b, { slot: "lair" });
+  // fighter: fail (15-1-0)/20 = 0.7 x 0.5 x 14 = 4.9; rogue 0.7 x 0.5 x 12 = 4.2; wizard 0
+  assert.deepEqual([p.actions, p.reason], [[{ activityId: "gr", targetIds: ["fighter"], aimId: "fighter" }], "lair: Grasping Roots vs fighter (denies 4.9)"]);
+  p = planTurn(lairBoard({ activities: [scimitar, { ...roots, denial: undefined }], enemies: [threat(pc("rogue", 100, { ac: 13 }), 12)], me: { lairNames: ["Grasping Roots"] } }), { slot: "lair" });
+  assert.equal(p.reason, "lair: Grasping Roots vs rogue (denies 4.2)"); // no status on the sheet: half a turn
+  p = planTurn(lairBoard({ activities: [pool, roots], enemies: [threat(pc("rogue", 100, { ac: 13 }), 20)], me: { lairNames: ["Acid Pool", "Grasping Roots"] } }), { slot: "lair" });
+  assert.equal(p.reason, "lair: Acid Pool vs rogue (expected 7.7); also: Grasping Roots 7.0"); // 0.7 x 0.5 x 20 = 7.0 loses to 7.65
+  assert.equal(planTurn(b, { slot: "action" }).reason, "approach fighter"); // the action slot never values a condition
+});

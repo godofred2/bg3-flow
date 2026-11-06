@@ -50,13 +50,13 @@ globalThis.canvas = {
 };
 
 let n = 0;
-function act({ type, activation = "action", toHit = "+0", parts = [], item = {}, range = null, save = null, uses = null, spell = null, affects = "creature", template = null, size = "", canUse = true, name = "X", siblings = 1, attackType = "melee", recharge = false } = {}) {
+function act({ type, activation = "action", toHit = "+0", parts = [], item = {}, range = null, save = null, uses = null, spell = null, affects = "creature", template = null, size = "", canUse = true, name = "X", siblings = 1, attackType = "melee", recharge = false, effects = [] } = {}) {
   const id = `a${++n}`;
   const actor = { system: { spells: { spell1: { value: spell?.slots ?? 0 } } } };
   // dnd5e gives every item's default activity the same id (dnd5eactivity000) and Midi names it "Midi Attack": only the uuid and the item name tell them apart.
   const it = { type: item.type ?? "feat", name, system: { range: item.range ?? {}, uses: { max: "", value: 0 }, level: spell?.level ?? 0, activities: { size: siblings } }, actor };
   return {
-    id: "dnd5eactivity000", uuid: `A.${id}`, name: "Midi Attack", type, item: it, actor, canUse,
+    id: "dnd5eactivity000", uuid: `A.${id}`, name: "Midi Attack", type, item: it, actor, canUse, effects,
     activation: { type: activation }, range: range ?? { value: null, units: "", override: false },
     target: { affects: { type: affects }, template: { type: template, size: template ? String(size) : "", width: "" } },
     uses: { max: uses?.max ?? "", value: uses?.value ?? 0, spent: 0, recovery: recharge ? [{ period: "recharge", formula: "5" }] : [] },
@@ -309,4 +309,30 @@ test("snapshot: in its lair under legacy or modern rules, the lair action used l
   settings.dnd5eRulesVersion = "legacy"; // the actor's own rules version wins
   b = await snapshot({ combatants: [combatantOf(inside), combatantOf(rogue)] }, combatantOf(inside));
   assert.equal(b.me.lair, true);
+});
+
+test("activityInfo: the share of a turn a condition denies, from the statuses of the activity's effects", () => {
+  n = 0;
+  const eff = (...statuses) => ({ effect: { statuses: new Set(statuses) } });
+  assert.equal(activityInfo(act({ type: "save", activation: "lair", save: { dc: 15, ability: "dex" }, effects: [eff("restrained")] })).denial, 0.5);
+  assert.equal(activityInfo(act({ type: "save", activation: "lair", save: { dc: 15, ability: "wis" }, effects: [eff("frightened"), eff("paralyzed")] })).denial, 1);
+  assert.equal(activityInfo(act({ type: "save", activation: "lair", save: { dc: 15, ability: "str" }, effects: [eff("grappled")] })).denial, 0.1);
+  assert.equal("denial" in activityInfo(act({ type: "save", activation: "lair", save: { dc: 15, ability: "dex" } })), false); // no effect: the planner's default applies
+  assert.equal("denial" in activityInfo(act({ type: "attack" })), false);
+});
+test("snapshot: each enemy's threat is its best damage per turn against the monster (Extra Attack doubles it) plus its best heal", async () => {
+  n = 0;
+  const longsword = act({ name: "Longsword", type: "attack", toHit: "+5", parts: [["1d8 + 3", {}]], item: { type: "weapon", range: { reach: 5 } } });
+  const extra = { name: "Extra Attack", type: "feat", system: { activities: [] } };
+  longsword.item.system.activities = [longsword];
+  const fighter = token("fighter", { x: 100, disposition: 1, items: [longsword.item, extra] });
+  const cure = act({ name: "Cure Wounds", type: "heal", parts: [["1d8 + 3", {}]], spell: { level: 1, slots: 2 } });
+  const bolt = act({ name: "Guiding Bolt", type: "attack", toHit: "+5", parts: [["4d6", {}]], spell: { level: 1, slots: 2 }, attackType: "ranged" });
+  cure.item.system.activities = [cure]; bolt.item.system.activities = [bolt];
+  const cleric = token("cleric", { x: 200, disposition: 1, items: [cure.item, bolt.item] });
+  const goblin = token("goblin", { x: 0, disposition: -1, ac: 15 });
+  canvas.scene.tokens.contents = [goblin, fighter, cleric];
+  const b = await snapshot({ combatants: [goblin, fighter, cleric].map((t) => combatantOf(t)) }, combatantOf(goblin));
+  // Longsword vs AC 15: (21+5-15)/20 = 0.55 x 7.5 = 4.125, x2 for Extra Attack = 8.25; Guiding Bolt 0.55 x 14 = 7.7 + Cure Wounds 7.5 = 15.2
+  assert.deepEqual(b.enemies.map((e) => [e.id, Number(e.threat.toFixed(2))]), [["fighter", 8.25], ["cleric", 15.2]]);
 });

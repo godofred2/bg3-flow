@@ -2,12 +2,14 @@
 import { MODULE_ID } from "../main.js";
 import { speedLimit } from "../rules.js";
 import { sees, distanceFt } from "../encounters.js";
-import { averageOf, hitChance } from "./plan.js";
+import { averageOf, hitChance, expectedValue } from "./plan.js";
 
 const KINDS = new Set(["attack", "save", "damage", "heal"]);
 const hasRecharge = (uses) => (uses?.recovery ?? []).some((r) => r.period === "recharge");
 const SLOTS = new Set(["action", "bonus", "lair"]); // legendary and mythic actions stay the DM's (user decision)
 const spent = (uses) => Number(uses?.max) > 0 && !(uses.value > 0);
+// The share of a turn a condition takes away (lair actions are valued by the damage they deny; ponytail: a flat table, no duration).
+const DENIAL = { paralyzed: 1, stunned: 1, incapacitated: 1, unconscious: 1, petrified: 1, restrained: 0.5, blinded: 0.5, frightened: 0.5, poisoned: 0.5, prone: 0.5, grappled: 0.1, deafened: 0.1 };
 
 /** Average of every damage roll of an activity, roll data resolved. */
 function averageDamage(activity) {
@@ -40,7 +42,9 @@ export function activityInfo(activity) {
   const siblings = activity.item?.system?.activities?.size ?? activity.item?.system?.activities?.length ?? 1;
   const name = activity.item?.name ? (siblings > 1 && activity.name ? `${activity.item.name} (${activity.name})` : activity.item.name) : activity.name;
   const avg = averageDamage(activity), heal = activity.type === "heal";
+  const statuses = (activity.effects ?? []).flatMap((e) => [...(e.effect?.statuses ?? [])]).filter((s) => s in DENIAL);
   return {
+    ...(statuses.length ? { denial: Math.max(...statuses.map((s) => DENIAL[s])) } : {}),
     id: activity.uuid, uuid: activity.uuid, name, kind: activity.type, slot: activity.activation.type,
     range: area && activity.range?.units === "self" ? area.size : activity.activation.type === "lair" && activity.range?.value == null && activity.range?.units !== "self" ? Infinity : rangeOf(activity), bonus: parseInt(activity.labels?.toHit) || 0,
     dc: activity.save?.dc?.value, saveAbility: activity.save?.ability?.first?.() ?? [...(activity.save?.ability ?? [])][0], onSave: activity.damage?.onSave,
@@ -175,6 +179,19 @@ function oaOf(actor, ac, tunnelFighter) {
 
 const inRect = (tl, r) => !r || (tl.x >= r.x && tl.y >= r.y && tl.x < r.x + r.width && tl.y < r.y + r.height);
 
+/** How dangerous a PC is to `me` per turn: its best action against me (Extra Attack doubles it) plus its best heal. Used by lair actions only. */
+function threatOf(actor, me) {
+  let damage = 0, heal = 0;
+  for (const item of actor?.items ?? []) for (const a of item.system?.activities ?? []) {
+    const info = activityInfo(a);
+    if (!info) continue;
+    heal = Math.max(heal, info.healing ?? 0);
+    if (info.slot === "action" && ["attack", "save", "damage"].includes(info.kind)) damage = Math.max(damage, expectedValue(info, me));
+  }
+  if ([...(actor?.items ?? [])].some((i) => named(i.name, "extra attack"))) damage *= 2;
+  return damage + heal;
+}
+
 /** In its lair: 2024 rules (the actor's own, else the world's) need the sheet's "inside lair" switch; 2014 rules a lair initiative (or the flag). */
 export function lairOf(actor) {
   const lair = actor?.system?.resources?.lair ?? {};
@@ -212,7 +229,7 @@ export async function snapshot(combat, combatant, reserved = new Set()) {
     if ((t.disposition ?? 0) === mine) { allies.push(creature(t)); continue; } // an ally, downed ones included (heals)
     if ((t.disposition ?? 0) * mine >= 0 || !((hpOf(t).value ?? 0) > 0)) continue; // neutral: nobody is its enemy; downed: no target
     const e = creature(t);
-    enemies.push({ ...e, visible: sees(doc, t), oa: oaOf(t.actor, me.ac, e.tunnelFighter) });
+    enemies.push({ ...e, visible: sees(doc, t), oa: oaOf(t.actor, me.ac, e.tunnelFighter), threat: threatOf(t.actor, me) });
   }
   const foots = enemies.map((e) => [e.id, new Set(footOf(tokensById[e.id]))]); // every square measures its distance to every enemy
   for (const e of enemies) if (e.visible) paths[e.id] = await pathTo(doc, tokensById[e.id], taken, budget, foots);

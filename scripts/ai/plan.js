@@ -26,6 +26,10 @@ export function expectedValue(activity, target, { disadvantage = false } = {}) {
     }
     case "damage": return activity.damage;
     case "heal": return Math.min(activity.healing, target.maxHp - target.hp);
+    case "deny": { // a condition: the damage the target would have dealt, times the share of its turn the condition takes (lair actions only)
+      const fail = failChance({ dc: activity.dc ?? 10, bonus: target.saves?.[activity.saveAbility] ?? 0 });
+      return fail * (activity.denial ?? 0.5) * (target.threat ?? 0);
+    }
     default: return 0;
   }
 }
@@ -237,11 +241,12 @@ export function planFlee(board) {
  *  the Multiattack sequence), else approach. With `slot: "bonus"`: the best bonus-action activity from where the monster stands, or nothing. */
 export function planTurn(board, { slot = "action" } = {}) {
   if (slot === "action" && shouldFlee(board)) { const f = planFlee(board); if (f.move) return f; }
-  const actions = board.activities.filter((a) => a.slot === slot && (slot !== "lair" || a.uuid !== board.me.lairLast)); // a lair never repeats its action two rounds in a row (RAW)
+  const actions = board.activities.filter((a) => a.slot === slot && (slot !== "lair" || a.uuid !== board.me.lairLast)) // a lair never repeats its action two rounds in a row (RAW)
+    .map((a) => (slot === "lair" && a.kind === "save" && !(a.damage > 0) ? { ...a, kind: "deny", denial: a.denial ?? 0.5 } : a)); // a condition-only lair action is worth what it denies
   const options = [];
   for (const a of actions) {
     const p = pickTarget(board, a);
-    if (p && p.value > 0) options.push({ name: a.name, value: p.value, oa: p.oa, square: p.square, aimId: p.enemy.id, actions: [{ activityId: a.id, targetIds: p.targets.map((t) => t.id), aimId: p.enemy.id }] });
+    if (p && p.value > 0) options.push({ name: a.name, kind: a.kind, value: p.value, oa: p.oa, square: p.square, aimId: p.enemy.id, actions: [{ activityId: a.id, targetIds: p.targets.map((t) => t.id), aimId: p.enemy.id }] });
   }
   if (board.multiattack && slot === "action") {
     const attacks = actions.filter((a) => a.kind === "attack");
@@ -274,7 +279,7 @@ export function planTurn(board, { slot = "action" } = {}) {
     // The lair whisper also names the lair actions the scorer could not value (the GM may run one by hand at initiative 20).
     const scored = (name) => options.some((o) => o.name === name || o.name.startsWith(`${name} (`));
     const left = slot === "lair" ? (board.me.lairNames ?? []).filter((name) => !scored(name)) : [];
-    return { move: w.square ? moveTo(w.square) : null, actions: w.actions, reason: `${slot === "lair" ? "lair: " : ""}${w.name} vs ${nameOf(w.aimId)} (expected ${w.value.toFixed(1)}${toll})${also ? `; also: ${also}` : ""}${left.length ? `; not scored: ${left.join(", ")}` : ""}` };
+    return { move: w.square ? moveTo(w.square) : null, actions: w.actions, reason: `${slot === "lair" ? "lair: " : ""}${w.name} vs ${nameOf(w.aimId)} (${w.kind === "deny" ? "denies" : "expected"} ${w.value.toFixed(1)}${toll})${also ? `; also: ${also}` : ""}${left.length ? `; not scored: ${left.join(", ")}` : ""}` };
   }
   if (slot === "lair") { const names = board.me.lairNames ?? []; return { move: null, actions: [], reason: `lair: nothing to score${names.length ? `; by hand: ${names.join(", ")}` : ""}` }; }
   if (slot !== "action") return { move: null, actions: [], reason: "no bonus action" };
