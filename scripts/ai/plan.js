@@ -52,9 +52,11 @@ export function parseMultiattack(text, names) {
 export function coverage({ area, origin, aim, creatures, grid }) {
   const ft = (px) => px / grid.px * grid.ft;
   const dx = aim.cx - origin.cx, dy = aim.cy - origin.cy, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+  // Cones and lines start at the edge of the caster's space (half its width toward the aim): the caster is never in its own breath.
+  const edge = (origin.w ?? 1) * grid.px / 2, ox = origin.cx + ux * edge, oy = origin.cy + uy * edge;
   return creatures.filter((c) => {
     const extra = ((c.w ?? 1) - 1) * grid.ft / 2; // a Large creature's centre sits half a square further in
-    const vx = c.cx - origin.cx, vy = c.cy - origin.cy;
+    const vx = c.cx - ox, vy = c.cy - oy;
     switch (area.shape) {
       case "cube": case "square": return ft(Math.max(Math.abs(c.cx - aim.cx), Math.abs(c.cy - aim.cy))) <= area.size / 2 + extra;
       case "cone": { const d = Math.hypot(vx, vy); if (d === 0 || ft(d) > area.size + extra) return false; return Math.acos(Math.min(1, (vx * ux + vy * uy) / d)) < 26.5 * Math.PI / 180; } // Foundry's 53.13 degree cone leaves a centre on its edge ray outside
@@ -80,7 +82,7 @@ function distanceFrom(board, from, enemy) {
 /** An area aimed at `enemy` from `square` (null: where the monster stands): everyone covered, value = enemies minus allies (the monster at the firing square). */
 function areaFrom(board, activity, enemy, square) {
   const half = (board.me.w ?? 1) * board.grid.px / 2;
-  const origin = square ? { cx: square.x + half, cy: square.y + half } : board.me;
+  const origin = square ? { cx: square.x + half, cy: square.y + half, w: board.me.w } : board.me;
   const live = board.enemies.filter((e) => e.hp > 0 && e.visible);
   const allies = (board.allies ?? []).map((a) => a.id === board.me.id ? { ...a, cx: origin.cx, cy: origin.cy } : a);
   const hit = coverage({ area: activity.area, origin, aim: enemy, creatures: [...live, ...allies], grid: board.grid });

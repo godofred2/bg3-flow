@@ -137,8 +137,11 @@ test("coverage: sphere by distance, cube by Chebyshev, cone by angle and length,
   assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 15 }, origin: c("m", 150, 50), aim: { cx: 450, cy: 50 }, creatures: [c("rogue", 450, 50), c("fighter", 550, 50)], grid })), ["rogue"]);
   assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 15 }, origin: c("m", 250, 50), aim: { cx: 450, cy: 50 }, creatures: [c("rogue", 450, 50), c("fighter", 550, 50)], grid })), ["rogue", "fighter"]);
   assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 15 }, origin: c("m", 50, 50), aim: { cx: 350, cy: 350 }, creatures: [c("diag", 350, 350)], grid })), []); // 3 squares diagonally: 21 ft on the map
-  // a centre exactly on the cone's edge ray (2 squares ahead, 1 aside: 26.57 degrees) is outside, as Foundry's template leaves it
+  // a centre on or past the cone's edge ray is outside, as Foundry's template leaves it
   assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 15 }, origin: c("m", 650, 450), aim: { cx: 450, cy: 450 }, creatures: [c("rogue", 450, 450), c("edge", 450, 550)], grid })), ["rogue"]);
+  // cones and lines start at the edge of the caster's space, half a square toward the aim: the caster is never in its own breath, and a Large caster's cone starts a full square out
+  assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 15 }, origin: c("m", 150, 50), aim: { cx: 450, cy: 50 }, creatures: [c("m", 150, 50), c("rogue", 450, 50)], grid })), ["rogue"]);
+  assert.deepEqual(ids(coverage({ area: { shape: "line", size: 15 }, origin: c("big", 200, 100, 2), aim: { cx: 600, cy: 100 }, creatures: [c("big", 200, 100, 2), c("near", 350, 100), c("far", 550, 100)], grid })), ["near", "far"]); // from x 300: near at 2.5 ft, far at 12.5 (17.5 from the centre)
   assert.deepEqual(ids(coverage({ area: { shape: "line", size: 60, width: 5 }, origin: c("m", 50, 50), aim: { cx: 450, cy: 50 }, creatures: all, grid })), ["a", "b", "d"]);
 });
 

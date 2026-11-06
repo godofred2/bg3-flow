@@ -315,7 +315,7 @@ test("an area use sends every covered target to Midi in one call", async () => {
   const combat = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]);
   await runTurn(combat, deps({ plans: { g1: { move: null, actions: [{ activityId: "fb", targetIds: ["rogue", "wiz"], aimId: "wiz" }], reason: "Fireball vs rogue (expected 20.0)" } }, enemies: () => [enemy("rogue"), { ...enemy("wiz"), cx: 650, cy: 50 }] }));
   assert.deepEqual(uses, [["fb", "T.rogue,T.wiz"]]);
-  assert.deepEqual(places[0], { origin: { cx: 50, cy: 50 }, aim: { cx: 650, cy: 50 } }); // where the template goes
+  assert.deepEqual(places[0], { origin: { cx: 50, cy: 50, w: 1 }, aim: { cx: 650, cy: 50 } }); // where the template goes
 });
 
 test("useActivity: no configuration dialog, the target uuids, and no dnd5e template placement", async () => {
@@ -339,9 +339,9 @@ test("useActivity on an area builds the template data itself (no dnd5e placement
   globalThis.canvas.scene.createEmbeddedDocuments = async (type, [data]) => { created.push([type, data]); return [{ _id: "tpl1", uuid: "Scene.s.MeasuredTemplate.tpl1" }]; };
   globalThis.canvas.scene.regions = { get: (id) => ({ uuid: `Scene.s.Region.${id}` }) };
   globalThis.fromUuidSync = (uuid) => uuid === "A.br" ? activity : uuid.includes("Region") ? { uuid, delete: async () => deleted.push(uuid) } : null;
-  await useActivity({ uuid: "A.br", area: { shape: "cone", size: 15, width: 5 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 350 } });
+  await useActivity({ uuid: "A.br", area: { shape: "cone", size: 15, width: 5 } }, ["T.rogue"], { origin: { cx: 150, cy: 50, w: 1 }, aim: { cx: 450, cy: 350 } });
   const cone = created[0][1];
-  assert.deepEqual([created[0][0], cone.t, cone.x, cone.y, cone.direction, cone.distance, cone.angle, cone.flags.dnd5e.origin, cone.flags["midi-qol"].actorUuid], ["MeasuredTemplate", "cone", 150, 50, 45, 15, 53.13, "A.br", "Ac.d"]);
+  assert.deepEqual([created[0][0], cone.t, Math.round(cone.x), Math.round(cone.y), cone.direction, cone.distance, cone.angle, cone.flags.dnd5e.origin, cone.flags["midi-qol"].actorUuid], ["MeasuredTemplate", "cone", 185, 85, 45, 15, 53.13, "A.br", "Ac.d"]); // from the edge of the caster's space (half a square toward the aim), not its centre
   assert.equal(cfgs[0].midiOptions.workflowOptions.templateUuid, "Scene.s.Region.tpl1");
   assert.deepEqual(cfgs.templates.map((t) => t._id), ["tpl1"]); // the proxy MeasuredTemplate document on the clone Midi works with, as dnd5e's own placement hands it over
   assert.equal(cfgs.original, undefined); // nothing left on the sheet's activity
@@ -358,7 +358,7 @@ test("useActivity on an area builds the template data itself (no dnd5e placement
   created.length = 0;
   activity.target.template = { type: "line", size: "60", width: "5" };
   await useActivity({ uuid: "A.br", area: { shape: "line", size: 60, width: 5 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 50 } });
-  assert.deepEqual([created[0][1].t, created[0][1].x, created[0][1].direction, created[0][1].width], ["ray", 150, 0, 5]);
+  assert.deepEqual([created[0][1].t, created[0][1].x, created[0][1].direction, created[0][1].width], ["ray", 200, 0, 5]); // half a square ahead of the caster's centre
   activity.duration.units = "minute"; deleted.length = 0;
   await useActivity({ uuid: "A.br", area: { shape: "line", size: 60, width: 5 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 50 } });
   assert.deepEqual(deleted, []); // a lasting area keeps its template

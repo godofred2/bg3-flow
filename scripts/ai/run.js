@@ -22,10 +22,12 @@ async function placeArea(activity, info, { origin, aim }) {
   const tpl = activity.target?.template ?? {};
   const fromCaster = ["cone", "line"].includes(info.area.shape);
   const size = info.area.size, half = size / canvas.dimensions.distance * canvas.dimensions.size / 2;
+  const dx = aim.cx - origin.cx, dy = aim.cy - origin.cy, len = Math.hypot(dx, dy) || 1;
+  const edge = (origin.w ?? 1) * canvas.dimensions.size / 2; // the cone starts at the edge of the caster's space, as the planner measured it
   const data = {
     t: kind === "emanation" ? "circle" : kind, user: game.user.id, distance: size,
-    direction: fromCaster ? Math.atan2(aim.cy - origin.cy, aim.cx - origin.cx) * 180 / Math.PI : 0,
-    x: fromCaster ? origin.cx : aim.cx, y: fromCaster ? origin.cy : aim.cy, fillColor: game.user.color,
+    direction: fromCaster ? Math.atan2(dy, dx) * 180 / Math.PI : 0,
+    x: fromCaster ? origin.cx + dx / len * edge : aim.cx, y: fromCaster ? origin.cy + dy / len * edge : aim.cy, fillColor: game.user.color,
     flags: {
       dnd5e: { dimensions: { size, width: tpl.width, height: tpl.height }, item: activity.item?.uuid, origin: activity.uuid, spellLevel: activity.item?.system?.level },
       "midi-qol": { actorUuid: activity.actor?.uuid, itemUuid: activity.item?.uuid }
@@ -202,7 +204,7 @@ export async function runTurn(combat, deps = {}) {
           if (stale()) return null; // the GM moved on while the dialog was open
         }
         const aim = pool.find((t) => t.id === a.aimId) ?? targets[0];
-        const place = activity.area ? { origin: { cx: board.me.cx, cy: board.me.cy }, aim: { cx: aim.cx, cy: aim.cy } } : null;
+        const place = activity.area ? { origin: { cx: board.me.cx, cy: board.me.cy, w: board.me.w }, aim: { cx: aim.cx, cy: aim.cy } } : null;
         if ((await use(activity, targets.map((t) => t.uuid), place)) === undefined) throw new Error("Midi refused the use");
         board = await snap(combat, c, reserved); // fresh hit points and sight for the next use
       }

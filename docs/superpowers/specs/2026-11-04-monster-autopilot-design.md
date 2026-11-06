@@ -252,3 +252,8 @@ Midi does the rest).
 
 - Midi runs a use on a clone of the item's activity (`item.clone({}, { keepId: true })`) and reads `templates` on that clone; dnd5e announces it through `dnd5e.preUseActivity`. The autopilot attaches the placed template document there, for the length of the use only.
 - A centre exactly on the cone's 26.57 degree edge ray is outside, as Foundry's template leaves it: the planner uses a hair less than the half angle.
+
+## Amendment 2026-11-05 (v0.7.4 server run: 4b green; v0.7.5)
+
+- B1 and B8 resolved on the server (template linked, save cards, damage, template removed). The caster had been inside its own cone (the template started at its centre): cones and lines now start at the edge of the caster's space, half its width toward the aim, in the planner and in the placed template alike.
+- Sub-piece 4b closed at v0.7.5.
