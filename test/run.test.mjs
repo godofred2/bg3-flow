@@ -624,3 +624,25 @@ test("the flee decision is whispered before the monster moves, and only once", a
   await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), deps({ plans: { g1: fleePlan } }));
   assert.deepEqual([seen, calls.chat.map((m) => m.content.includes("flee"))], [[1], [true]]);
 });
+
+test("the decision is whispered once, before the move, with the toll and the alternatives of the plan that chose it; the re-plan from the new square is silent when it keeps the action", async () => {
+  reset();
+  const g1 = combatant("g1"), seen = [];
+  g1.token.move = async () => { seen.push(calls.chat.length); return true; };
+  const full = { move: { x: 100, y: 100, elevation: 0 }, actions: [{ activityId: "sc", targetIds: ["rogue"] }], reason: "Shortbow vs rogue (expected 2.9; opportunity attacks 0.4); also: Scimitar 1.6" };
+  const still = { move: null, actions: [{ activityId: "sc", targetIds: ["rogue"] }], reason: "Shortbow vs rogue (expected 3.3)" };
+  const d = deps({ plans: { g1: full } });
+  d.plan = (board, opts) => (opts?.slot === "bonus" ? { move: null, actions: [], reason: "no bonus action" } : board.me.budget === 0 ? still : full);
+  await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), d);
+  assert.deepEqual([seen, calls.chat.map((m) => m.content.includes("opportunity attacks 0.4"))], [[1], [true]]);
+});
+test("a re-plan after the move that changes the action is whispered again", async () => {
+  reset();
+  const g1 = combatant("g1");
+  const full = { move: { x: 100, y: 100, elevation: 0 }, actions: [{ activityId: "sc", targetIds: ["rogue"] }], reason: "Scimitar vs rogue (expected 2.5)" };
+  const still = { move: null, actions: [{ activityId: "sc", targetIds: ["fighter"] }], reason: "Scimitar vs fighter (expected 2.0)" };
+  const d = deps({ plans: { g1: full }, enemies: () => [enemy("rogue"), enemy("fighter")] });
+  d.plan = (board, opts) => (opts?.slot === "bonus" ? { move: null, actions: [], reason: "no bonus action" } : board.me.budget === 0 ? still : full);
+  await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), d);
+  assert.deepEqual(calls.chat.map((m) => m.content.includes("vs fighter")), [false, true]);
+});

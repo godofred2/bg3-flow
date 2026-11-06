@@ -24,8 +24,10 @@ function warn(msg) {
 export function activeIds(combat) {
   const cur = combat?.combatant;
   if (!cur) return new Set();
-  const g = groupOf(groupsOf(combat), cur.id);
-  return new Set(g ? g.ids : [cur.id]);
+  const turns = turnsOf(combat);
+  const g = groupOf(groupBySide(turns), cur.id);
+  const dead = new Set(turns.filter((t) => t.defeated).map((t) => t.id));
+  return new Set((g ? g.ids : [cur.id]).filter((id) => !dead.has(id))); // a defeated member acts no more: no marker, no circle, no autopilot
 }
 
 function limitFor(doc, combatant, action) {
@@ -163,7 +165,7 @@ export function registerTurns() {
   if (typeof libWrapper !== "undefined") {
     libWrapper.register(MODULE_ID, "foundry.canvas.placeables.Token.prototype._refreshTurnMarker", function (wrapped, ...args) { return refreshTurnMarker(this, () => wrapped(...args)); }, "MIXED");
   }
-  for (const h of ["combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady"]) Hooks.on(h, safe(refreshTurnMarkers));
+  for (const h of ["combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady", "createActiveEffect", "deleteActiveEffect"]) Hooks.on(h, safe(refreshTurnMarkers)); // the effects: a dead status (Midi's at 0 hp) defeats without touching the combatant
   Hooks.on("combatTurn", safeSync(onCombatTurn));
   Hooks.on("combatTurnChange", safe(onCombatTurnChange));
   Hooks.on("preMoveToken", safeSync(onPreMoveToken)); // sync: a Promise would never veto
@@ -175,7 +177,7 @@ export function registerTurns() {
     const c = combatantFor(game.combat, token.id, canvas?.scene?.id);
     if (c && activeIds(game.combat).has(c.id)) drawReach();
   }));
-  for (const h of ["combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady", "sightRefresh"]) {
+  for (const h of ["combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady", "sightRefresh", "createActiveEffect", "deleteActiveEffect"]) {
     Hooks.on(h, safe(drawReach));
   }
   log("turns on");

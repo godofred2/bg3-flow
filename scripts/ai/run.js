@@ -174,7 +174,7 @@ export async function runTurn(combat, deps = {}) {
         if (board.me.hp <= 0) continue; // down before its turn: nothing to play
         const p = plan(board);
         if (p.move) reserved.add(`${p.move.x},${p.move.y}`);
-        if (p.dash) await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason })); // a flight is decided now: say so before it runs
+        await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason })); // the decision (toll and alternatives included) is said before it runs
         plans.push([c, p]);
       } catch (err) { await failed(c, err); }
     }
@@ -225,8 +225,9 @@ export async function runTurn(combat, deps = {}) {
     await moveAll(plans);
     await checkEscapes(plans);
     // Run one plan's uses from where the monster stands. Returns false when the GM took the monster over.
-    const act = async (c, board, p) => {
-      await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason }));
+    const sig = (p) => JSON.stringify(p.actions.map((a) => [a.activityId, a.targetIds ?? []]));
+    const act = async (c, board, p, said) => {
+      if (!said || sig(p) !== sig(said)) await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason })); // only a changed mind is said twice
       for (const a of p.actions) {
         if (stale()) return null;
         const activity = board.activities.find((x) => x.id === a.activityId);
@@ -260,15 +261,15 @@ export async function runTurn(combat, deps = {}) {
         if (!first.move) { // it stayed put while the others moved: the board changed under it (an ally walked off), so it may still walk now
           const again = plan(board);
           if (again.move) {
-            if (again.dash) await whisper(L("Autopilot.Decision", { name: c.token.name, reason: again.reason }));
+            await whisper(L("Autopilot.Decision", { name: c.token.name, reason: again.reason }));
             boards[c.id] = board; await moveAll([[c, again]]); await checkEscapes([[c, again]]);
             if (stale()) return; if (escaped.has(c.id)) continue;
-            fled = !!again.dash; if (fled) first = again;
+            fled = !!again.dash; first = again;
             board = await snap(combat, c, reserved); if (board.me.hp <= 0) continue;
           }
         }
         const still = { ...board, me: { ...board.me, budget: 0 } }; // act from where it stands: a move that fell short never fires out of reach
-        const done = fled ? true : await act(c, still, plan(still)); // the flight (already whispered) was the action: nothing else this turn but the bonus action
+        const done = fled ? true : await act(c, still, plan(still), first); // the flight (already whispered) was the action: nothing else this turn but the bonus action
         if (done === null) return;
         if (done === false) { clean = false; continue; }
         const after = await snap(combat, c, reserved);

@@ -273,3 +273,8 @@ Midi does the rest).
 - Tunnel Fighter: the first square walked inside the stance's reach is free (5 ft); every further square inside it is a trigger, whether the monster started inside or entered.
 - The flee decision is whispered before the move, not after.
 - F1 as written could not pass by the spec's own rules (a lone monster never flees; two standing goblins against two PCs is not losing): the step now keeps Goblin 2 in the combat as defeated.
+
+## Amendment 2026-11-06 (v0.8.2 server run; v0.8.3)
+
+- F1, F9 green; F6/F7 moved right but the whisper was the re-plan's (from the new square, budget 0: no toll, no alternatives) and came after the step. Now every plan's decision is whispered before it runs, and the re-plan from the new square is whispered only when it changes the action (activity or targets).
+- T13: a defeated member of the shared turn kept Foundry's turn marker. `activeIds` now leaves defeated combatants out (tracker defeat or the dead status), so the marker, the reach circle and the Midi opportunity-attack exemption all drop them; the markers and circles also refresh on createActiveEffect/deleteActiveEffect (Midi's dead status at 0 hp touches no combatant).

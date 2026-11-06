@@ -43,7 +43,7 @@ const move = ({ action = "walk", cost = 10, pending = 0, spent = 0 } = {}) => ({
   passed: { cost, waypoints: [{ action }] }, pending: { cost: pending, waypoints: [] }, history: { cost: spent }
 });
 
-const { onCombatTurn, onCombatTurnChange, onPreMoveToken, onPostUseActivity, onPreTargetingTurns, drawReach, registerTurns, refreshTurnMarker, refreshTurnMarkers } = await import("../scripts/turns.js");
+const { onCombatTurn, onCombatTurnChange, onPreMoveToken, onPostUseActivity, onPreTargetingTurns, drawReach, registerTurns, refreshTurnMarker, refreshTurnMarkers, activeIds } = await import("../scripts/turns.js");
 
 const cleric = combatant("c", 1), rogue = combatant("r", 1), g1 = combatant("g1", -1), g2 = combatant("g2", -1);
 
@@ -292,5 +292,17 @@ test("registerTurns wraps Token#_refreshTurnMarker through libWrapper (MIXED) an
   const on = Hooks.on; Hooks.on = (name) => hooks.push(name);
   try { registerTurns(); } finally { Hooks.on = on; delete globalThis.libWrapper; }
   assert.deepEqual([regs[0][0], regs[0][1], regs[0][3]], ["bg3-flow", "foundry.canvas.placeables.Token.prototype._refreshTurnMarker", "MIXED"]);
-  for (const h of ["combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady"]) assert.ok(hooks.includes(h), h);
+  for (const h of ["combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady", "createActiveEffect", "deleteActiveEffect"]) assert.ok(hooks.includes(h), h);
+});
+
+test("a defeated member of the shared turn may not act: left out of activeIds, so its turn marker is core's call (removed)", () => {
+  const dead = combatant("dead", -1, { defeated: true });
+  const cb = combat([cleric, rogue, g1, dead, g2], 2);
+  assert.deepEqual([...activeIds(cb)].sort(), ["g1", "g2"]);
+  const token = markerWorld();
+  game.combat = cb;
+  let wrapped = 0;
+  const t = token(dead);
+  refreshTurnMarker(t, () => wrapped++);
+  assert.deepEqual([t.turnMarker, wrapped], [null, 1]);
 });
