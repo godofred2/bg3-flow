@@ -278,3 +278,7 @@ Midi does the rest).
 
 - F1, F9 green; F6/F7 moved right but the whisper was the re-plan's (from the new square, budget 0: no toll, no alternatives) and came after the step. Now every plan's decision is whispered before it runs, and the re-plan from the new square is whispered only when it changes the action (activity or targets).
 - T13: a defeated member of the shared turn kept Foundry's turn marker. `activeIds` now leaves defeated combatants out (tracker defeat or the dead status), so the marker, the reach circle and the Midi opportunity-attack exemption all drop them; the markers and circles also refresh on createActiveEffect/deleteActiveEffect (Midi's dead status at 0 hp touches no combatant).
+
+## Amendment 2026-11-06 (v0.8.3 server run: 4c green)
+
+- F6 (AC 25), F7 and the T13 defeated sub-step green. The guide's whisper numbers were wrong, not the planner: a Sentinel stop (5 % at AC 25) discounts the retreat shot (3.3 x 0.95 - 0.4 = 2.8), and the "also:" line names each activity's best option (the Scimitar's is the 30 ft walk to the Rogue, 3.3, not the adjacent Fighter, 1.6). Piece 4c is closed.
