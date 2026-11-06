@@ -50,6 +50,7 @@ Hooks.once("init", () => {
   reg("fleeEnabled", Boolean, true);
   reg("fleeThreshold", Number, 25);
   reg("escapeRegionName", String, "escape");
+  reg("lairActions", Boolean, true);
   game.settings.registerMenu(MODULE_ID, "preset", {
     name: L("Preset.Menu"), label: L("Preset.Menu"), hint: L("Preset.Hint"),
     icon: "fas fa-bolt", type: PresetMenu, restricted: true

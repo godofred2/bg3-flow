@@ -57,6 +57,10 @@
       "escapeRegionName": {
         "Name": "Nombre de las regiones de escape",
         "Hint": "Las regiones cuyo nombre contiene esta palabra son rutas de escape: un monstruo que huye y entra en una sale del combate (derrotado y oculto)."
+      },
+      "lairActions": {
+        "Name": "Acciones de guarida",
+        "Hint": "Al inicio de cada ronda, un monstruo en su guarida usa la acción de guarida que más daño hace al grupo; el DM recibe aviso de las que quedan en sus manos. Los monstruos con acciones legendarias quedan fuera del piloto salvo que se activen."
       }
     },
     "Preset": {

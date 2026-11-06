@@ -10,7 +10,7 @@ globalThis.ChatMessage = { create: async (d) => calls.chat.push(d) };
 globalThis.CONFIG = { time: { turnTime: 6, roundTime: 60 }, Token: { movement: { actions: { walk: {} } } }, DND5E: { movementTypes: { walk: {} } } };
 globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: { wait: async () => null } } }, utils: { escapeHTML: (s) => s } };
 globalThis.canvas = { ready: true, scene: { id: "scene", tokens: { contents: [] } } };
-const settings = { pauseBeforeAttack: false, autoNextTurn: true, intelligenceThreshold: 6, enableTurns: true, autoRecharge: "no" };
+const settings = { pauseBeforeAttack: false, autoNextTurn: true, intelligenceThreshold: 6, enableTurns: true, autoRecharge: "no", lairActions: true };
 globalThis.game = {
   i18n: { localize: (k) => k, format: (k, d) => `${k}:${JSON.stringify(d)}` },
   user: { id: "gm", isGM: true }, users: { activeGM: { isSelf: true } }, combat: null,
@@ -50,9 +50,9 @@ function deps({ plans, bonus = {}, enemies = () => [enemy("rogue")], allies = ()
     pause: pause ?? (async () => "execute")
   };
 }
-function reset() { order = []; moves = []; uses = []; places = []; calls.chat = []; settings.pauseBeforeAttack = false; settings.autoNextTurn = true; settings.enableTurns = true; settings.autoRecharge = "no"; game.user.isGM = true; }
+function reset() { order = []; moves = []; uses = []; places = []; calls.chat = []; settings.pauseBeforeAttack = false; settings.autoNextTurn = true; settings.enableTurns = true; settings.autoRecharge = "no"; settings.lairActions = true; game.user.isGM = true; }
 
-const { isAuto, runTurn, onCombatTurnChange, onRenderCombatTracker, pauseDialog, registerAutopilot, arrive, useActivity, rollRecharge, sentinelWatch } = await import("../scripts/ai/run.js");
+const { isAuto, runTurn, runLair, onCombatTurnChange, onRenderCombatTracker, pauseDialog, registerAutopilot, arrive, useActivity, rollRecharge, sentinelWatch } = await import("../scripts/ai/run.js");
 
 test("isAuto: on unless the flag says false or a player owns the actor", () => {
   assert.equal(isAuto(combatant("g")), true);
@@ -177,7 +177,7 @@ test("onRenderCombatTracker appends an active robot button to NPC rows only, cli
   await rows[0].controls.children[0].listeners.click(ev);
   assert.equal(g1.flags["bg3-flow"].autopilot, false);
   await rows[1].controls.children[0].listeners.click(ev);
-  assert.equal(g2.flags["bg3-flow"].autopilot, undefined);
+  assert.equal(g2.flags["bg3-flow"].autopilot, true); // explicit: a legendary monster (off by default) can be switched on the same way
 });
 
 test("pauseDialog maps a closed dialog to skip", async () => {
@@ -645,4 +645,66 @@ test("a re-plan after the move that changes the action is whispered again", asyn
   d.plan = (board, opts) => (opts?.slot === "bonus" ? { move: null, actions: [], reason: "no bonus action" } : board.me.budget === 0 ? still : full);
   await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), d);
   assert.deepEqual(calls.chat.map((m) => m.content.includes("vs fighter")), [false, true]);
+});
+
+const lairPlan = { move: null, actions: [{ activityId: "A.ap", targetIds: ["rogue"], aimId: "rogue" }], reason: "lair: Acid Pool vs rogue (expected 7.7); not scored: Grasping Roots" };
+const lairNone = { move: null, actions: [], reason: "lair: nothing to score; by hand: Acid Pool, Grasping Roots" };
+const ap = { id: "A.ap", uuid: "A.ap", name: "Acid Pool", kind: "save", slot: "lair", range: Infinity, dc: 15, saveAbility: "dex", onSave: "half", damage: 9, affects: "creature" };
+// A sheet with a legacy lair (initiative 20) and, optionally, legendary actions; hp as given.
+const sheet = (c, { lair = true, legact = 0, hp = 7 } = {}) => { c.actor.system = { attributes: { hp: { value: hp, max: 7 } }, resources: { lair: { value: lair, initiative: lair ? 20 : null, inside: false }, legact: { max: legact, spent: 0, value: legact } } }; return c; };
+function lairDeps() {
+  const d = deps({ plans: {} });
+  d.snap = async (combat, c) => ({ ...boardFor(c, [enemy("rogue")]), activities: [sc, ap], me: { ...boardFor(c, []).me, lair: true, lairLast: c.getFlag("bg3-flow", "lairLast") ?? null, lairNames: ["Acid Pool", "Grasping Roots"] } });
+  d.plan = (board, opts) => (opts?.slot === "lair" ? (board.me.lairLast === "A.ap" ? lairNone : lairPlan) : emptyPlan);
+  return d;
+}
+test("isAuto: a monster with legendary actions is the DM's unless the flag says true; the robot button sets the flag to the opposite of isAuto", () => {
+  const g = sheet(combatant("g"), { legact: 3 });
+  assert.equal(isAuto(g), false);
+  g.flags["bg3-flow"].autopilot = true;
+  assert.equal(isAuto(g), true);
+  assert.equal(isAuto(sheet(combatant("plain"))), true);
+});
+test("runLair: at the top of the round every monster in its lair takes its best lair action from where it stands, remembers it, skips it next round and tells the GM; no flag, no uses, no movement", async () => {
+  reset();
+  const g1 = sheet(combatant("g1", { auto: false })), g2 = sheet(combatant("g2"), { lair: false }), pc = combatant("pc", { disposition: 1, playerOwner: true });
+  const combat = makeCombat([pc, g1, g2], 0);
+  const snapped = []; const d = lairDeps(); const snap = d.snap; d.snap = async (combat, c) => { snapped.push(c.id); return snap(combat, c); };
+  await runLair(combat, d);
+  assert.deepEqual([uses, moves, [...new Set(snapped)], g1.flags["bg3-flow"].lairLast], [[["A.ap", "T.rogue"]], [], ["g1"], "A.ap"]); // g1 (autopilot off!) acted (snapped before and after the use); g2 has no lair: not even a snapshot
+  assert.deepEqual(calls.chat.map((m) => [m.whisper, m.content.includes("lair: Acid Pool")]), [[["gm"], true]]);
+  reset();
+  await runLair(combat, lairDeps()); // next round: Acid Pool was last round's
+  assert.deepEqual([uses, calls.chat.map((m) => m.content.includes("by hand: Acid Pool, Grasping Roots")), g1.flags["bg3-flow"].lairLast], [[], [true], undefined]);
+  reset();
+  await runLair(combat, lairDeps()); // the round after: available again
+  assert.equal(uses.length, 1);
+  reset();
+  sheet(g1, { hp: 0 });
+  await runLair(combat, lairDeps());
+  assert.deepEqual([uses, calls.chat], [[], []]); // dead dragon, quiet lair
+  sheet(g1);
+  reset(); settings.lairActions = false;
+  await runLair(combat, lairDeps());
+  assert.deepEqual([uses, calls.chat], [[], []]);
+  reset();
+  const druid = sheet(combatant("druid", { disposition: 1, playerOwner: true }));
+  await runLair(makeCombat([druid], 0), lairDeps());
+  assert.deepEqual(uses, []); // a player's lair is the player's
+});
+test("onCombatTurnChange runs the lair phase on a new round before the new turn, never on a turn step or backwards, under one running guard", async () => {
+  reset();
+  const g1 = sheet(combatant("g1")), pc1 = combatant("pc1", { disposition: 1, playerOwner: true });
+  const seen = [];
+  const d = lairDeps(); const plan = d.plan; d.plan = (b, o) => { seen.push(o?.slot ?? "action"); return plan(b, o); };
+  const c1 = makeCombat([pc1, g1], 1);
+  await onCombatTurnChange(c1, { round: 1, turn: 0 }, { round: 1, turn: 1 }, d); // a turn step inside the round: no lair, g1's turn plays
+  assert.deepEqual([seen.includes("lair"), uses.length, c1.nextTurns], [false, 0, 1]);
+  seen.length = 0; reset();
+  const c2 = makeCombat([pc1, g1], 0);
+  await onCombatTurnChange(c2, { round: 1, turn: 1 }, { round: 2, turn: 0 }, d); // new round: the lair acts, then the PCs' turn (not auto)
+  assert.deepEqual([seen[0], uses.map((u) => u[0]), calls.chat[0].content.includes("lair:")], ["lair", ["A.ap"], true]);
+  reset();
+  await onCombatTurnChange(makeCombat([pc1, g1], 1), { round: 2, turn: 0 }, { round: 1, turn: 1 }, lairDeps()); // backwards: nothing
+  assert.deepEqual([uses, calls.chat], [[], []]);
 });

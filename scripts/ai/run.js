@@ -1,7 +1,7 @@
 // Piece 4: monster autopilot execution. Lead GM only: the group moves together, then acts one monster at a time through Midi.
 import { MODULE_ID, log, safe, safeSync } from "../main.js";
 import { activeIds } from "../turns.js";
-import { snapshot } from "./board.js";
+import { snapshot, lairOf } from "./board.js";
 import { planTurn, pickTarget, splitAtTunnelFighter } from "./plan.js";
 import { promptTunnelFighter, tunnelFighterAttack, activeOwner, awaitOrGm } from "../prompts.js";
 
@@ -9,8 +9,13 @@ const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.
 const leadGm = () => !!game.users.activeGM?.isSelf;
 const whisper = (content) => ChatMessage.create({ content, whisper: [game.user.id] });
 
-/** On unless the combatant flag says false or a player owns the actor. */
-export const isAuto = (c) => c.getFlag(MODULE_ID, "autopilot") !== false && !c.actor?.hasPlayerOwner;
+/** On when the combatant flag says true; off when it says false, when a player owns the actor or, by default, when the monster has
+ *  legendary actions (the DM plays those by hand: user decision; the robot button overrides). */
+export const isAuto = (c) => {
+  const flag = c.getFlag(MODULE_ID, "autopilot");
+  if (flag === true || flag === false) return flag;
+  return !c.actor?.hasPlayerOwner && !((c.actor?.system?.resources?.legact?.max ?? 0) > 0);
+};
 
 /**
  * Place an area's template where the planner aimed it (a cone or line from the caster toward the aim, anything else centred on
@@ -144,7 +149,35 @@ export async function arrive(doc, { poll = 100, cap = 45000 } = {}) {
 }
 
 const oaBrief = (e) => e.oa ? `oa{r${e.oa.reach} dmg${e.oa.damage.toFixed(1)} hit${e.oa.hit.toFixed(2)}${e.oa.reaction ? " reaction" : ""}${e.oa.tunnelFighter ? " tf" : ""}}` : "oa-";
-const brief = (b) => `${b.me.name} hp ${b.me.hp}/${b.me.maxHp} budget ${b.me.budget} speed ${b.me.speed ?? "?"}${b.me.alone ? " alone" : ""}; escape ${b.escape ? `${b.escape.name} (${b.escape.squares.length} squares)` : "none"}, away ${(b.away ?? []).length}; activities: ${b.activities.map((a) => `${a.name}[${a.kind}${a.slot === "bonus" ? " bonus" : ""} r${a.range} +${a.bonus ?? 0} ${a.kind === "heal" ? `heal${(a.healing ?? 0).toFixed(1)}` : `dmg${(a.damage ?? 0).toFixed(1)}`}${a.area ? ` ${a.area.shape}${a.area.size}` : ""}${a.ranged ? " ranged" : ""}${a.recharge ? " recharge" : ""}]`).join(" ") || "none"}; enemies: ${b.enemies.map((e) => `${e.name}[d${e.distance} ac${e.ac} hp${e.hp}${e.visible ? "" : " unseen"} path${(b.paths[e.id] ?? []).length} ${oaBrief(e)}${e.sentinel ? " sentinel" : ""}${e.threat != null ? ` threat${e.threat.toFixed(1)}` : ""}]`).join(" ") || "none"}; allies: ${(b.allies ?? []).filter((a) => a.id !== b.me.id).map((a) => `${a.name}[hp${a.hp}/${a.maxHp}]`).join(" ") || "none"}; retreats ${(b.retreats ?? []).length}`;
+const brief = (b) => `${b.me.name} hp ${b.me.hp}/${b.me.maxHp} budget ${b.me.budget} speed ${b.me.speed ?? "?"}${b.me.alone ? " alone" : ""}${b.me.lair ? " lair" : ""}${b.me.lairLast ? " lair-last" : ""}; escape ${b.escape ? `${b.escape.name} (${b.escape.squares.length} squares)` : "none"}, away ${(b.away ?? []).length}; activities: ${b.activities.map((a) => `${a.name}[${a.kind}${a.slot === "bonus" ? " bonus" : a.slot === "lair" ? " lair" : ""} r${a.range} +${a.bonus ?? 0} ${a.kind === "heal" ? `heal${(a.healing ?? 0).toFixed(1)}` : `dmg${(a.damage ?? 0).toFixed(1)}`}${a.area ? ` ${a.area.shape}${a.area.size}` : ""}${a.ranged ? " ranged" : ""}${a.recharge ? " recharge" : ""}]`).join(" ") || "none"}; enemies: ${b.enemies.map((e) => `${e.name}[d${e.distance} ac${e.ac} hp${e.hp}${e.visible ? "" : " unseen"} path${(b.paths[e.id] ?? []).length} ${oaBrief(e)}${e.sentinel ? " sentinel" : ""}${e.threat != null ? ` threat${e.threat.toFixed(1)}` : ""}]`).join(" ") || "none"}; allies: ${(b.allies ?? []).filter((a) => a.id !== b.me.id).map((a) => `${a.name}[hp${a.hp}/${a.maxHp}]`).join(" ") || "none"}; retreats ${(b.retreats ?? []).length}`;
+
+const sig = (p) => JSON.stringify(p.actions.map((a) => [a.activityId, a.targetIds ?? []]));
+/** "Act from here": run one plan's uses from where the monster stands. Returns true, false (the GM took the monster over) or null (stale). */
+const actWith = ({ combat, reserved, stale, snap, pick, use, pause }) => async (c, board, p, said) => {
+    if (!said || sig(p) !== sig(said)) await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason })); // only a changed mind is said twice
+    for (const a of p.actions) {
+      if (stale()) return null;
+      const activity = board.activities.find((x) => x.id === a.activityId);
+      if (!activity) continue;
+      const allies = board.allies ?? [];
+      const live = (t) => t && (allies.includes(t) ? activity.kind !== "heal" || t.hp < t.maxHp : t.hp > 0 && t.visible);
+      const pool = activity.kind === "heal" ? allies : activity.area ? [...board.enemies, ...allies] : board.enemies; // an area hits covered allies too
+      let targets = (a.targetIds ?? []).map((id) => pool.find((t) => t.id === id)).filter(live);
+      if (!targets.length) { const t = pick(board, activity, board.me)?.enemy; targets = t ? [t] : []; } // re-pick: the planned target died or vanished
+      if (!targets.length) continue;
+      if (game.settings.get(MODULE_ID, "pauseBeforeAttack")) {
+        const choice = await pause({ name: c.token.name, reason: `${activity.name} vs ${targets.map((t) => t.name).join(", ")}` });
+        if (choice === "skip") continue;
+        if (choice === "manual") { await c.setFlag(MODULE_ID, "autopilot", false); return false; }
+        if (stale()) return null; // the GM moved on while the dialog was open
+      }
+      const aim = pool.find((t) => t.id === a.aimId) ?? targets[0];
+      const place = activity.area ? { origin: { cx: board.me.cx, cy: board.me.cy, w: board.me.w }, aim: { cx: aim.cx, cy: aim.cy } } : null;
+      if ((await use(activity, targets.map((t) => t.uuid), place)) === undefined) throw new Error("Midi refused the use");
+      board = await snap(combat, c, reserved); // fresh hit points and sight for the next use
+    }
+    return true;
+};
 
 /** Play the active group's automatic members: all moves at once, then actions in initiative order. */
 export async function runTurn(combat, deps = {}) {
@@ -224,33 +257,7 @@ export async function runTurn(combat, deps = {}) {
     };
     await moveAll(plans);
     await checkEscapes(plans);
-    // Run one plan's uses from where the monster stands. Returns false when the GM took the monster over.
-    const sig = (p) => JSON.stringify(p.actions.map((a) => [a.activityId, a.targetIds ?? []]));
-    const act = async (c, board, p, said) => {
-      if (!said || sig(p) !== sig(said)) await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason })); // only a changed mind is said twice
-      for (const a of p.actions) {
-        if (stale()) return null;
-        const activity = board.activities.find((x) => x.id === a.activityId);
-        if (!activity) continue;
-        const allies = board.allies ?? [];
-        const live = (t) => t && (allies.includes(t) ? activity.kind !== "heal" || t.hp < t.maxHp : t.hp > 0 && t.visible);
-        const pool = activity.kind === "heal" ? allies : activity.area ? [...board.enemies, ...allies] : board.enemies; // an area hits covered allies too
-        let targets = (a.targetIds ?? []).map((id) => pool.find((t) => t.id === id)).filter(live);
-        if (!targets.length) { const t = pick(board, activity, board.me)?.enemy; targets = t ? [t] : []; } // re-pick: the planned target died or vanished
-        if (!targets.length) continue;
-        if (game.settings.get(MODULE_ID, "pauseBeforeAttack")) {
-          const choice = await pause({ name: c.token.name, reason: `${activity.name} vs ${targets.map((t) => t.name).join(", ")}` });
-          if (choice === "skip") continue;
-          if (choice === "manual") { await c.setFlag(MODULE_ID, "autopilot", false); return false; }
-          if (stale()) return null; // the GM moved on while the dialog was open
-        }
-        const aim = pool.find((t) => t.id === a.aimId) ?? targets[0];
-        const place = activity.area ? { origin: { cx: board.me.cx, cy: board.me.cy, w: board.me.w }, aim: { cx: aim.cx, cy: aim.cy } } : null;
-        if ((await use(activity, targets.map((t) => t.uuid), place)) === undefined) throw new Error("Midi refused the use");
-        board = await snap(combat, c, reserved); // fresh hit points and sight for the next use
-      }
-      return true;
-    };
+    const act = actWith({ combat, reserved, stale, snap, pick, use, pause });
     for (let [c, first] of plans) {
       if (stale()) return;
       if (escaped.has(c.id)) continue;
@@ -284,11 +291,45 @@ export async function runTurn(combat, deps = {}) {
   if (pass) await combat.nextTurn(); // after `running` clears: the turn-change hook fires inside the update and must be able to play the next monsters
 }
 
-/** combatTurnChange: the lead GM plays the new turn's automatic members. Only on a step forward: "previous turn" never replays a group. */
+/**
+ * Top of the round: every monster in its lair (on the autopilot or not: the DM may play the dragon, the module plays the lair) takes
+ * its best lair action from where it stands, never the one it used last round; the GM hears what it did and what is left for their
+ * hands. Lead GM only, before the round's first turn plays (ponytail: RAW "initiative 20, losing ties" becomes "before everyone").
+ */
+export async function runLair(combat, deps = {}) {
+  if (game.settings.get(MODULE_ID, "lairActions") === false) return;
+  const { snap = snapshot, plan = planTurn, pick = pickTarget, use = useActivity, pause = pauseDialog } = deps;
+  const mark = { id: combat.id, round: combat.round, turn: combat.turn };
+  const stale = () => game.combat?.id !== mark.id || game.combat.round !== mark.round || game.combat.turn !== mark.turn;
+  const reserved = new Set();
+  const act = actWith({ combat, reserved, stale, snap, pick, use, pause });
+  const members = combat.turns.filter((c) => c.token && c.token.parent?.id === canvas.scene?.id && !c.actor?.hasPlayerOwner && !c.isDefeated
+    && (c.actor?.system?.attributes?.hp?.value ?? 0) > 0 && lairOf(c.actor)); // read from the sheet: no snapshot for a monster without a lair
+  for (const c of members) {
+    if (stale()) return;
+    try {
+      const board = await snap(combat, c, reserved);
+      log(brief(board));
+      const still = { ...board, me: { ...board.me, budget: 0 } }; // the lair acts where the monster stands
+      const p = plan(still, { slot: "lair" });
+      if (!p.actions.length) { // nothing to score: the GM hears what is left by hand, and the "not twice in a row" rule lifts
+        await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason }));
+        if (c.getFlag(MODULE_ID, "lairLast")) await c.unsetFlag(MODULE_ID, "lairLast");
+        continue;
+      }
+      const r = await act(c, still, p);
+      if (r === null) return;
+      if (r === true) await c.setFlag(MODULE_ID, "lairLast", p.actions[0].activityId);
+    } catch (err) { console.error(`[${MODULE_ID}]`, err); await whisper(L("Autopilot.Error", { name: c.token.name, error: err?.message ?? String(err) })); }
+  }
+}
+
+/** combatTurnChange: the lead GM plays the new turn's automatic members (after the lair, on a new round). Only on a step forward: "previous turn" never replays a group. */
 export async function onCombatTurnChange(combat, prior, current, deps) {
   if (!leadGm() || !combat?.started || running) return;
   const r0 = prior?.round ?? 0, r1 = current?.round ?? 0, t0 = prior?.turn ?? -1, t1 = current?.turn ?? 0;
   if (r1 < r0 || (r1 === r0 && t1 <= t0)) return;
+  if (r1 > r0) { running = true; try { await runLair(combat, deps); } finally { running = false; } }
   await runTurn(combat, deps);
 }
 
@@ -307,8 +348,7 @@ export function onRenderCombatTracker(app, html) {
     btn.dataset.tooltip = L("Autopilot.Toggle");
     btn.addEventListener("click", async (ev) => {
       ev.preventDefault(); ev.stopPropagation();
-      if (c.getFlag(MODULE_ID, "autopilot") === false) await c.unsetFlag(MODULE_ID, "autopilot");
-      else await c.setFlag(MODULE_ID, "autopilot", false);
+      await c.setFlag(MODULE_ID, "autopilot", !isAuto(c));
     });
     (li.querySelector(".combatant-controls") ?? li).append(btn);
   }

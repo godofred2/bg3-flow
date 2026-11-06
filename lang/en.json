@@ -57,6 +57,10 @@
       "escapeRegionName": {
         "Name": "Escape region name",
         "Hint": "Regions whose name contains this word are escape routes: a fleeing monster that enters one leaves the fight (defeated and hidden)."
+      },
+      "lairActions": {
+        "Name": "Lair actions",
+        "Hint": "At the top of every round, a monster in its lair takes the lair action that hurts the party most; the GM is told which lair actions were left for their hands. Monsters with legendary actions are off the autopilot unless switched on."
       }
     },
     "Preset": {
