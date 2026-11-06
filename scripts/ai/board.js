@@ -28,7 +28,7 @@ function rangeOf(activity) {
 }
 
 /** The planner's view of one activity, or null when the autopilot cannot use it (self emanations, legendary, spent, no slot).
- *  A lair activity with no range on its sheet reaches anywhere: the lair is the origin. */
+ *  A lair activity with no range on its sheet (or the sheet's default "Self" with no area) reaches anywhere: the lair is the origin. */
 export function activityInfo(activity) {
   if (!KINDS.has(activity.type) || !SLOTS.has(activity.activation?.type) || activity.canUse === false) return null;
   const affects = activity.target?.affects?.type ?? "", template = activity.target?.template;
@@ -46,7 +46,7 @@ export function activityInfo(activity) {
   return {
     ...(statuses.length ? { denial: Math.max(...statuses.map((s) => DENIAL[s])) } : {}),
     id: activity.uuid, uuid: activity.uuid, name, kind: activity.type, slot: activity.activation.type,
-    range: area && activity.range?.units === "self" ? area.size : activity.activation.type === "lair" && activity.range?.value == null && activity.range?.units !== "self" ? Infinity : rangeOf(activity), bonus: parseInt(activity.labels?.toHit) || 0,
+    range: area && activity.range?.units === "self" ? area.size : activity.activation.type === "lair" && !area && activity.range?.value == null ? Infinity : rangeOf(activity), bonus: parseInt(activity.labels?.toHit) || 0,
     dc: activity.save?.dc?.value, saveAbility: activity.save?.ability?.first?.() ?? [...(activity.save?.ability ?? [])][0], onSave: activity.damage?.onSave,
     damage: heal ? 0 : avg, healing: heal ? avg : 0,
     ranged: activity.attack?.type?.value === "ranged", area, affects,
@@ -192,11 +192,11 @@ function threatOf(actor, me) {
   return damage + heal;
 }
 
-/** In its lair: 2024 rules (the actor's own, else the world's) need the sheet's "inside lair" switch; 2014 rules a lair initiative (or the flag). */
+/** In its lair, as the NPC sheet shows it (the world's rules version, whatever the statblock's own): modern rules need the
+ *  sheet's "inside lair" switch; legacy rules a lair initiative (or the flag). */
 export function lairOf(actor) {
   const lair = actor?.system?.resources?.lair ?? {};
-  const rules = actor?.system?.source?.rules ?? (game.settings.get("dnd5e", "rulesVersion") === "modern" ? "2024" : "2014");
-  return rules === "2024" ? !!(lair.value && lair.inside) : lair.initiative > 0 || !!lair.value;
+  return game.settings.get("dnd5e", "rulesVersion") === "modern" ? !!(lair.value && lair.inside) : lair.initiative > 0 || !!lair.value;
 }
 const lairNamesOf = (actor) => [...(actor?.items ?? [])].filter((i) => [...(i.system?.activities ?? [])].some((a) => a.activation?.type === "lair")).map((i) => i.name);
 

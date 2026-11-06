@@ -282,6 +282,7 @@ test("activityInfo: a lair activation is kept and reaches anywhere unless the sh
   assert.deepEqual([activityInfo(pool).slot, activityInfo(pool).range, activityInfo(pool).damage], ["lair", Infinity, 9]);
   const tremor = act({ name: "Tremor", type: "save", activation: "lair", save: { dc: 15, ability: "dex", onSave: "half" }, parts: [["2d6", {}]], range: { value: null, units: "self" }, template: "sphere", size: 60 });
   assert.deepEqual([activityInfo(tremor).range, activityInfo(tremor).area], [60, { shape: "sphere", size: 60, width: 5 }]); // a self area: as today
+  assert.equal(activityInfo(act({ name: "Rumble", type: "save", activation: "lair", save: { dc: 15, ability: "con", onSave: "half" }, parts: [["1d6", {}]], range: { value: null, units: "self" } })).range, Infinity); // the sheet's default "Self" with no area: anywhere in the lair
   const ranged = act({ name: "Rockfall", type: "save", activation: "lair", save: { dc: 15, ability: "dex", onSave: "half" }, parts: [["3d6", {}]], range: { value: 120, units: "ft" } });
   assert.equal(activityInfo(ranged).range, 120);
   for (const type of ["legendary", "mythic", "reaction"]) assert.equal(activityInfo(act({ type: "attack", activation: type })), null, type);
@@ -303,12 +304,18 @@ test("snapshot: in its lair under legacy or modern rules, the lair action used l
   assert.deepEqual([b.me.lair, b.me.lairLast, b.me.lairNames, b.activities.map((a) => [a.name, a.slot])], [true, "A.a1", ["Acid Pool", "Grasping Roots"], [["Acid Pool", "lair"]]]); // legacy: initiative 20 means lair actions; the utility is a name only
   settings.dnd5eRulesVersion = "modern";
   b = await snapshot({ combatants: [combatantOf(dragon), combatantOf(rogue)] }, combatantOf(dragon));
-  assert.equal(b.me.lair, false); // modern: not inside its lair
+  assert.equal(b.me.lair, false); // modern world: not inside its lair, whatever the statblock's own rules say (the sheet follows the world too)
+  const old = token("dragon3", { x: 0, disposition: -1, lair: { value: true, initiative: 20, inside: false }, rules: "2014" });
+  canvas.scene.tokens.contents = [old, rogue];
+  b = await snapshot({ combatants: [combatantOf(old), combatantOf(rogue)] }, combatantOf(old));
+  assert.equal(b.me.lair, false); // a 2014 statblock in a modern world still needs the switch
   const inside = token("dragon2", { x: 0, disposition: -1, lair: { value: true, initiative: null, inside: true }, rules: "2024" });
   canvas.scene.tokens.contents = [inside, rogue];
-  settings.dnd5eRulesVersion = "legacy"; // the actor's own rules version wins
   b = await snapshot({ combatants: [combatantOf(inside), combatantOf(rogue)] }, combatantOf(inside));
   assert.equal(b.me.lair, true);
+  settings.dnd5eRulesVersion = "legacy";
+  b = await snapshot({ combatants: [combatantOf(inside), combatantOf(rogue)] }, combatantOf(inside));
+  assert.equal(b.me.lair, true); // legacy world: the flag or the initiative, the switch is not shown
 });
 
 test("activityInfo: the share of a turn a condition denies, from the statuses of the activity's effects", () => {

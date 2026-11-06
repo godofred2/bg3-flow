@@ -717,3 +717,18 @@ test("onCombatTurnChange runs the lair phase on a new round before the new turn,
   await onCombatTurnChange(makeCombat([pc1, g1], 1), { round: 2, turn: 0 }, { round: 1, turn: 1 }, lairDeps()); // backwards: nothing
   assert.deepEqual([uses, calls.chat], [[], []]);
 });
+
+test("a turn change that arrives while the autopilot is busy (a Midi dialog pending) is replayed when the run ends: the new round's lair and the new turn are not dropped", async () => {
+  reset();
+  const g1 = sheet(combatant("g1")), pc1 = combatant("pc1", { disposition: 1, playerOwner: true });
+  const combat = makeCombat([pc1, g1], 1);
+  const d = lairDeps();
+  d.plan = (board, opts) => (opts?.slot === "lair" ? lairPlan : opts?.slot === "bonus" ? { move: null, actions: [], reason: "no bonus action" } : attackPlan());
+  d.use = async (a, uuids) => {
+    uses.push([a.id, String(uuids)]);
+    if (a.id === "sc") { combat.round = 2; combat.turn = 0; await onCombatTurnChange(combat, { round: 1, turn: 1 }, { round: 2, turn: 0 }, d); } // the GM presses next turn mid-use
+    return {};
+  };
+  await onCombatTurnChange(combat, { round: 1, turn: 0 }, { round: 1, turn: 1 }, d); // g1's turn: Scimitar, during which the GM moves on
+  assert.deepEqual([uses.map((u) => u[0]), combat.nextTurns, calls.chat.some((m) => m.content.includes("lair:"))], [["sc", "A.ap"], 0, true]); // the pending change ran after the use: lair of round 2, then the PCs' turn (not auto)
+});

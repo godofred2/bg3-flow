@@ -1,27 +1,26 @@
 // Table house rules, outside the autopilot. Pure decisions first, Foundry hooks last.
 import { MODULE_ID, log, safeSync } from "./main.js";
 
-const KEYS = {
-  "system.bonuses.mwak.damage": "system.rolls.damage.mwak.bonus", "system.rolls.damage.mwak.bonus": "system.rolls.damage.mwak.bonus",
-  "system.bonuses.rwak.damage": "system.rolls.damage.rwak.bonus", "system.rolls.damage.rwak.bonus": "system.rolls.damage.rwak.bonus"
-};
-const STR = JSON.stringify([{ k: "roll.ability", v: "str", o: "exact" }]);
-const NOT_STR = JSON.stringify([{ o: "NOT", v: { k: "roll.ability", v: "str", o: "exact" } }]);
+const KEYS = new Set(["system.bonuses.mwak.damage", "system.rolls.damage.mwak.bonus", "system.bonuses.rwak.damage", "system.rolls.damage.rwak.bonus"]);
+const WEAPON = { k: "roll.attack.classification", v: "weapon", o: "exact" }, STR = { k: "roll.ability", v: "str", o: "exact" };
+// dnd5e 6 checks the conditions of an attribute change at data preparation, with no roll in sight: a per-roll condition needs a
+// rule-type change (type "dnd5e.bonus", key "damage"), collected at every damage roll and filtered with that roll's data.
+const PAIR = [
+  { key: "damage", type: "dnd5e.bonus", value: "@abilities.str.mod", conditions: JSON.stringify([WEAPON, STR]) },
+  { key: "damage", type: "dnd5e.bonus", value: "1d4", conditions: JSON.stringify([WEAPON, { o: "NOT", v: STR }]) }
+];
 const bare = (conditions) => !conditions || ["{}", "[]"].includes(String(conditions).trim());
-const isEnlargeBonus = (c) => c.key in KEYS && /^\+?\s*1d4\s*$/.test(String(c.value ?? "")) && bare(c.conditions);
+const isEnlargeBonus = (c) => KEYS.has(c.key) && (c.type ?? "add") === "add" && /^\+?\s*1d4\s*$/.test(String(c.value ?? "")) && bare(c.conditions);
 
 /**
  * Enlarge (user house rule): an enlarged character adds its Strength modifier a second time instead of the 1d4 on Strength
- * attacks; other attacks keep the 1d4. The effect's 1d4 damage bonus (legacy or new key, melee or thrown) becomes two
- * conditional bonuses that dnd5e 6 applies by the attack's ability at roll time. Null when there is nothing to rewrite.
+ * weapon attacks; other weapon attacks keep the 1d4. Every 1d4 weapon damage bonus of the effect (melee or thrown, legacy or
+ * new key) is replaced by one rule pair. Null when there is nothing to rewrite, or when it was rewritten already.
  */
 export function enlargeChanges(name, changes) {
   if (!/enlarge|agrand/i.test(String(name ?? "")) || !changes.some(isEnlargeBonus)) return null;
-  return changes.flatMap((c) => {
-    if (!isEnlargeBonus(c)) return [c];
-    const { _id, ...rest } = c;
-    return [{ ...rest, key: KEYS[c.key], value: "@abilities.str.mod", conditions: STR }, { ...rest, key: KEYS[c.key], value: "1d4", conditions: NOT_STR }];
-  });
+  if (changes.some((c) => c.key === "damage" && c.type === "dnd5e.bonus")) return null;
+  return [...changes.filter((c) => !isEnlargeBonus(c)), ...PAIR.map((c) => ({ ...c }))];
 }
 
 export function registerHouseRules() {

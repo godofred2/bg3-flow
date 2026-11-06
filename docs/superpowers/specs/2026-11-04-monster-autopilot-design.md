@@ -291,3 +291,12 @@ Midi does the rest).
 - The GM hears the lair every round: `lair: <name> vs <aim> (expected|denies X); also: ...; not scored: <lair actions with no score>` or `lair: nothing to score; by hand: <names>`. Setting `lairActions` (on).
 - Enlarge house rule (user request, outside the autopilot, `scripts/houserules.js`): on `preCreateActiveEffect`, an effect named like Enlarge/Agrandar with a `1d4` weapon damage bonus (melee or thrown, legacy or new key, no conditions) gets that change rewritten into `@abilities.str.mod` with the condition `roll.ability == str` and `1d4` with the negated condition; dnd5e 6's rule conditions apply the right one at roll time. Effects already present or edited by hand are left alone. Setting `enlargeStrength` (on).
 - Out of scope: legendary actions and resistances, mythic actions, lair actions with no save, threat beyond the sheet's activities, initiative-20 ties, regional effects.
+
+## Amendment 2026-11-06 (v0.9.0 server run; v0.9.1)
+
+- L1, L2, L5, L6, L7 green; L3, L4 green with notes; L8 and H1/H2 failed; L9 partial (model right, guide wrong).
+- Lair range: the activity sheet offers no blank range; the default *Self* with no area now also means "anywhere in the lair".
+- "In its lair" follows the world's rules version, as the NPC sheet does (a 2014 statblock in a modern world uses the *Inside lair* switch).
+- A `combatTurnChange` that arrives while a run is busy (a use waiting on a Midi dialog) is kept and replayed when the run ends (its lair on a round change, then the new turn's monsters); before, it was dropped silently.
+- Enlarge: dnd5e 6 checks an attribute change's conditions at data preparation, with no roll in sight, so the conditional bonuses never saw the Strength attack. The rewrite now produces one rule pair (`type: "dnd5e.bonus"`, `key: "damage"`, collected at every damage roll and filtered with that roll's data: weapon classification and ability), replacing every 1d4 weapon damage bonus of the effect.
+- Threat model confirmed on the server (Cleric with Fireball 27.5, Fighter with Extra Attack 14.8, Rogue 3.3): the condition goes to the Cleric, which is the point.

@@ -138,7 +138,8 @@ export async function pauseDialog({ name, reason }) {
   return r ?? "skip";
 }
 
-let running = false;
+let running = false, pending = null; // a turn change that arrives while a run is busy (a Midi dialog pending) waits for it
+const replay = async () => { const p = pending; pending = null; if (!p) return false; await onCombatTurnChange(...p); return true; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** move() resolves when the server applied the move; the sprite may still be animating (Token#x is the document's x, so watch the animation promise). */
@@ -289,6 +290,7 @@ export async function runTurn(combat, deps = {}) {
     }
     pass = clean && !stale() && game.settings.get(MODULE_ID, "autoNextTurn");
   } finally { running = false; }
+  if (await replay()) return; // the GM moved on meanwhile: that change plays now (its lair, its monsters); this run is stale
   if (pass) await combat.nextTurn(); // after `running` clears: the turn-change hook fires inside the update and must be able to play the next monsters
 }
 
@@ -331,10 +333,15 @@ export async function runLair(combat, deps = {}) {
 
 /** combatTurnChange: the lead GM plays the new turn's automatic members (after the lair, on a new round). Only on a step forward: "previous turn" never replays a group. */
 export async function onCombatTurnChange(combat, prior, current, deps) {
-  if (!leadGm() || !combat?.started || running) return;
+  if (!leadGm() || !combat?.started) return;
   const r0 = prior?.round ?? 0, r1 = current?.round ?? 0, t0 = prior?.turn ?? -1, t1 = current?.turn ?? 0;
   if (r1 < r0 || (r1 === r0 && t1 <= t0)) return;
-  if (r1 > r0) { running = true; try { await runLair(combat, deps); } finally { running = false; } }
+  if (running) { pending = [combat, prior, current, deps]; return; } // busy (a use waiting on Midi): replayed when the run ends, never dropped
+  if (r1 > r0) {
+    running = true;
+    try { await runLair(combat, deps); } finally { running = false; }
+    if (await replay()) return;
+  }
   await runTurn(combat, deps);
 }
 

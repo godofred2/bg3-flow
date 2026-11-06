@@ -14,21 +14,20 @@ globalThis.game = {
 globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: { wait: async () => null } } }, utils: { escapeHTML: (s) => s } };
 
 const { enlargeChanges, registerHouseRules } = await import("../scripts/houserules.js");
-const str = JSON.stringify([{ k: "roll.ability", v: "str", o: "exact" }]), notStr = JSON.stringify([{ o: "NOT", v: { k: "roll.ability", v: "str", o: "exact" } }]);
+const str = '[{"k":"roll.attack.classification","v":"weapon","o":"exact"},{"k":"roll.ability","v":"str","o":"exact"}]', notStr = '[{"k":"roll.attack.classification","v":"weapon","o":"exact"},{"o":"NOT","v":{"k":"roll.ability","v":"str","o":"exact"}}]';
+// dnd5e 6 checks the conditions of an attribute change at data preparation (no roll in sight), so the Strength bonus must be a
+// rule-type change (type "dnd5e.bonus", key "damage"): collected at every damage roll and filtered with that roll's data.
+const pair = [{ key: "damage", type: "dnd5e.bonus", value: "@abilities.str.mod", conditions: str }, { key: "damage", type: "dnd5e.bonus", value: "1d4", conditions: notStr }];
 
-test("enlargeChanges: the Enlarge 1d4 becomes the Strength modifier on Strength attacks and stays 1d4 on the rest, legacy or new keys, melee and thrown", () => {
+test("enlargeChanges: the Enlarge 1d4 (melee and thrown, legacy or new keys) becomes one rule pair: the Strength modifier on Strength weapon attacks, 1d4 on the other weapon attacks", () => {
   const legacy = [{ _id: "a", key: "system.bonuses.mwak.damage", value: "+1d4", type: "add", phase: "initial", conditions: "{}" }, { key: "system.bonuses.rwak.damage", value: "1d4", type: "add" }, { key: "system.abilities.str.check.roll.mode", value: "1", type: "add" }];
-  assert.deepEqual(enlargeChanges("Enlarged", legacy), [
-    { key: "system.rolls.damage.mwak.bonus", value: "@abilities.str.mod", type: "add", phase: "initial", conditions: str },
-    { key: "system.rolls.damage.mwak.bonus", value: "1d4", type: "add", phase: "initial", conditions: notStr },
-    { key: "system.rolls.damage.rwak.bonus", value: "@abilities.str.mod", type: "add", conditions: str },
-    { key: "system.rolls.damage.rwak.bonus", value: "1d4", type: "add", conditions: notStr },
-    { key: "system.abilities.str.check.roll.mode", value: "1", type: "add" }
-  ]);
-  assert.equal(enlargeChanges("Agrandar/Reducir: Agrandado", [{ key: "system.rolls.damage.mwak.bonus", value: "1d4", type: "add" }]).length, 2);
+  assert.deepEqual(enlargeChanges("Enlarged", legacy), [{ key: "system.abilities.str.check.roll.mode", value: "1", type: "add" }, ...pair]);
+  assert.deepEqual(enlargeChanges("Agrandar/Reducir: Agrandado", [{ key: "system.rolls.damage.mwak.bonus", value: "1d4", type: "add" }]), pair);
   assert.equal(enlargeChanges("Favored Foe", [{ key: "system.bonuses.mwak.damage", value: "1d4", type: "add" }]), null); // not Enlarge
   assert.equal(enlargeChanges("Enlarged", [{ key: "system.bonuses.mwak.damage", value: "1d6", type: "add" }]), null); // not the 1d4
+  assert.equal(enlargeChanges("Enlarged", [{ key: "system.bonuses.mwak.damage", value: "1d4", type: "downgrade" }]), null); // not an added bonus
   assert.equal(enlargeChanges("Enlarged", [{ key: "system.rolls.damage.mwak.bonus", value: "1d4", type: "add", conditions: str }]), null); // already conditional: someone's hand
+  assert.equal(enlargeChanges("Enlarged", [...pair, { key: "system.bonuses.mwak.damage", value: "1d4", type: "add" }]), null); // already rewritten
   assert.equal(enlargeChanges("Enlarged", []), null);
 });
 
@@ -39,7 +38,7 @@ test("registerHouseRules rewrites an Enlarge effect as it is created, unless the
   const effect = { toObject: () => ({ name: "Enlarged", system: { changes: [{ key: "system.bonuses.mwak.damage", value: "1d4", type: "add" }] } }), updateSource: (u) => updates.push(u) };
   settings.enlargeStrength = true;
   hooks.preCreateActiveEffect(effect, {}, {}, "u1");
-  assert.deepEqual(updates[0]["system.changes"].map((c) => c.value), ["@abilities.str.mod", "1d4"]);
+  assert.deepEqual(updates[0]["system.changes"].map((c) => [c.type, c.value]), [["dnd5e.bonus", "@abilities.str.mod"], ["dnd5e.bonus", "1d4"]]);
   settings.enlargeStrength = false;
   hooks.preCreateActiveEffect(effect, {}, {}, "u1");
   assert.equal(updates.length, 1);
