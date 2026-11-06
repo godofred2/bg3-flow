@@ -257,3 +257,11 @@ Midi does the rest).
 
 - B1 and B8 resolved on the server (template linked, save cards, damage, template removed). The caster had been inside its own cone (the template started at its centre): cones and lines now start at the edge of the caster's space, half its width toward the aim, in the planner and in the placed template alike.
 - Sub-piece 4b closed at v0.7.5.
+
+## Amendment 2026-11-05 (sub-piece 4c, v0.8.0)
+
+- An escaped monster is marked defeated and its token hidden (one public chat line), not removed from the combat: the "alone from the start" rule reads the roster (defeated included), and the GM can bring it back.
+- The flee budget is piece 2's Dash flag (movement doubled for the turn); no Dash item is used. The bonus action is still planned while fleeing. Nowhere to go: the normal plan follows (a cornered creature fights).
+- The opportunity-attack cost applies to every candidate square an intelligent monster evaluates (path, retreat and area firing squares) and shows in the whisper ("; opportunity attacks 2.1"); dumb monsters and the flee move ignore it. Sentinel scales the option's value by the miss chance per trigger; the damage of every trigger is counted in full.
+- Tunnel Fighter triggers the autopilot prompts itself: a second (and later) square inside the stance's reach, and leaving it with the reaction already spent. Leaving with a free reaction stays Gambit's (to be confirmed on the server: F9). The prompt's Midi use passes `proceedChecks.checkAoO: false`, so Midi neither demands nor spends the reaction.
+- Settings `fleeEnabled` (on), `fleeThreshold` (25), `escapeRegionName` ("escape") as designed. Deferred: a Dash when merely approaching (paths are cut at the walking budget).
