@@ -6,7 +6,7 @@ import { averageOf, hitChance } from "./plan.js";
 
 const KINDS = new Set(["attack", "save", "damage", "heal"]);
 const hasRecharge = (uses) => (uses?.recovery ?? []).some((r) => r.period === "recharge");
-const SLOTS = new Set(["action", "bonus"]);
+const SLOTS = new Set(["action", "bonus", "lair"]); // legendary and mythic actions stay the DM's (user decision)
 const spent = (uses) => Number(uses?.max) > 0 && !(uses.value > 0);
 
 /** Average of every damage roll of an activity, roll data resolved. */
@@ -25,7 +25,8 @@ function rangeOf(activity) {
   return activity.range?.value ?? 5;
 }
 
-/** The planner's view of one activity, or null when the autopilot cannot use it (self emanations, legendary, spent, no slot). */
+/** The planner's view of one activity, or null when the autopilot cannot use it (self emanations, legendary, spent, no slot).
+ *  A lair activity with no range on its sheet reaches anywhere: the lair is the origin. */
 export function activityInfo(activity) {
   if (!KINDS.has(activity.type) || !SLOTS.has(activity.activation?.type) || activity.canUse === false) return null;
   const affects = activity.target?.affects?.type ?? "", template = activity.target?.template;
@@ -41,7 +42,7 @@ export function activityInfo(activity) {
   const avg = averageDamage(activity), heal = activity.type === "heal";
   return {
     id: activity.uuid, uuid: activity.uuid, name, kind: activity.type, slot: activity.activation.type,
-    range: area && activity.range?.units === "self" ? area.size : rangeOf(activity), bonus: parseInt(activity.labels?.toHit) || 0,
+    range: area && activity.range?.units === "self" ? area.size : activity.activation.type === "lair" && activity.range?.value == null && activity.range?.units !== "self" ? Infinity : rangeOf(activity), bonus: parseInt(activity.labels?.toHit) || 0,
     dc: activity.save?.dc?.value, saveAbility: activity.save?.ability?.first?.() ?? [...(activity.save?.ability ?? [])][0], onSave: activity.damage?.onSave,
     damage: heal ? 0 : avg, healing: heal ? avg : 0,
     ranged: activity.attack?.type?.value === "ranged", area, affects,
@@ -174,6 +175,14 @@ function oaOf(actor, ac, tunnelFighter) {
 
 const inRect = (tl, r) => !r || (tl.x >= r.x && tl.y >= r.y && tl.x < r.x + r.width && tl.y < r.y + r.height);
 
+/** In its lair: 2024 rules (the actor's own, else the world's) need the sheet's "inside lair" switch; 2014 rules a lair initiative (or the flag). */
+export function lairOf(actor) {
+  const lair = actor?.system?.resources?.lair ?? {};
+  const rules = actor?.system?.source?.rules ?? (game.settings.get("dnd5e", "rulesVersion") === "modern" ? "2024" : "2014");
+  return rules === "2024" ? !!(lair.value && lair.inside) : lair.initiative > 0 || !!lair.value;
+}
+const lairNamesOf = (actor) => [...(actor?.items ?? [])].filter((i) => [...(i.system?.activities ?? [])].some((a) => a.activation?.type === "lair")).map((i) => i.name);
+
 /** The board for one combatant's turn. `reserved`: "x,y" destinations its group mates already took. */
 export async function snapshot(combat, combatant, reserved = new Set()) {
   const doc = combatant.token, actor = doc.actor;
@@ -193,7 +202,8 @@ export async function snapshot(combat, combatant, reserved = new Set()) {
     return { id: t.id, uuid: t.uuid, actorUuid: t.actor?.uuid, name: t.name, x: t.x, y: t.y, elevation: t.elevation ?? 0, cx: c.x, cy: c.y, w: widthOf(t), hp: hpOf(t).value, maxHp: hpOf(t).max ?? hpOf(t).value, temp: hpOf(t).temp ?? 0, ac: t.actor?.system?.attributes?.ac?.value ?? 10, saves, distance: t === doc ? 0 : reachFt(myFoot, footOf(t)), sentinel, tunnelFighter };
   };
   const alone = ![...combat.combatants].some((c) => c !== combatant && c.token && c.token !== doc && (c.token.disposition ?? 0) === mine);
-  const me = { ...creature(doc), intelligence: actor?.system?.abilities?.int?.value ?? 10, hp: hpOf(doc).value ?? 0, maxHp: hpOf(doc).max ?? 0, budget, speed, dash, alone };
+  const me = { ...creature(doc), intelligence: actor?.system?.abilities?.int?.value ?? 10, hp: hpOf(doc).value ?? 0, maxHp: hpOf(doc).max ?? 0, budget, speed, dash, alone,
+    lair: lairOf(actor), lairLast: combatant.getFlag(MODULE_ID, "lairLast") ?? null, lairNames: lairNamesOf(actor) };
   const enemies = [], allies = [me], paths = {}, tokensById = {};
   for (const c of combat.combatants) {
     const t = c.token;

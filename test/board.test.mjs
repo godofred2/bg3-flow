@@ -11,7 +11,7 @@ const settings = { obscuredDarkness: 0.5, fleeEnabled: true, fleeThreshold: 25, 
 globalThis.game = {
   i18n: { localize: (k) => k, format: (k, d) => `${k}:${JSON.stringify(d)}` },
   user: { isGM: true }, users: [], combat: null,
-  settings: { get: (m, k) => settings[k], set() {}, register() {}, registerMenu() {} }
+  settings: { get: (m, k) => (m === "dnd5e" ? settings.dnd5eRulesVersion : settings[k]), set() {}, register() {}, registerMenu() {} }
 };
 // Square grid, 100 px = 5 ft, horizontal paths; a wall blocks anything below y = 300.
 const SIZE = 100, FT = 5;
@@ -66,7 +66,7 @@ function act({ type, activation = "action", toHit = "+0", parts = [], item = {},
   };
 }
 
-function token(id, { x, y = 0, disposition, hp = 10, maxHp = 10, ac = 15, int = 10, passive = 9, darkvision = 0, speed = 30, spent = 0, items = [], hidden = false, flags = {}, width = 1, effects = [], reactionUsed = false } = {}) {
+function token(id, { x, y = 0, disposition, hp = 10, maxHp = 10, ac = 15, int = 10, passive = 9, darkvision = 0, speed = 30, spent = 0, items = [], hidden = false, flags = {}, width = 1, effects = [], reactionUsed = false, lair = null, rules = null } = {}) {
   const doc = {
     id, name: id, x, y, elevation: 0, hidden, disposition, parent: { id: "scene" }, uuid: `Scene.scene.Token.${id}`, width, height: width,
     flags: { "bg3-flow": flags }, getFlag: (m, k) => doc.flags[m]?.[k],
@@ -79,12 +79,13 @@ function token(id, { x, y = 0, disposition, hp = 10, maxHp = 10, ac = 15, int = 
     name: id, uuid: `Actor.${id}`, items, effects, reactionUsed, hasPlayerOwner: disposition > 0,
     system: {
       attributes: { hp: { value: hp, max: maxHp }, ac: { value: ac }, movement: { speeds: { walk: speed } }, senses: { ranges: { darkvision } } },
-      abilities: { int: { value: int }, dex: { save: { value: 2 } } }, skills: { prc: { passive } }
+      abilities: { int: { value: int }, dex: { save: { value: 2 } } }, skills: { prc: { passive } },
+      resources: { lair: lair ?? { value: false, initiative: null, inside: false } }, source: rules ? { rules } : {}
     }
   };
   return doc;
 }
-const combatantOf = (doc, defeated = false) => ({ id: `c-${doc.id}`, token: doc, actor: doc.actor, isDefeated: defeated, flags: { "bg3-flow": {} }, getFlag: () => undefined });
+const combatantOf = (doc, defeated = false, flags = {}) => ({ id: `c-${doc.id}`, token: doc, actor: doc.actor, isDefeated: defeated, flags: { "bg3-flow": flags }, getFlag: (m, k) => flags[k] });
 
 globalThis.MidiQOL = { hasUsedReaction: (actor) => !!actor.reactionUsed };
 const { activityInfo, snapshot } = await import("../scripts/ai/board.js");
@@ -273,4 +274,39 @@ test("snapshot: flee inputs: settings, speed, dash flag, alone from the roster, 
   assert.deepEqual(b.away.map((s) => s.x), [200, 100, 0]); // straight away from the rogue, up to the flee budget (60 ft) and the scene edge
   assert.deepEqual(b.away[2].distances, { rogue: 25 });
   delete canvas.scene.regions;
+});
+
+test("activityInfo: a lair activation is kept and reaches anywhere unless the sheet gives it a range; legendary, mythic and reactions stay out", () => {
+  n = 0;
+  const pool = act({ name: "Acid Pool", type: "save", activation: "lair", save: { dc: 15, ability: "dex", onSave: "half" }, parts: [["2d8", {}]] });
+  assert.deepEqual([activityInfo(pool).slot, activityInfo(pool).range, activityInfo(pool).damage], ["lair", Infinity, 9]);
+  const tremor = act({ name: "Tremor", type: "save", activation: "lair", save: { dc: 15, ability: "dex", onSave: "half" }, parts: [["2d6", {}]], range: { value: null, units: "self" }, template: "sphere", size: 60 });
+  assert.deepEqual([activityInfo(tremor).range, activityInfo(tremor).area], [60, { shape: "sphere", size: 60, width: 5 }]); // a self area: as today
+  const ranged = act({ name: "Rockfall", type: "save", activation: "lair", save: { dc: 15, ability: "dex", onSave: "half" }, parts: [["3d6", {}]], range: { value: 120, units: "ft" } });
+  assert.equal(activityInfo(ranged).range, 120);
+  for (const type of ["legendary", "mythic", "reaction"]) assert.equal(activityInfo(act({ type: "attack", activation: type })), null, type);
+});
+test("snapshot: in its lair under legacy or modern rules, the lair action used last round, and every lair action's name", async () => {
+  const rogue = token("rogue", { x: 400, disposition: 1 });
+  const bare = token("goblin", { x: 0, disposition: -1 });
+  canvas.scene.tokens.contents = [bare, rogue];
+  let b = await snapshot({ combatants: [combatantOf(bare), combatantOf(rogue)] }, combatantOf(bare));
+  assert.deepEqual([b.me.lair, b.me.lairLast, b.me.lairNames], [false, null, []]);
+  n = 0;
+  const pool = act({ name: "Acid Pool", type: "save", activation: "lair", save: { dc: 15, ability: "dex", onSave: "half" }, parts: [["2d8", {}]] });
+  const roots = act({ name: "Grasping Roots", type: "utility", activation: "lair" });
+  pool.item.system.activities = [pool]; roots.item.system.activities = [roots];
+  const dragon = token("dragon", { x: 0, disposition: -1, lair: { value: true, initiative: 20, inside: false }, items: [pool.item, roots.item] });
+  canvas.scene.tokens.contents = [dragon, rogue];
+  settings.dnd5eRulesVersion = "legacy";
+  b = await snapshot({ combatants: [combatantOf(dragon), combatantOf(rogue)] }, combatantOf(dragon, false, { lairLast: "A.a1" }));
+  assert.deepEqual([b.me.lair, b.me.lairLast, b.me.lairNames, b.activities.map((a) => [a.name, a.slot])], [true, "A.a1", ["Acid Pool", "Grasping Roots"], [["Acid Pool", "lair"]]]); // legacy: initiative 20 means lair actions; the utility is a name only
+  settings.dnd5eRulesVersion = "modern";
+  b = await snapshot({ combatants: [combatantOf(dragon), combatantOf(rogue)] }, combatantOf(dragon));
+  assert.equal(b.me.lair, false); // modern: not inside its lair
+  const inside = token("dragon2", { x: 0, disposition: -1, lair: { value: true, initiative: null, inside: true }, rules: "2024" });
+  canvas.scene.tokens.contents = [inside, rogue];
+  settings.dnd5eRulesVersion = "legacy"; // the actor's own rules version wins
+  b = await snapshot({ combatants: [combatantOf(inside), combatantOf(rogue)] }, combatantOf(inside));
+  assert.equal(b.me.lair, true);
 });
