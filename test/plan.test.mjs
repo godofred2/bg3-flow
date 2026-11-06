@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { averageOf, hitChance, failChance, expectedValue, parseMultiattack, pickTarget, planTurn } = await import("../scripts/ai/plan.js");
+const { averageOf, hitChance, failChance, expectedValue, parseMultiattack, pickTarget, planTurn, shouldFlee, planFlee } = await import("../scripts/ai/plan.js");
 
 test("averageOf: dice average plus flat, unknown tokens count as 0", () => {
   assert.equal(averageOf("2d6 + 3"), 10);
@@ -225,4 +225,33 @@ test("a clever archer with a scimitar too steps back on a tie: ranged attackers 
   const p = planTurn(b);
   assert.deepEqual([at(p.move), p.actions[0].activityId], [{ x: 0, y: 100, elevation: 0 }, "bw"]);
   assert.equal(p.reason, "Shortbow vs rogue (expected 2.5); also: Scimitar 2.5");
+});
+
+const fleeBoard = (over = {}) => ({ ...board({ enemies: [pc("rogue", 30), pc("fighter", 40)], activities: [scimitar] }), flee: { enabled: true, threshold: 25 }, allies: [{ id: "m", hp: 1, maxHp: 8 }], escape: null, away: [], ...over, me: { ...board({ enemies: [], activities: [] }).me, hp: 1, maxHp: 8, intelligence: 10, speed: 30, dash: false, alone: false, ...over.me } });
+test("shouldFlee: below the threshold, dumb always, clever only when losing, never alone or when disabled", () => {
+  assert.equal(shouldFlee(fleeBoard()), true); // 1/8 = 12.5 %, two enemies vs one ally
+  assert.equal(shouldFlee(fleeBoard({ me: { hp: 2 } })), false); // exactly 25 % stays
+  assert.equal(shouldFlee(fleeBoard({ flee: { enabled: false, threshold: 25 } })), false);
+  assert.equal(shouldFlee(fleeBoard({ me: { alone: true } })), false);
+  assert.equal(shouldFlee(fleeBoard({ allies: [{ id: "m", hp: 1, maxHp: 8 }, { id: "g2", hp: 5, maxHp: 7 }, { id: "g3", hp: 0, maxHp: 7 }] })), false); // 2 standing vs 2: not losing
+  assert.equal(shouldFlee(fleeBoard({ me: { intelligence: 3 }, allies: [{ id: "m", hp: 1, maxHp: 8 }, { id: "g2", hp: 5, maxHp: 7 }, { id: "g3", hp: 5, maxHp: 7 }] })), true); // dumb: flees even when winning
+});
+const esc = (x, cost, inside, dr = 30) => ({ x, y: 0, elevation: 0, cost, waypoints: [{ x, y: 0, elevation: 0 }], inside, distances: { rogue: dr, fighter: dr + 10 } });
+test("planFlee: Dash toward the escape region, stop on entering it or at the budget's end; away from everyone without one", () => {
+  const region = { uuid: "Scene.s.Region.r1", name: "Escape north", squares: [esc(100, 5, false), esc(200, 10, false), esc(300, 15, true), esc(400, 20, true)] };
+  let p = planFlee(fleeBoard({ escape: region }));
+  assert.deepEqual([at(p.move), p.actions, p.reason, p.dash, p.escape], [{ x: 300, y: 0, elevation: 0 }, [], "flee: Dash toward Escape north (hp 1/8)", true, "Scene.s.Region.r1"]);
+  p = planFlee(fleeBoard({ escape: { ...region, squares: [esc(100, 30, false), esc(200, 55, false), esc(300, 70, true)] } }));
+  assert.deepEqual([at(p.move), p.escape], [{ x: 200, y: 0, elevation: 0 }, null]); // 60 ft of Dash: short of the region, keeps going
+  p = planFlee(fleeBoard({ escape: { ...region, squares: [esc(100, 30, false), esc(200, 55, false), esc(300, 70, true)] }, me: { dash: true, budget: 30 } }));
+  assert.deepEqual(at(p.move), { x: 100, y: 0, elevation: 0 }); // already dashing: the budget is what is left
+  p = planFlee(fleeBoard({ away: [esc(100, 5, undefined, 35), esc(200, 10, undefined, 45), esc(300, 15, undefined, 40), esc(400, 65, undefined, 90)] }));
+  assert.deepEqual([at(p.move), p.reason, p.escape], [{ x: 200, y: 0, elevation: 0 }, "flee: Dash away from enemies (hp 1/8)", null]);
+  assert.deepEqual(planFlee(fleeBoard()), { move: null, actions: [], reason: "flee: nowhere to go", dash: false, escape: null });
+});
+test("planTurn flees before anything else, fights when cornered, and the bonus slot never flees", () => {
+  const b = fleeBoard({ enemies: [pc("rogue", 5), pc("fighter", 40)], away: [esc(100, 5, undefined, 10)] });
+  assert.equal(planTurn(b).reason, "flee: Dash away from enemies (hp 1/8)");
+  assert.ok(planTurn({ ...b, away: [] }).reason.startsWith("Scimitar vs rogue"));
+  assert.equal(planTurn(b, { slot: "bonus" }).reason, "no bonus action");
 });

@@ -141,9 +141,36 @@ export function pickTarget(board, activity, from = null) {
   return best;
 }
 
-/** The turn: the option with the highest expected value (single activities and the Multiattack sequence), else approach.
- *  With `slot: "bonus"`: the best bonus-action activity from where the monster stands, or nothing. */
+/** Flee rule: below the threshold share of max hp, an unintelligent monster always runs; an intelligent one only when the standing
+ *  enemies outnumber the standing allies. A creature alone from the start of the combat (a boss) never flees. */
+export function shouldFlee(board) {
+  const { flee, me } = board;
+  if (!flee?.enabled || me.alone || me.hp <= 0 || !(me.maxHp > 0) || me.hp / me.maxHp * 100 >= flee.threshold) return false;
+  if (me.intelligence < board.threshold) return true;
+  const standing = (board.allies ?? []).filter((a) => a.hp > 0).length;
+  return board.enemies.length > standing;
+}
+
+/** Movement only: Dash into the nearest escape region (entering it is enough) or, without one, to the reachable square farthest from every enemy. */
+export function planFlee(board) {
+  const me = board.me, budget = me.dash ? me.budget : me.budget + (me.speed ?? 0), hp = `(hp ${me.hp}/${me.maxHp})`;
+  const free = (s) => s.cost <= budget && !s.occupied && !board.reserved.has(key(s));
+  const none = { move: null, actions: [], reason: "flee: nowhere to go", dash: false, escape: null };
+  if (board.escape) {
+    const squares = board.escape.squares.filter(free);
+    const inside = squares.find((s) => s.inside), last = squares.at(-1);
+    if (!last) return none;
+    return { move: moveTo(inside ?? last), actions: [], reason: `flee: Dash toward ${board.escape.name} ${hp}`, dash: true, escape: inside ? board.escape.uuid : null };
+  }
+  const nearest = (s) => Math.min(...Object.values(s.distances ?? {}), Infinity);
+  const best = (board.away ?? []).filter(free).sort((a, b) => nearest(b) - nearest(a))[0];
+  return best ? { move: moveTo(best), actions: [], reason: `flee: Dash away from enemies ${hp}`, dash: true, escape: null } : none;
+}
+
+/** The turn: flee when the rule fires (and somewhere to go), else the option with the highest expected value (single activities and
+ *  the Multiattack sequence), else approach. With `slot: "bonus"`: the best bonus-action activity from where the monster stands, or nothing. */
 export function planTurn(board, { slot = "action" } = {}) {
+  if (slot === "action" && shouldFlee(board)) { const f = planFlee(board); if (f.move) return f; }
   const actions = board.activities.filter((a) => a.slot === slot);
   const options = [];
   for (const a of actions) {
