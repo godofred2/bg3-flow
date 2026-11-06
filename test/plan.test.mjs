@@ -266,8 +266,10 @@ test("oaCost: leaving a free reach costs one attack, a spent reaction none, Tunn
   assert.deepEqual(oaCost(b, route[1]), { damage: 3, stopFree: 1 });
   assert.deepEqual(oaCost(b, route[0]), { damage: 0, stopFree: 1 }); // still inside reach: nothing
   assert.deepEqual(oaCost({ ...b, enemies: [{ ...fighter, oa: oa({ reaction: false }) }] }, route[1]), { damage: 0, stopFree: 1 });
-  assert.deepEqual(oaCost({ ...b, enemies: [{ ...fighter, oa: oa({ tunnelFighter: true, reaction: false }) }] }, route[1]), { damage: 6, stopFree: 1 }); // one for the second square inside, one for leaving
-  assert.deepEqual(oaCost({ ...b, enemies: [{ ...fighter, oa: oa({ tunnelFighter: true }), sentinel: true }] }, route[1]), { damage: 6, stopFree: 0.25 });
+  assert.deepEqual(oaCost({ ...b, enemies: [{ ...fighter, oa: oa({ tunnelFighter: true, reaction: false }) }] }, route[1]), { damage: 3, stopFree: 1 }); // the first square walked inside the reach is free (5 ft), leaving costs one
+  assert.deepEqual(oaCost({ ...b, enemies: [{ ...fighter, oa: oa({ tunnelFighter: true }), sentinel: true }] }, route[1]), { damage: 3, stopFree: 0.5 });
+  const longer = [rsq(100, 0, 5, { fighter: 5 }), rsq(200, 0, 10, { fighter: 5 }, [[100, 0]]), rsq(300, 0, 15, { fighter: 10 }, [[100, 0], [200, 0]])];
+  assert.deepEqual(oaCost({ ...b, paths: { fighter: longer }, enemies: [{ ...fighter, oa: oa({ tunnelFighter: true, reaction: false }) }] }, longer[2]), { damage: 6, stopFree: 1 }); // second square inside (more than 5 ft) and the leaving
   assert.deepEqual(oaCost({ ...b, enemies: [{ ...fighter, oa: null }] }, route[1]), { damage: 0, stopFree: 1 });
   assert.deepEqual(oaCost({ ...b, enemies: [{ ...fighter, visible: false }] }, route[1]), { damage: 0, stopFree: 1 });
 });
@@ -296,13 +298,12 @@ test("splitAtTunnelFighter cuts the route after each square that draws a Tunnel 
   const b = { ...board({ enemies: [tf], activities: [bow], paths: { fighter: route } }), retreats: [] };
   const move = { x: 400, y: 0, elevation: 0, waypoints: route[3].waypoints };
   assert.deepEqual(splitAtTunnelFighter(b, move), [
-    { waypoints: [{ x: 100, y: 0, elevation: 0 }], trigger: { enemyId: "fighter" } }, // second square inside reach (the start was the first)
-    { waypoints: [{ x: 200, y: 0, elevation: 0 }], trigger: { enemyId: "fighter" } }, // third
+    { waypoints: [{ x: 100, y: 0, elevation: 0 }, { x: 200, y: 0, elevation: 0 }], trigger: { enemyId: "fighter" } }, // the first square inside is 5 ft (free); the second is more than 5 ft inside the reach
     { waypoints: [{ x: 300, y: 0, elevation: 0 }], trigger: { enemyId: "fighter" } }, // leaving with the reaction spent
     { waypoints: [{ x: 400, y: 0, elevation: 0 }], trigger: null }
   ]);
   const free = { ...b, enemies: [{ ...tf, oa: oa({ tunnelFighter: true, reaction: true }) }] };
-  assert.deepEqual(splitAtTunnelFighter(free, move).map((s) => s.trigger), [{ enemyId: "fighter" }, { enemyId: "fighter" }, null]); // leaving with a free reaction is Gambit's
+  assert.deepEqual(splitAtTunnelFighter(free, move).map((s) => s.trigger), [{ enemyId: "fighter" }, null]); // leaving with a free reaction is Gambit's
   assert.deepEqual(splitAtTunnelFighter({ ...b, enemies: [{ ...tf, oa: oa() }] }, move), [{ waypoints: move.waypoints, trigger: null }]);
 });
 
@@ -310,4 +311,15 @@ test("a tie between acting from here and walking first stays put; only a step ou
   const bite = { ...scimitar, id: "bite", name: "Bite" }, claw = { ...scimitar, id: "claw", name: "Claw", range: 10 };
   const p = planTurn(board({ enemies: [pc("rogue", 10)], activities: [bite, claw], paths: { rogue: [sq(100, 5, 5)] } }));
   assert.deepEqual([p.move, p.reason], [null, "Claw vs rogue (expected 2.5); also: Bite 2.5"]);
+});
+
+test("a ranged attack with any visible enemy within 5 ft is at disadvantage, not only its target: the clever archer steps away from the bystander once that pays", () => {
+  // Goblin next to the Fighter (AC 19, Longsword worth 4.1 expected vs the goblin), the Rogue 35 ft away; a retreat square 10 ft from the Fighter
+  const fighter = { ...pc("fighter", 5, { ac: 19 }), oa: oa({ damage: 4.1 }) }, rogue = pc("rogue", 35, { ac: 13 });
+  const retreat = rsq(0, 100, 5, { fighter: 10, rogue: 30 });
+  const b = { ...board({ enemies: [fighter, rogue], activities: [bow, scimitar] }), retreats: [retreat] };
+  let p = planTurn(b);
+  assert.deepEqual([p.move, p.reason], [null, "Shortbow vs rogue (expected 1.8); also: Scimitar 1.5"]); // 0.6 squared x 5 from here; 3.0 - 4.1 from the retreat square is worse
+  p = planTurn({ ...b, enemies: [{ ...fighter, oa: oa({ damage: 4.1, reaction: false }) }, rogue] });
+  assert.deepEqual([at(p.move), p.reason], [{ x: 0, y: 100, elevation: 0 }, "Shortbow vs rogue (expected 3.0); also: Scimitar 1.5"]); // reaction spent: the step back is free
 });

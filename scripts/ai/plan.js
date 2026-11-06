@@ -100,15 +100,17 @@ export function routeOf(board, square) {
   return out;
 }
 
-/** Opportunity-attack trigger points of one enemy along a route: "leave" (out of its reach) and "inside" (one more square inside it). */
+/** Opportunity-attack trigger points of one enemy along a route: "leave" (out of its reach) and "inside" (more than 5 ft moved inside
+ *  it: the first square walked inside the reach is free, every further one is a trigger). */
 function* triggers(route, enemy) {
   const reach = enemy.oa.reach;
-  let inside = enemy.distance <= reach;
+  let inside = enemy.distance <= reach, walked = 0;
   for (const s of route) {
     const d = s.distances?.[enemy.id];
     const now = d !== undefined && d <= reach;
     if (inside && !now) yield { square: s, kind: "leave" };
-    else if (inside && now) yield { square: s, kind: "inside" };
+    else if (now && ++walked > 1) yield { square: s, kind: "inside" };
+    if (!now) walked = 0;
     inside = now;
   }
 }
@@ -164,6 +166,8 @@ export function pickTarget(board, activity, from = null) {
   // A clever monster pays the opportunity attacks a square costs; a dumb one never looks (user decision).
   const toll = (s) => (smart && s ? oaCost(board, s) : { damage: 0, stopFree: 1 });
   const net = (v, s) => { const c = toll(s); return v * c.stopFree - c.damage; };
+  // A ranged attack with any visible standing enemy within 5 ft of the shooter is at disadvantage (5e), whoever the target is.
+  const crowded = (s) => board.enemies.some((e) => e.visible && e.hp > 0 && (s && s !== board.me ? s.distances?.[e.id] ?? Infinity : e.distance) <= 5);
   let best = null;
   for (const enemy of heal ? healPool(board, activity) : board.enemies) {
     if (heal ? enemy.hp >= enemy.maxHp : (!enemy.visible || enemy.hp <= 0)) continue;
@@ -174,8 +178,7 @@ export function pickTarget(board, activity, from = null) {
       square = reachable[0];
       if (!square) continue;
     }
-    // A ranged attack within 5 ft of its target is at disadvantage (5e); ponytail: only the target counts, not other adjacent enemies.
-    const near = (square ? square.distance : from ? distanceFrom(board, from, enemy) : enemy.distance) <= 5;
+    const near = crowded(square ?? from);
     let value, targets = [enemy];
     if (activity.area) {
       // Aim at this enemy from every square in range (or from here): the firing square that covers the most (net of its toll) wins.
@@ -190,7 +193,7 @@ export function pickTarget(board, activity, from = null) {
       if (!from && smart && activity.ranged && near) for (const r of board.retreats ?? []) {
         const d = r.distances?.[enemy.id] ?? Infinity;
         if (r.cost > board.me.budget || d > activity.range || board.reserved.has(key(r))) continue;
-        const v = net(expectedValue(activity, enemy, { disadvantage: d <= 5 }), r);
+        const v = net(expectedValue(activity, enemy, { disadvantage: crowded(r) }), r);
         if (v >= value) { value = v; square = r; } // a tie goes to stepping back: archers keep their distance
       }
     }

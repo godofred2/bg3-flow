@@ -265,3 +265,11 @@ Midi does the rest).
 - The opportunity-attack cost applies to every candidate square an intelligent monster evaluates (path, retreat and area firing squares) and shows in the whisper ("; opportunity attacks 2.1"); dumb monsters and the flee move ignore it. Sentinel scales the option's value by the miss chance per trigger; the damage of every trigger is counted in full.
 - Tunnel Fighter triggers the autopilot prompts itself: a second (and later) square inside the stance's reach, and leaving it with the reaction already spent. Leaving with a free reaction stays Gambit's (to be confirmed on the server: F9). The prompt's Midi use passes `proceedChecks.checkAoO: false`, so Midi neither demands nor spends the reaction.
 - Settings `fleeEnabled` (on), `fleeThreshold` (25), `escapeRegionName` ("escape") as designed. Deferred: a Dash when merely approaching (paths are cut at the walking budget).
+
+## Amendment 2026-11-05 (v0.8.0 server run: 4c mostly green; v0.8.2)
+
+- F2-F5, F8, F10-F12 green on v0.8.0 (flight, escape regions, Large fleer, Tunnel Fighter prompt, GM fallback, 30 s close, one prompt at a time).
+- A ranged attack is at disadvantage when any visible standing enemy is within 5 ft of the shooter, not only its target (the goblin next to the Fighter shooting the Rogue): this is what makes the clever archer step away from a bystander once the step pays.
+- Tunnel Fighter: the first square walked inside the stance's reach is free (5 ft); every further square inside it is a trigger, whether the monster started inside or entered.
+- The flee decision is whispered before the move, not after.
+- F1 as written could not pass by the spec's own rules (a lone monster never flees; two standing goblins against two PCs is not losing): the step now keeps Goblin 2 in the combat as defeated.

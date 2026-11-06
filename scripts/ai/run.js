@@ -174,6 +174,7 @@ export async function runTurn(combat, deps = {}) {
         if (board.me.hp <= 0) continue; // down before its turn: nothing to play
         const p = plan(board);
         if (p.move) reserved.add(`${p.move.x},${p.move.y}`);
+        if (p.dash) await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason })); // a flight is decided now: say so before it runs
         plans.push([c, p]);
       } catch (err) { await failed(c, err); }
     }
@@ -216,7 +217,6 @@ export async function runTurn(combat, deps = {}) {
         const region = fromUuidSync(p.escape), centre = c.token.getCenterPoint?.();
         if (!region?.testPoint || !centre || !region.testPoint({ x: centre.x, y: centre.y, elevation: c.token.elevation ?? 0 })) continue;
         escaped.add(c.id);
-        await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason }));
         await c.update({ defeated: true });
         await c.token.update({ hidden: true });
         await ChatMessage.create({ content: L("Autopilot.Escaped", { name: c.token.name }) });
@@ -260,6 +260,7 @@ export async function runTurn(combat, deps = {}) {
         if (!first.move) { // it stayed put while the others moved: the board changed under it (an ally walked off), so it may still walk now
           const again = plan(board);
           if (again.move) {
+            if (again.dash) await whisper(L("Autopilot.Decision", { name: c.token.name, reason: again.reason }));
             boards[c.id] = board; await moveAll([[c, again]]); await checkEscapes([[c, again]]);
             if (stale()) return; if (escaped.has(c.id)) continue;
             fled = !!again.dash; if (fled) first = again;
@@ -267,8 +268,7 @@ export async function runTurn(combat, deps = {}) {
           }
         }
         const still = { ...board, me: { ...board.me, budget: 0 } }; // act from where it stands: a move that fell short never fires out of reach
-        if (fled) await whisper(L("Autopilot.Decision", { name: c.token.name, reason: first.reason })); // the flight was the action (Dash): nothing else this turn but the bonus action
-        const done = fled ? true : await act(c, still, plan(still));
+        const done = fled ? true : await act(c, still, plan(still)); // the flight (already whispered) was the action: nothing else this turn but the bonus action
         if (done === null) return;
         if (done === false) { clean = false; continue; }
         const after = await snap(combat, c, reserved);

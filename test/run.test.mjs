@@ -613,3 +613,14 @@ test("two monsters passing the same Tunnel Fighter in one shared turn are prompt
   await runTurn(makeCombat([g1, g2, combatant("pc", { disposition: 1, playerOwner: true })]), d);
   assert.deepEqual(order.filter((o) => o.startsWith("ask")), ["ask start", "ask end", "ask start", "ask end"]);
 });
+
+test("the flee decision is whispered before the monster moves, and only once", async () => {
+  reset();
+  const g1 = combatant("g1"), seen = [];
+  g1.token.move = async () => { seen.push(calls.chat.length); return true; };
+  g1.token.getCenterPoint = () => ({ x: 250, y: 50 });
+  globalThis.fromUuidSync = () => ({ testPoint: () => false });
+  const fleePlan = { move: { x: 200, y: 0, elevation: 0, waypoints: [{ x: 200, y: 0, elevation: 0 }] }, actions: [], reason: "flee: Dash away from enemies (hp 1/7)", dash: true, escape: null };
+  await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), deps({ plans: { g1: fleePlan } }));
+  assert.deepEqual([seen, calls.chat.map((m) => m.content.includes("flee"))], [[1], [true]]);
+});
