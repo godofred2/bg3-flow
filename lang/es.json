@@ -61,6 +61,10 @@
       "lairActions": {
         "Name": "Acciones de guarida",
         "Hint": "Al inicio de cada ronda, un monstruo en su guarida usa la acción de guarida que más daño hace al grupo; el DM recibe aviso de las que quedan en sus manos. Los monstruos con acciones legendarias quedan fuera del piloto salvo que se activen."
+      },
+      "enlargeStrength": {
+        "Name": "Agrandar: Fuerza dos veces",
+        "Hint": "Un personaje agrandado suma su bonificador de Fuerza una segunda vez en lugar del 1d4 en ataques de Fuerza (los demás ataques conservan el 1d4). Se aplica al efecto de Agrandar al crearse."
       }
     },
     "Preset": {

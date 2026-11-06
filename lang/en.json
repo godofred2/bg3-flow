@@ -61,6 +61,10 @@
       "lairActions": {
         "Name": "Lair actions",
         "Hint": "At the top of every round, a monster in its lair takes the lair action that hurts the party most; the GM is told which lair actions were left for their hands. Monsters with legendary actions are off the autopilot unless switched on."
+      },
+      "enlargeStrength": {
+        "Name": "Enlarge: Strength twice",
+        "Hint": "An enlarged character adds its Strength modifier a second time instead of the 1d4 on Strength attacks (other attacks keep the 1d4). Applied to the Enlarge effect when it is created."
       }
     },
     "Preset": {

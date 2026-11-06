@@ -4,6 +4,7 @@ import { registerTurns, toggleDash } from "./turns.js";
 import { registerSockets } from "./prompts.js";
 import { startEncounter, registerEncounters, markEncounter } from "./encounters.js";
 import { registerAutopilot, runTurn } from "./ai/run.js";
+import { registerHouseRules } from "./houserules.js";
 
 export const MODULE_ID = "bg3-flow";
 
@@ -51,6 +52,7 @@ Hooks.once("init", () => {
   reg("fleeThreshold", Number, 25);
   reg("escapeRegionName", String, "escape");
   reg("lairActions", Boolean, true);
+  reg("enlargeStrength", Boolean, true);
   game.settings.registerMenu(MODULE_ID, "preset", {
     name: L("Preset.Menu"), label: L("Preset.Menu"), hint: L("Preset.Hint"),
     icon: "fas fa-bolt", type: PresetMenu, restricted: true
@@ -73,6 +75,7 @@ Hooks.once("ready", () => {
   if (game.settings.get(MODULE_ID, "enableTurns")) registerTurns();
   if (game.settings.get(MODULE_ID, "enableEncounters")) registerEncounters();
   if (game.settings.get(MODULE_ID, "enableAutopilot")) registerAutopilot();
+  registerHouseRules();
   game.modules.get(MODULE_ID).api = { toggleDash, startEncounter, markEncounter, runTurn };
   log("ready");
 });
