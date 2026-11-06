@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { averageOf, hitChance, failChance, expectedValue, parseMultiattack, pickTarget, planTurn, shouldFlee, planFlee } = await import("../scripts/ai/plan.js");
+const { averageOf, hitChance, failChance, expectedValue, parseMultiattack, pickTarget, planTurn, shouldFlee, planFlee, oaCost } = await import("../scripts/ai/plan.js");
 
 test("averageOf: dice average plus flat, unknown tokens count as 0", () => {
   assert.equal(averageOf("2d6 + 3"), 10);
@@ -254,4 +254,38 @@ test("planTurn flees before anything else, fights when cornered, and the bonus s
   assert.equal(planTurn(b).reason, "flee: Dash away from enemies (hp 1/8)");
   assert.ok(planTurn({ ...b, away: [] }).reason.startsWith("Scimitar vs rogue"));
   assert.equal(planTurn(b, { slot: "bonus" }).reason, "no bonus action");
+});
+
+const oa = (over = {}) => ({ damage: 3, hit: 0.5, reach: 5, reaction: true, tunnelFighter: false, activityUuid: "A.ls", ...over });
+const rsq = (x, y, cost, distances, route = []) => ({ x, y, elevation: 0, cost, distance: distances.rogue ?? 99, occupied: false, waypoints: [...route.map((r) => ({ x: r[0], y: r[1], elevation: 0 })), { x, y, elevation: 0 }], distances });
+test("oaCost: leaving a free reach costs one attack, a spent reaction none, Tunnel Fighter every extra square inside and the leaving, Sentinel scales the stop chance", () => {
+  // fighter adjacent at the start (distance 5); route: (100,0) still adjacent, (200,0) out of reach
+  const fighter = { ...pc("fighter", 5), oa: oa() };
+  const route = [rsq(100, 0, 5, { fighter: 5 }), rsq(200, 0, 10, { fighter: 10 }, [[100, 0]])];
+  const b = { ...board({ enemies: [fighter], activities: [bow], paths: { fighter: route } }), retreats: [] };
+  assert.deepEqual(oaCost(b, route[1]), { damage: 3, stopFree: 1 });
+  assert.deepEqual(oaCost(b, route[0]), { damage: 0, stopFree: 1 }); // still inside reach: nothing
+  assert.deepEqual(oaCost({ ...b, enemies: [{ ...fighter, oa: oa({ reaction: false }) }] }, route[1]), { damage: 0, stopFree: 1 });
+  assert.deepEqual(oaCost({ ...b, enemies: [{ ...fighter, oa: oa({ tunnelFighter: true, reaction: false }) }] }, route[1]), { damage: 6, stopFree: 1 }); // one for the second square inside, one for leaving
+  assert.deepEqual(oaCost({ ...b, enemies: [{ ...fighter, oa: oa({ tunnelFighter: true }), sentinel: true }] }, route[1]), { damage: 6, stopFree: 0.25 });
+  assert.deepEqual(oaCost({ ...b, enemies: [{ ...fighter, oa: null }] }, route[1]), { damage: 0, stopFree: 1 });
+  assert.deepEqual(oaCost({ ...b, enemies: [{ ...fighter, visible: false }] }, route[1]), { damage: 0, stopFree: 1 });
+});
+test("a clever archer steps back only when the shot gains more than the opportunity attack costs; a path through a Fighter's reach pays on the way to the Rogue", () => {
+  // Fighter (AC 30, Longsword worth 1.0 expected vs me) and Rogue both adjacent; the retreat square is 10 ft from both; bow 2.5 from there, 1.25 at disadvantage from here, scimitar 2.5 vs the Rogue
+  const fighter = { ...pc("fighter", 5, { ac: 30 }), oa: oa({ damage: 1 }) };
+  const retreat = rsq(0, 100, 5, { fighter: 10, rogue: 10 });
+  const b = { ...board({ enemies: [fighter, pc("rogue", 5)], activities: [bow, scimitar] }), retreats: [retreat] };
+  let p = planTurn(b);
+  assert.deepEqual([p.move, p.reason], [null, "Scimitar vs rogue (expected 2.5); also: Shortbow 1.5"]); // 2.5 - 1.0 from the retreat loses to the scimitar here
+  p = planTurn({ ...b, activities: [bow, { ...scimitar, damage: 2 }] });
+  assert.deepEqual([at(p.move), p.reason], [{ x: 0, y: 100, elevation: 0 }, "Shortbow vs rogue (expected 1.5; opportunity attacks 1.0); also: Scimitar 1.0"]); // now the step back pays
+  p = planTurn({ ...b, activities: [bow, { ...scimitar, damage: 2 }], enemies: [{ ...fighter, oa: oa({ damage: 6 }) }, pc("rogue", 5)] });
+  assert.deepEqual([p.move, p.reason], [null, "Shortbow vs rogue (expected 1.3); also: Scimitar 1.0"]); // 2.5 - 6 < 0: it shoots at disadvantage from where it stands
+  assert.equal(planTurn({ ...b, me: { ...b.me, intelligence: 3 } }).move, null); // dumb: no estimate, no retreat (4b rule)
+  // approach: rogue 15 ft away behind the fighter's reach; the first square in range (10 ft from the fighter) costs the leaving attack
+  const rogue = pc("rogue", 15);
+  const path = [rsq(100, 0, 5, { fighter: 5, rogue: 10 }), rsq(200, 0, 10, { fighter: 10, rogue: 5 }, [[100, 0]])];
+  p = planTurn({ ...board({ enemies: [{ ...fighter, oa: oa({ damage: 2 }) }, rogue], activities: [scimitar], paths: { rogue: path } }), retreats: [] });
+  assert.deepEqual([at(p.move), p.reason], [{ x: 200, y: 0, elevation: 0 }, "Scimitar vs rogue (expected 0.5; opportunity attacks 2.0)"]); // 2.5 - 2.0 still beats 0.25 on the Fighter's AC 30
 });

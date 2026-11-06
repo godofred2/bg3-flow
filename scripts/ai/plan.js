@@ -90,6 +90,49 @@ function areaFrom(board, activity, enemy, square) {
   return { square, value, targets: hit };
 }
 
+/** The squares of a route in order: the square's waypoints looked up among every square the board knows, the square itself last. */
+export function routeOf(board, square) {
+  const byKey = new Map();
+  for (const s of [...Object.values(board.paths ?? {}).flat(), ...(board.retreats ?? []), ...(board.escape?.squares ?? []), ...(board.away ?? [])]) byKey.set(key(s), s);
+  const out = [];
+  for (const w of square.waypoints ?? []) { const s = byKey.get(key(w)); if (s && out.at(-1) !== s) out.push(s); }
+  if (out.at(-1) !== square && key(out.at(-1) ?? {}) !== key(square)) out.push(square);
+  return out;
+}
+
+/** Opportunity-attack trigger points of one enemy along a route: "leave" (out of its reach) and "inside" (one more square inside it). */
+function* triggers(route, enemy) {
+  const reach = enemy.oa.reach;
+  let inside = enemy.distance <= reach;
+  for (const s of route) {
+    const d = s.distances?.[enemy.id];
+    const now = d !== undefined && d <= reach;
+    if (inside && !now) yield { square: s, kind: "leave" };
+    else if (inside && now) yield { square: s, kind: "inside" };
+    inside = now;
+  }
+}
+
+/** What walking to `square` draws from visible enemies with a melee attack: expected damage of every opportunity attack (leaving a reach with
+ *  a free reaction, or anything Tunnel Fighter allows: every leaving and every extra square inside) and the chance no Sentinel hit stopped the
+ *  move (each trigger counted as if the earlier ones missed). */
+export function oaCost(board, square) {
+  const route = routeOf(board, square);
+  let damage = 0, stopFree = 1;
+  for (const e of board.enemies) {
+    if (!e.oa || !e.visible || e.hp <= 0) continue;
+    const tf = !!e.oa.tunnelFighter;
+    let reaction = !!e.oa.reaction;
+    for (const t of triggers(route, e)) {
+      if (t.kind === "inside" ? !tf : !(reaction || tf)) continue;
+      if (t.kind === "leave" && !tf) reaction = false; // the reaction is spent for the rest of this route
+      damage += e.oa.damage;
+      if (e.sentinel) stopFree *= 1 - e.oa.hit;
+    }
+  }
+  return { damage, stopFree };
+}
+
 /** Who a heal may target: wounded allies, or only the monster itself (with the board's own hit points) for self heals. */
 function healPool(board, activity) {
   const allies = board.allies ?? [];
@@ -101,6 +144,9 @@ function healPool(board, activity) {
 export function pickTarget(board, activity, from = null) {
   const smart = board.me.intelligence >= board.threshold;
   const heal = activity.kind === "heal";
+  // A clever monster pays the opportunity attacks a square costs; a dumb one never looks (user decision).
+  const toll = (s) => (smart && s ? oaCost(board, s) : { damage: 0, stopFree: 1 });
+  const net = (v, s) => { const c = toll(s); return v * c.stopFree - c.damage; };
   let best = null;
   for (const enemy of heal ? healPool(board, activity) : board.enemies) {
     if (heal ? enemy.hp >= enemy.maxHp : (!enemy.visible || enemy.hp <= 0)) continue;
@@ -115,23 +161,23 @@ export function pickTarget(board, activity, from = null) {
     const near = (square ? square.distance : from ? distanceFrom(board, from, enemy) : enemy.distance) <= 5;
     let value, targets = [enemy];
     if (activity.area) {
-      // Aim at this enemy from every square in range (or from here): the firing square that covers the most wins.
+      // Aim at this enemy from every square in range (or from here): the firing square that covers the most (net of its toll) wins.
       const candidates = from ? [null] : [...(enemy.distance <= activity.range ? [null] : []), ...reachable];
       let best = null;
-      for (const s of candidates) { const r = areaFrom(board, activity, enemy, s); if (!best || r.value > best.value) best = r; }
+      for (const s of candidates) { const r = areaFrom(board, activity, enemy, s); r.value = net(r.value, s); if (!best || r.value > best.value) best = r; }
       if (!best || best.value <= 0) continue;
       ({ square, value, targets } = best);
     } else {
-      value = expectedValue(activity, enemy, { disadvantage: !!activity.ranged && near });
+      value = net(expectedValue(activity, enemy, { disadvantage: !!activity.ranged && near }), square);
       // A clever archer next to an enemy looks at the free squares 10 ft from everyone before shooting.
       if (!from && smart && activity.ranged && near) for (const r of board.retreats ?? []) {
         const d = r.distances?.[enemy.id] ?? Infinity;
         if (r.cost > board.me.budget || d > activity.range || board.reserved.has(key(r))) continue;
-        const v = expectedValue(activity, enemy, { disadvantage: d <= 5 });
+        const v = net(expectedValue(activity, enemy, { disadvantage: d <= 5 }), r);
         if (v >= value) { value = v; square = r; } // a tie goes to stepping back: archers keep their distance
       }
     }
-    const pick = { enemy, square, value, targets };
+    const pick = { enemy, square, value, targets, oa: toll(square).damage };
     if (!best) { best = pick; continue; }
     const d = value - best.value;
     if (Math.abs(d) > 1e-9) { if (d > 0) best = pick; continue; }
@@ -175,7 +221,7 @@ export function planTurn(board, { slot = "action" } = {}) {
   const options = [];
   for (const a of actions) {
     const p = pickTarget(board, a);
-    if (p && p.value > 0) options.push({ name: a.name, value: p.value, square: p.square, aimId: p.enemy.id, actions: [{ activityId: a.id, targetIds: p.targets.map((t) => t.id), aimId: p.enemy.id }] });
+    if (p && p.value > 0) options.push({ name: a.name, value: p.value, oa: p.oa, square: p.square, aimId: p.enemy.id, actions: [{ activityId: a.id, targetIds: p.targets.map((t) => t.id), aimId: p.enemy.id }] });
   }
   if (board.multiattack && slot === "action") {
     const attacks = actions.filter((a) => a.kind === "attack");
@@ -189,13 +235,13 @@ export function planTurn(board, { slot = "action" } = {}) {
     const first = seq.length ? pickTarget(board, seq[0]) : null;
     if (first && first.value > 0) {
       const from = first.square ?? board.me;
-      let value = first.value;
+      let value = first.value; // net of the move's toll; ponytail: the Sentinel stop chance discounts the first attack only
       const acts = [{ activityId: seq[0].id, targetIds: [first.enemy.id], aimId: first.enemy.id }];
       for (const a of seq.slice(1)) {
         const p = pickTarget(board, a, from);
         if (p) { value += p.value; acts.push({ activityId: a.id, targetIds: [p.enemy.id], aimId: p.enemy.id }); }
       }
-      options.push({ name: "Multiattack", value, square: first.square, aimId: first.enemy.id, actions: acts });
+      options.push({ name: "Multiattack", value, oa: first.oa, square: first.square, aimId: first.enemy.id, actions: acts });
     }
   }
   options.sort((a, b) => byValue(a, b) || (b.square?.distances ? 1 : 0) - (a.square?.distances ? 1 : 0)); // ties: the option that steps back from melee first
@@ -203,7 +249,8 @@ export function planTurn(board, { slot = "action" } = {}) {
   if (options.length) {
     const [w, ...rest] = options;
     const also = rest.slice(0, 3).map((o) => `${o.name} ${o.value.toFixed(1)}`).join(", ");
-    return { move: w.square ? moveTo(w.square) : null, actions: w.actions, reason: `${w.name} vs ${nameOf(w.aimId)} (expected ${w.value.toFixed(1)})${also ? `; also: ${also}` : ""}` };
+    const toll = w.oa > 0 ? `; opportunity attacks ${w.oa.toFixed(1)}` : "";
+    return { move: w.square ? moveTo(w.square) : null, actions: w.actions, reason: `${w.name} vs ${nameOf(w.aimId)} (expected ${w.value.toFixed(1)}${toll})${also ? `; also: ${also}` : ""}` };
   }
   if (slot !== "action") return { move: null, actions: [], reason: "no bonus action" };
   const visible = board.enemies.filter((e) => e.visible && e.hp > 0).sort((a, b) => a.distance - b.distance);
