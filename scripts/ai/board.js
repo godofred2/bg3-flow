@@ -2,7 +2,7 @@
 import { MODULE_ID } from "../main.js";
 import { speedLimit } from "../rules.js";
 import { sees, distanceFt } from "../encounters.js";
-import { averageOf } from "./plan.js";
+import { averageOf, hitChance } from "./plan.js";
 
 const KINDS = new Set(["attack", "save", "damage", "heal"]);
 const hasRecharge = (uses) => (uses?.recovery ?? []).some((r) => r.period === "recharge");
@@ -86,35 +86,20 @@ function reachFt(footA, footB) {
 }
 const footOf = (t) => footprint(tlOffset(t), widthOf(t), Math.max(1, Math.round(t.height ?? 1)));
 
-/**
- * Squares (top-left offsets of `me`) along Foundry's path to `enemy`, plus the free neighbours of the last one that still
- * touch the enemy (so group mates converging on one square spread around it). Each carries the route to reach it.
- * ponytail: branch squares assume a straight step from the last square; no second pathfinding call.
- */
-async function pathTo(me, enemy, taken, budget) {
+/** Top-left offsets of a route (start excluded, `exclude` squares dropped) turned into planner squares with cost, distances and the route so far. */
+function squaresAlong(me, found, { taken, budget, foots, exclude = new Set(), branchesTo = null }) {
   const w = widthOf(me), h = Math.max(1, Math.round(me.height ?? 1));
-  const wps = [{ x: me.x, y: me.y, elevation: me.elevation }, { x: enemy.x, y: enemy.y, elevation: enemy.elevation }];
-  const start = tlOffset(me), enemyFoot = new Set(footOf(enemy));
-  const find = async (goal) => (await me.object?.findMovementPath?.([wps[0], goal])?.promise) ?? null;
-  let found = await find(wps[1]);
-  if (!found || found.length < 2) {
-    // The enemy's own square is no goal for a Large mover, or something stands in the only corridor: route to the free squares touching the enemy instead.
-    const tries = await Promise.all(goalsAround(enemyFoot, w, h, taken, start).map(async (o) => {
-      const tl = canvas.grid.getTopLeftPoint(o);
-      const p = await find({ x: tl.x, y: tl.y, elevation: me.elevation });
-      return p && p.length >= 2 ? { p, cost: canvas.grid.measurePath(p.map((q) => me.getCenterPoint(q))).distance } : null;
-    }));
-    found = tries.filter(Boolean).sort((a, b) => a.cost - b.cost)[0]?.p ?? wps;
-  }
+  const start = tlOffset(me);
   const offsets = canvas.grid.getDirectPath(found.map((p) => ({ x: p.x, y: p.y })));
-  const overlapsEnemy = (o) => footprint(o, w, h).some((k) => enemyFoot.has(k));
-  const main = offsets.filter((o) => !(o.i === start.i && o.j === start.j) && !overlapsEnemy(o));
+  const overlaps = (o) => footprint(o, w, h).some((k) => exclude.has(k));
+  const main = offsets.filter((o) => !(o.i === start.i && o.j === start.j) && !overlaps(o));
   const last = main.at(-1);
-  const branches = last ? canvas.grid.getAdjacentOffsets(last).filter((o) => !main.some((m) => m.i === o.i && m.j === o.j) && !(o.i === start.i && o.j === start.j)
-    && !overlapsEnemy(o) && footprint(o, w, h).some((k) => [...enemyFoot].some((e) => chebyshev(parse(k), parse(e)) === 1))) : [];
+  const branches = last && branchesTo ? canvas.grid.getAdjacentOffsets(last).filter((o) => !main.some((m) => m.i === o.i && m.j === o.j) && !(o.i === start.i && o.j === start.j)
+    && !overlaps(o) && footprint(o, w, h).some((k) => [...branchesTo].some((e) => chebyshev(parse(k), parse(e)) === 1))) : [];
   const square = (o, cost, route) => {
-    const tl = canvas.grid.getTopLeftPoint(o);
-    return { x: tl.x, y: tl.y, elevation: me.elevation ?? 0, cost, distance: reachFt(footprint(o, w, h), enemyFoot), occupied: footprint(o, w, h).some((k) => taken.has(k)), waypoints: [...route, { x: tl.x, y: tl.y, elevation: me.elevation ?? 0 }] };
+    const tl = canvas.grid.getTopLeftPoint(o), foot = footprint(o, w, h);
+    return { x: tl.x, y: tl.y, elevation: me.elevation ?? 0, cost, distance: branchesTo ? reachFt(foot, branchesTo) : Infinity, occupied: foot.some((k) => taken.has(k)),
+      distances: Object.fromEntries(foots.map(([id, f]) => [id, reachFt(foot, f)])), waypoints: [...route, { x: tl.x, y: tl.y, elevation: me.elevation ?? 0 }] };
   };
   const centers = main.map((o) => me.getCenterPoint(canvas.grid.getTopLeftPoint(o)));
   const costs = canvas.grid.measurePath([me.getCenterPoint(), ...centers]).waypoints;
@@ -134,12 +119,60 @@ async function pathTo(me, enemy, taken, budget) {
   return out;
 }
 
+const findPath = async (me, goal) => (await me.object?.findMovementPath?.([{ x: me.x, y: me.y, elevation: me.elevation }, goal])?.promise) ?? null;
+
+/**
+ * Squares (top-left offsets of `me`) along Foundry's path to `enemy`, plus the free neighbours of the last one that still
+ * touch the enemy (so group mates converging on one square spread around it). Each carries the route to reach it.
+ * ponytail: branch squares assume a straight step from the last square; no second pathfinding call.
+ */
+async function pathTo(me, enemy, taken, budget, foots) {
+  const w = widthOf(me), h = Math.max(1, Math.round(me.height ?? 1));
+  const goal = { x: enemy.x, y: enemy.y, elevation: enemy.elevation };
+  const start = tlOffset(me), enemyFoot = new Set(footOf(enemy));
+  let found = await findPath(me, goal);
+  if (!found || found.length < 2) {
+    // The enemy's own square is no goal for a Large mover, or something stands in the only corridor: route to the free squares touching the enemy instead.
+    const tries = await Promise.all(goalsAround(enemyFoot, w, h, taken, start).map(async (o) => {
+      const tl = canvas.grid.getTopLeftPoint(o);
+      const p = await findPath(me, { x: tl.x, y: tl.y, elevation: me.elevation });
+      return p && p.length >= 2 ? { p, cost: canvas.grid.measurePath(p.map((q) => me.getCenterPoint(q))).distance } : null;
+    }));
+    found = tries.filter(Boolean).sort((a, b) => a.cost - b.cost)[0]?.p ?? [{ x: me.x, y: me.y, elevation: me.elevation }, goal];
+  }
+  return squaresAlong(me, found, { taken, budget, foots, exclude: enemyFoot, branchesTo: enemyFoot });
+}
+
+/** Squares along Foundry's path to a point (a region square, the away point); empty when there is no path. */
+async function pathToPoint(me, goal, taken, budget, foots) {
+  const found = await findPath(me, goal);
+  return found && found.length >= 2 ? squaresAlong(me, found, { taken, budget, foots }) : [];
+}
+
 function budgetOf(combatant, doc) {
   const type = CONFIG.DND5E?.movementTypes?.walk;
-  const limit = speedLimit({ speeds: doc.actor?.system?.attributes?.movement?.speeds, action: "walk", walkFallback: !type || !!type.walkFallback, dash: !!combatant.getFlag(MODULE_ID, "dash") });
+  const dash = !!combatant.getFlag(MODULE_ID, "dash");
+  const args = { speeds: doc.actor?.system?.attributes?.movement?.speeds, action: "walk", walkFallback: !type || !!type.walkFallback };
   const used = (doc.movementHistory ?? []).reduce((s, w) => s + (w.cost ?? 0), 0);
-  return Math.max(0, limit - used);
+  return { budget: Math.max(0, speedLimit({ ...args, dash }) - used), speed: speedLimit({ ...args, dash: false }), dash };
 }
+
+const named = (name, what) => String(name ?? "").trim().toLowerCase() === what;
+/** The PC's opportunity attack against a monster of `ac`: its best melee attack (expected damage, hit chance, uuid), its reach, reaction and stance. */
+function oaOf(actor, ac, tunnelFighter) {
+  let best = null, reach = 0;
+  for (const item of actor?.items ?? []) for (const a of item.system?.activities ?? []) {
+    const info = activityInfo(a);
+    if (!info || info.kind !== "attack" || info.ranged) continue;
+    reach = Math.max(reach, info.range);
+    const hit = hitChance({ bonus: info.bonus, ac }), damage = hit * info.damage;
+    if (!best || damage > best.damage) best = { damage, hit, activityUuid: info.uuid };
+  }
+  if (!best) return null;
+  return { ...best, reach, reaction: !(globalThis.MidiQOL?.hasUsedReaction?.(actor) ?? false), tunnelFighter };
+}
+
+const inRect = (tl, r) => !r || (tl.x >= r.x && tl.y >= r.y && tl.x < r.x + r.width && tl.y < r.y + r.height);
 
 /** The board for one combatant's turn. `reserved`: "x,y" destinations its group mates already took. */
 export async function snapshot(combat, combatant, reserved = new Set()) {
@@ -148,46 +181,85 @@ export async function snapshot(combat, combatant, reserved = new Set()) {
   const onScene = (t) => t && t.parent?.id === canvas.scene?.id;
   // Every visible token on the scene occupies its squares, in the combat or not.
   const taken = new Set((canvas.scene?.tokens?.contents ?? []).filter((t) => t !== doc && !t.hidden).flatMap((t) => footprint(tlOffset(t), widthOf(t), Math.max(1, Math.round(t.height ?? 1)))));
-  const budget = budgetOf(combatant, doc);
+  const { budget, speed, dash } = budgetOf(combatant, doc);
   const myFoot = footOf(doc), myCentre = doc.getCenterPoint();
   const grid = { px: canvas.dimensions.size, ft: canvas.dimensions.distance };
   const creature = (t) => {
     const saves = Object.fromEntries(Object.entries(t.actor?.system?.abilities ?? {}).map(([k, a]) => [k, a?.save?.value ?? (typeof a?.save === "number" ? a.save : 0)]));
     const c = t.getCenterPoint();
-    const sentinel = [...(t.actor?.items ?? [])].some((i) => String(i.name).trim().toLowerCase() === "sentinel");
-    return { id: t.id, uuid: t.uuid, name: t.name, x: t.x, y: t.y, elevation: t.elevation ?? 0, cx: c.x, cy: c.y, w: widthOf(t), hp: hpOf(t).value, maxHp: hpOf(t).max ?? hpOf(t).value, temp: hpOf(t).temp ?? 0, ac: t.actor?.system?.attributes?.ac?.value ?? 10, saves, distance: t === doc ? 0 : reachFt(myFoot, footOf(t)), sentinel };
+    const sentinel = [...(t.actor?.items ?? [])].some((i) => named(i.name, "sentinel"));
+    const effects = t.actor?.appliedEffects ?? [...(t.actor?.effects ?? [])].filter((e) => !e.disabled);
+    const tunnelFighter = [...effects].some((e) => named(e.name, "tunnel fighter"));
+    return { id: t.id, uuid: t.uuid, actorUuid: t.actor?.uuid, name: t.name, x: t.x, y: t.y, elevation: t.elevation ?? 0, cx: c.x, cy: c.y, w: widthOf(t), hp: hpOf(t).value, maxHp: hpOf(t).max ?? hpOf(t).value, temp: hpOf(t).temp ?? 0, ac: t.actor?.system?.attributes?.ac?.value ?? 10, saves, distance: t === doc ? 0 : reachFt(myFoot, footOf(t)), sentinel, tunnelFighter };
   };
-  const me = { ...creature(doc), intelligence: actor?.system?.abilities?.int?.value ?? 10, hp: hpOf(doc).value ?? 0, maxHp: hpOf(doc).max ?? 0, budget };
+  const alone = ![...combat.combatants].some((c) => c !== combatant && c.token && c.token !== doc && (c.token.disposition ?? 0) === mine);
+  const me = { ...creature(doc), intelligence: actor?.system?.abilities?.int?.value ?? 10, hp: hpOf(doc).value ?? 0, maxHp: hpOf(doc).max ?? 0, budget, speed, dash, alone };
   const enemies = [], allies = [me], paths = {}, tokensById = {};
   for (const c of combat.combatants) {
     const t = c.token;
     if (!onScene(t) || t === doc || t.hidden || c.isDefeated) continue;
     tokensById[t.id] = t;
-    if ((t.disposition ?? 0) === mine) { // an ally, downed ones included (heals): a path only when it is wounded
-      const a = creature(t);
-      allies.push(a);
-      if (a.hp < a.maxHp) paths[t.id] = await pathTo(doc, t, taken, budget);
-      continue;
-    }
+    if ((t.disposition ?? 0) === mine) { allies.push(creature(t)); continue; } // an ally, downed ones included (heals)
     if ((t.disposition ?? 0) * mine >= 0 || !((hpOf(t).value ?? 0) > 0)) continue; // neutral: nobody is its enemy; downed: no target
-    const e = { ...creature(t), visible: sees(doc, t) };
-    enemies.push(e);
-    if (e.visible) paths[t.id] = await pathTo(doc, t, taken, budget);
+    const e = creature(t);
+    enemies.push({ ...e, visible: sees(doc, t), oa: oaOf(t.actor, me.ac, e.tunnelFighter) });
   }
+  const foots = enemies.map((e) => [e.id, new Set(footOf(tokensById[e.id]))]); // every square measures its distance to every enemy
+  for (const e of enemies) if (e.visible) paths[e.id] = await pathTo(doc, tokensById[e.id], taken, budget, foots);
+  for (const a of allies) if (a.id !== me.id && a.hp < a.maxHp) paths[a.id] = await pathTo(doc, tokensById[a.id], taken, budget, foots); // a path only to the wounded
   // Retreat squares: free neighbours of the monster that keep 10 ft from every visible enemy (a clever archer steps back there).
   const w = widthOf(doc), h = Math.max(1, Math.round(doc.height ?? 1)), rect = canvas.dimensions.sceneRect, seen = enemies.filter((e) => e.visible);
   const retreats = [];
   for (const o of canvas.grid.getAdjacentOffsets(tlOffset(doc))) {
     const tl = canvas.grid.getTopLeftPoint(o);
-    if (rect && (tl.x < rect.x || tl.y < rect.y || tl.x >= rect.x + rect.width || tl.y >= rect.y + rect.height)) continue;
+    if (!inRect(tl, rect)) continue;
     const foot = footprint(o, w, h);
     if (foot.some((k) => taken.has(k))) continue;
-    const distances = Object.fromEntries(enemies.map((e) => [e.id, reachFt(foot, footOf(tokensById[e.id]))]));
+    const distances = Object.fromEntries(foots.map(([id, f]) => [id, reachFt(foot, f)]));
     if (seen.some((e) => distances[e.id] < 2 * grid.ft)) continue;
     retreats.push({ x: tl.x, y: tl.y, elevation: doc.elevation ?? 0, cost: distanceFt(myCentre, doc.getCenterPoint(tl)), waypoints: [{ x: tl.x, y: tl.y, elevation: doc.elevation ?? 0 }], distances });
   }
+  // Flight: the nearest escape region's squares (route uncut: the planner cuts at the Dash budget), else a route straight away from the visible enemies.
+  const fleeBudget = dash ? budget : budget + speed, elevation = doc.elevation ?? 0;
+  const word = String(game.settings.get(MODULE_ID, "escapeRegionName") ?? "").trim().toLowerCase();
+  const regions = word ? (canvas.scene?.regions?.contents ?? []).filter((r) => String(r.name ?? "").toLowerCase().includes(word)) : [];
+  const goals = [];
+  for (const r of regions) {
+    const b = r.bounds; if (!b) continue;
+    const a = canvas.grid.getOffset({ x: b.x, y: b.y }), z = canvas.grid.getOffset({ x: b.x + b.width, y: b.y + b.height });
+    for (let i = a.i; i <= z.i; i++) for (let j = a.j; j <= z.j; j++) {
+      const c = canvas.grid.getCenterPoint({ i, j });
+      if (r.testPoint({ x: c.x, y: c.y, elevation })) goals.push({ r, tl: canvas.grid.getTopLeftPoint({ i, j }), d: Math.hypot(c.x - myCentre.x, c.y - myCentre.y) });
+    }
+  }
+  let escape = null;
+  for (const g of goals.sort((p, q) => p.d - q.d).slice(0, 3)) {
+    const squares = await pathToPoint(doc, { x: g.tl.x, y: g.tl.y, elevation }, taken, Infinity, foots);
+    if (!squares.length || (escape && squares.at(-1).cost >= escape.squares.at(-1).cost)) continue;
+    for (const s of squares) { const c = doc.getCenterPoint(s); s.inside = !!g.r.testPoint({ x: c.x, y: c.y, elevation }); }
+    escape = { uuid: g.r.uuid, name: g.r.name, squares };
+  }
+  let away = [];
+  if (!escape && seen.length) {
+    const cx = seen.reduce((s, e) => s + e.cx, 0) / seen.length, cy = seen.reduce((s, e) => s + e.cy, 0) / seen.length;
+    const dx = myCentre.x - cx, dy = myCentre.y - cy, len = Math.hypot(dx, dy), reach = fleeBudget / grid.ft * grid.px;
+    const dirs = len ? [[dx / len, dy / len]] : [];
+    for (const a of [0, 45, 90, 135, 180, 225, 270, 315]) dirs.push([Math.cos(a * Math.PI / 180), Math.sin(a * Math.PI / 180)]);
+    const byAngle = (u) => (len ? -(u[0] * dx + u[1] * dy) / len : 0);
+    for (const u of dirs.sort((p, q) => byAngle(p) - byAngle(q))) {
+      const tl = { x: myCentre.x + u[0] * reach - w * grid.px / 2, y: myCentre.y + u[1] * reach - h * grid.px / 2 };
+      if (rect) { tl.x = Math.min(Math.max(tl.x, rect.x), rect.x + rect.width - w * grid.px); tl.y = Math.min(Math.max(tl.y, rect.y), rect.y + rect.height - h * grid.px); }
+      const o = canvas.grid.getOffset(tl), snapped = canvas.grid.getTopLeftPoint(o);
+      away = await pathToPoint(doc, { x: snapped.x, y: snapped.y, elevation }, taken, Infinity, foots);
+      if (away.length) break;
+    }
+  }
   const activities = [];
   for (const item of actor?.items ?? []) for (const a of item.system?.activities ?? []) { const info = activityInfo(a); if (info) activities.push(info); }
-  const multi = [...(actor?.items ?? [])].find((i) => String(i.name).trim().toLowerCase() === "multiattack");
-  return { me, enemies, allies, activities, multiattack: multi ? stripHtml(multi.system?.description?.value) : null, paths, retreats, grid, reserved, threshold: game.settings.get(MODULE_ID, "intelligenceThreshold") ?? 6 };
+  const multi = [...(actor?.items ?? [])].find((i) => named(i.name, "multiattack"));
+  return {
+    me, enemies, allies, activities, multiattack: multi ? stripHtml(multi.system?.description?.value) : null, paths, retreats, grid, reserved,
+    threshold: game.settings.get(MODULE_ID, "intelligenceThreshold") ?? 6,
+    flee: { enabled: game.settings.get(MODULE_ID, "fleeEnabled") !== false, threshold: Number(game.settings.get(MODULE_ID, "fleeThreshold") ?? 25) }, escape, away
+  };
 }

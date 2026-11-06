@@ -47,6 +47,9 @@ Hooks.once("init", () => {
   reg("pauseBeforeAttack", Boolean, false);
   reg("autoNextTurn", Boolean, true);
   reg("intelligenceThreshold", Number, 6);
+  reg("fleeEnabled", Boolean, true);
+  reg("fleeThreshold", Number, 25);
+  reg("escapeRegionName", String, "escape");
   game.settings.registerMenu(MODULE_ID, "preset", {
     name: L("Preset.Menu"), label: L("Preset.Menu"), hint: L("Preset.Hint"),
     icon: "fas fa-bolt", type: PresetMenu, restricted: true

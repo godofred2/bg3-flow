@@ -7,7 +7,7 @@ globalThis.ui = { notifications: { info() {}, warn() {} }, controls: { render() 
 globalThis.ChatMessage = { create: async () => {} };
 globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: class {} } }, utils: { escapeHTML: (s) => s, randomID: () => "id" } };
 globalThis.Roll = { replaceFormulaData: (f, d) => f.replace(/@(\w+)/g, (_, k) => d[k] ?? 0) };
-const settings = { obscuredDarkness: 0.5 };
+const settings = { obscuredDarkness: 0.5, fleeEnabled: true, fleeThreshold: 25, escapeRegionName: "escape" };
 globalThis.game = {
   i18n: { localize: (k) => k, format: (k, d) => `${k}:${JSON.stringify(d)}` },
   user: { isGM: true }, users: [], combat: null,
@@ -66,7 +66,7 @@ function act({ type, activation = "action", toHit = "+0", parts = [], item = {},
   };
 }
 
-function token(id, { x, y = 0, disposition, hp = 10, maxHp = 10, ac = 15, int = 10, passive = 9, darkvision = 0, speed = 30, spent = 0, items = [], hidden = false, flags = {}, width = 1 } = {}) {
+function token(id, { x, y = 0, disposition, hp = 10, maxHp = 10, ac = 15, int = 10, passive = 9, darkvision = 0, speed = 30, spent = 0, items = [], hidden = false, flags = {}, width = 1, effects = [], reactionUsed = false } = {}) {
   const doc = {
     id, name: id, x, y, elevation: 0, hidden, disposition, parent: { id: "scene" }, uuid: `Scene.scene.Token.${id}`, width, height: width,
     flags: { "bg3-flow": flags }, getFlag: (m, k) => doc.flags[m]?.[k],
@@ -76,7 +76,7 @@ function token(id, { x, y = 0, disposition, hp = 10, maxHp = 10, ac = 15, int = 
     object: { findMovementPath: (wps) => { const blocked = width > 1 && wps[0].y === wps[1].y && canvas.scene.tokens.contents.some((t) => t !== doc && t.y === wps[0].y && t.x > Math.min(wps[0].x, wps[1].x) && t.x < Math.max(wps[0].x, wps[1].x)); return { promise: Promise.resolve(blocked ? [wps[0]] : wps) }; } }
   };
   doc.actor = {
-    name: id, items, hasPlayerOwner: disposition > 0,
+    name: id, uuid: `Actor.${id}`, items, effects, reactionUsed, hasPlayerOwner: disposition > 0,
     system: {
       attributes: { hp: { value: hp, max: maxHp }, ac: { value: ac }, movement: { speeds: { walk: speed } }, senses: { ranges: { darkvision } } },
       abilities: { int: { value: int }, dex: { save: { value: 2 } } }, skills: { prc: { passive } }
@@ -86,6 +86,7 @@ function token(id, { x, y = 0, disposition, hp = 10, maxHp = 10, ac = 15, int = 
 }
 const combatantOf = (doc, defeated = false) => ({ id: `c-${doc.id}`, token: doc, actor: doc.actor, isDefeated: defeated, flags: { "bg3-flow": {} }, getFlag: () => undefined });
 
+globalThis.MidiQOL = { hasUsedReaction: (actor) => !!actor.reactionUsed };
 const { activityInfo, snapshot } = await import("../scripts/ai/board.js");
 
 test("activityInfo: a goblin's scimitar and shortbow as Plutonium imports them", () => {
@@ -237,4 +238,39 @@ test("snapshot: a downed ally is still an ally (a heal target), and enemies carr
   const b = await snapshot({ combatants: [goblin, down, fighter].map((t) => combatantOf(t)) }, combatantOf(goblin));
   assert.deepEqual(b.allies.map((a) => [a.id, a.hp]), [["goblin", 10], ["goblin2", 0]]);
   assert.deepEqual(b.enemies.map((e) => [e.id, e.sentinel]), [["fighter", true]]);
+});
+
+test("snapshot: enemies carry their opportunity-attack data (best melee attack vs my AC, reach, reaction, Tunnel Fighter), a crossbow-only wizard none", async () => {
+  const ls = act({ type: "attack", toHit: "+5", parts: [["1d8 + 3", {}]], item: { type: "weapon", range: { reach: 5 } }, name: "Longsword" });
+  const pike = act({ type: "attack", toHit: "+5", parts: [["1d10 + 3", {}]], item: { type: "weapon", range: { reach: 10 } }, name: "Pike" });
+  const xbow = act({ type: "attack", toHit: "+5", parts: [["1d8", {}]], item: { type: "weapon", range: { value: 80 } }, name: "Crossbow", attackType: "ranged" });
+  const weapon = (a) => ({ name: a.item.name, type: "weapon", system: { activities: [a], range: a.item.system.range } });
+  const goblin = token("goblin", { x: 300, y: 100, disposition: -1, ac: 15 });
+  const fighter = token("fighter", { x: 400, y: 100, disposition: 1, items: [weapon(ls), weapon(pike), { name: "Sentinel", type: "feat", system: { activities: [] } }], effects: [{ name: "Tunnel Fighter", disabled: false }], reactionUsed: true });
+  const wizard = token("wizard", { x: 0, y: 100, disposition: 1, items: [weapon(xbow)], effects: [{ name: "Tunnel Fighter", disabled: true }] });
+  canvas.scene.tokens.contents = [goblin, fighter, wizard];
+  const b = await snapshot({ combatants: [goblin, fighter, wizard].map((t) => combatantOf(t)) }, combatantOf(goblin));
+  const f = b.enemies.find((e) => e.id === "fighter"), w = b.enemies.find((e) => e.id === "wizard");
+  assert.deepEqual([f.oa.reach, f.oa.hit, f.oa.damage, f.oa.reaction, f.oa.tunnelFighter, f.oa.activityUuid, f.sentinel, f.actorUuid], [10, 0.55, 0.55 * 8.5, false, true, pike.uuid, true, "Actor.fighter"]);
+  assert.deepEqual([w.oa, w.tunnelFighter], [null, false]);
+  assert.deepEqual(b.paths.wizard[0].distances, { fighter: 10, wizard: 10 }); // every square knows every enemy (the adjacent fighter's path is empty: nothing to walk)
+});
+test("snapshot: flee inputs: settings, speed, dash flag, alone from the roster, escape path into the nearest 'escape' region, away path without one", async () => {
+  const goblin = token("goblin", { x: 300, y: 100, disposition: -1, speed: 30 }), rogue = token("rogue", { x: 500, y: 100, disposition: 1 });
+  canvas.scene.tokens.contents = [goblin, rogue];
+  const region = (uuid, name, x) => ({ uuid, name, bounds: { x, y: 0, width: 200, height: 300 }, testPoint: (p) => p.x >= x && p.x < x + 200 && p.y < 300 });
+  canvas.scene.regions = { contents: [region("Scene.s.Region.far", "Escape west", 0), region("Scene.s.Region.near", "ESCAPE hatch", 900), region("Scene.s.Region.no", "Lava", 700)] };
+  let b = await snapshot({ combatants: [goblin, rogue].map((t) => combatantOf(t)) }, combatantOf(goblin));
+  assert.deepEqual([b.flee, b.me.speed, b.me.dash, b.me.alone], [{ enabled: true, threshold: 25 }, 30, false, true]);
+  assert.deepEqual([b.escape.uuid, b.escape.name], ["Scene.s.Region.far", "Escape west"]); // 10 ft away beats 30 ft, name matched case-insensitively, Lava ignored
+  assert.deepEqual(b.escape.squares.map((s) => [s.x, s.cost, s.inside]), [[200, 5, false], [100, 10, true]]); // route to the nearest region square (1,1); the stub's path is the straight line
+  assert.deepEqual(b.escape.squares[0].distances, { rogue: 15 });
+  canvas.scene.regions = { contents: [] };
+  const goblin2 = token("goblin2", { x: 600, y: 100, disposition: -1, hp: 0 });
+  canvas.scene.tokens.contents = [goblin, rogue, goblin2];
+  b = await snapshot({ combatants: [combatantOf(goblin), combatantOf(rogue), combatantOf(goblin2, true)] }, combatantOf(goblin));
+  assert.deepEqual([b.escape, b.me.alone], [null, false]); // a defeated ally in the roster: not alone
+  assert.deepEqual(b.away.map((s) => s.x), [200, 100, 0]); // straight away from the rogue, up to the flee budget (60 ft) and the scene edge
+  assert.deepEqual(b.away[2].distances, { rogue: 25 });
+  delete canvas.scene.regions;
 });

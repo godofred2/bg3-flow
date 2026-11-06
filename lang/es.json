@@ -45,6 +45,18 @@
       "intelligenceThreshold": {
         "Name": "Umbral de Inteligencia",
         "Hint": "Inteligencia a partir de la cual un monstruo remata al objetivo más herido en vez de pegar al más cercano."
+      },
+      "fleeEnabled": {
+        "Name": "Los monstruos huyen",
+        "Hint": "Un monstruo por debajo del umbral de huida corre (Carrera) hacia una región de escape o lejos de todos: los poco inteligentes siempre, los inteligentes solo cuando van perdiendo. Una criatura sola desde el inicio nunca huye."
+      },
+      "fleeThreshold": {
+        "Name": "Umbral de huida (% de pg máximos)",
+        "Hint": "Por debajo de esta fracción de sus puntos de golpe máximos un monstruo huye."
+      },
+      "escapeRegionName": {
+        "Name": "Nombre de las regiones de escape",
+        "Hint": "Las regiones cuyo nombre contiene esta palabra son rutas de escape: un monstruo que huye y entra en una sale del combate (derrotado y oculto)."
       }
     },
     "Preset": {

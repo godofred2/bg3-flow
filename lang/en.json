@@ -45,6 +45,18 @@
       "intelligenceThreshold": {
         "Name": "Intelligence threshold",
         "Hint": "Intelligence at or above which a monster finishes the most wounded target instead of the nearest."
+      },
+      "fleeEnabled": {
+        "Name": "Monsters flee",
+        "Hint": "A monster below the flee threshold runs for an escape region (Dash) or away from everyone: unintelligent ones always, intelligent ones only when outnumbered. A creature alone from the start never flees."
+      },
+      "fleeThreshold": {
+        "Name": "Flee threshold (% of max hp)",
+        "Hint": "Below this share of its maximum hit points a monster flees."
+      },
+      "escapeRegionName": {
+        "Name": "Escape region name",
+        "Hint": "Regions whose name contains this word are escape routes: a fleeing monster that enters one leaves the fight (defeated and hidden)."
       }
     },
     "Preset": {
