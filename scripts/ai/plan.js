@@ -261,7 +261,8 @@ export function planTurn(board, { slot = "action" } = {}) {
       options.push({ name: "Multiattack", value, oa: first.oa, square: first.square, aimId: first.enemy.id, actions: acts });
     }
   }
-  options.sort((a, b) => byValue(a, b) || (b.square?.distances ? 1 : 0) - (a.square?.distances ? 1 : 0)); // ties: the option that steps back from melee first
+  const rank = (o) => (o.square ? (board.retreats?.includes(o.square) ? 2 : 0) : 1); // ties: a step back from melee first, then acting from here, then walking
+  options.sort((a, b) => byValue(a, b) || rank(b) - rank(a));
   const nameOf = (id) => [...board.enemies, ...(board.allies ?? [])].find((e) => e.id === id)?.name ?? id;
   if (options.length) {
     const [w, ...rest] = options;

@@ -305,3 +305,9 @@ test("splitAtTunnelFighter cuts the route after each square that draws a Tunnel 
   assert.deepEqual(splitAtTunnelFighter(free, move).map((s) => s.trigger), [{ enemyId: "fighter" }, { enemyId: "fighter" }, null]); // leaving with a free reaction is Gambit's
   assert.deepEqual(splitAtTunnelFighter({ ...b, enemies: [{ ...tf, oa: oa() }] }, move), [{ waypoints: move.waypoints, trigger: null }]);
 });
+
+test("a tie between acting from here and walking first stays put; only a step out of melee breaks a tie toward moving", () => {
+  const bite = { ...scimitar, id: "bite", name: "Bite" }, claw = { ...scimitar, id: "claw", name: "Claw", range: 10 };
+  const p = planTurn(board({ enemies: [pc("rogue", 10)], activities: [bite, claw], paths: { rogue: [sq(100, 5, 5)] } }));
+  assert.deepEqual([p.move, p.reason], [null, "Claw vs rogue (expected 2.5); also: Bite 2.5"]);
+});

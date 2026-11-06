@@ -563,3 +563,53 @@ test("a Tunnel Fighter trigger with no connected owner goes straight to the GM's
   assert.deepEqual(gmRolls, [["A.ls", "T.g1"]]);
   assert.deepEqual(moves.map((m) => m[1].at(-1).x), [100, 400]);
 });
+
+test("a flight that falls short never attacks afterwards, even when the fresh plan from the new square would (the Dash was the action)", async () => {
+  reset();
+  const g1 = combatant("g1");
+  g1.token.getCenterPoint = () => ({ x: 250, y: 50 });
+  globalThis.fromUuidSync = () => ({ testPoint: () => false });
+  const fleePlan = { move: { x: 200, y: 0, elevation: 0, waypoints: [{ x: 200, y: 0, elevation: 0 }] }, actions: [], reason: "flee: Dash toward Escape (hp 1/7)", dash: true, escape: "Scene.s.Region.r1" };
+  const d = deps({ plans: {} });
+  d.plan = (board, opts) => opts?.slot === "bonus" ? { move: null, actions: [], reason: "no bonus action" } : board.me.budget === 0 ? attackPlan() : fleePlan; // the real planner would shoot from the new square
+  await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), d);
+  assert.deepEqual(order, ["clear g1", "move g1"]);
+  assert.deepEqual(calls.chat.map((m) => m.content.includes("flee")), [true]); // one whisper: the flight
+});
+test("a segment that left the token short of its square (a Sentinel reaction stopped it) ends the move: no prompt for a square never entered, no further segment", async () => {
+  reset();
+  const g1 = combatant("g1"); g1.token.uuid = "T.g1"; g1.token.x = 0; g1.token.y = 0; g1.actor.system = { attributes: { hp: { value: 7 } } };
+  g1.token.move = async (wp, opts) => { order.push("move g1"); moves.push(["g1", wp, opts]); g1.token.x = 20; return true; }; // stopped 20 px along, far from the segment's end at 100
+  const fighter = { ...enemy("fighter"), uuid: "T.fighter", actorUuid: "Actor.f", sentinel: true, oa: { activityUuid: "A.ls", reach: 5, damage: 3, hit: 0.5, reaction: false, tunnelFighter: true } };
+  const asks = [];
+  const d = deps({ plans: { g1: attackPlan() }, enemies: () => [fighter] });
+  d.split = () => [{ waypoints: [{ x: 100, y: 0, elevation: 0 }], trigger: { enemyId: "fighter" } }, { waypoints: [{ x: 400, y: 0, elevation: 0 }], trigger: null }];
+  d.owner = () => ({ id: "p1" }); d.wait = (p) => p; d.ask = async () => { asks.push(1); return { hit: false }; };
+  globalThis.fromUuidSync = () => ({});
+  await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), d);
+  assert.deepEqual([asks, moves.length], [[], 1]);
+});
+test("a stale Dash flag from the previous turn is cleared before planning; a flight sets it again", async () => {
+  reset();
+  const g1 = combatant("g1"); g1.flags["bg3-flow"].dash = true;
+  await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), deps({ plans: { g1: attackPlan() } }));
+  assert.equal(g1.flags["bg3-flow"].dash, undefined);
+  const g2 = combatant("g2"); g2.flags["bg3-flow"].dash = true; g2.token.getCenterPoint = () => ({ x: 0, y: 0 });
+  globalThis.fromUuidSync = () => ({ testPoint: () => false });
+  reset();
+  await runTurn(makeCombat([g2, combatant("pc", { disposition: 1, playerOwner: true })]), deps({ plans: { g2: { move: { x: 200, y: 0, elevation: 0 }, actions: [], reason: "flee: Dash away from enemies (hp 1/7)", dash: true, escape: null } } }));
+  assert.equal(g2.flags["bg3-flow"].dash, true);
+});
+test("two monsters passing the same Tunnel Fighter in one shared turn are prompted one after the other, never at once", async () => {
+  reset();
+  const g1 = combatant("g1"), g2 = combatant("g2");
+  for (const g of [g1, g2]) { g.token.uuid = `T.${g.id}`; g.actor.system = { attributes: { hp: { value: 7 } } }; }
+  const fighter = { ...enemy("fighter"), uuid: "T.fighter", actorUuid: "Actor.f", sentinel: false, oa: { activityUuid: "A.ls", reach: 5, damage: 3, hit: 0.5, reaction: false, tunnelFighter: true } };
+  const d = deps({ plans: { g1: attackPlan(), g2: attackPlan() }, enemies: () => [fighter] });
+  d.split = () => [{ waypoints: [{ x: 100, y: 0, elevation: 0 }], trigger: { enemyId: "fighter" } }, { waypoints: [{ x: 400, y: 0, elevation: 0 }], trigger: null }];
+  d.owner = () => ({ id: "p1" }); d.wait = (p) => p;
+  d.ask = async () => { order.push("ask start"); await new Promise((r) => setTimeout(r, 20)); order.push("ask end"); return { hit: false }; };
+  globalThis.fromUuidSync = () => ({});
+  await runTurn(makeCombat([g1, g2, combatant("pc", { disposition: 1, playerOwner: true })]), d);
+  assert.deepEqual(order.filter((o) => o.startsWith("ask")), ["ask start", "ask end", "ask start", "ask end"]);
+});

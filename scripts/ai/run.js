@@ -161,7 +161,10 @@ export async function runTurn(combat, deps = {}) {
   running = true;
   try {
     for (const c of members) { try { await rollRecharge(c); } catch (err) { await failed(c, err); } }
-    await Promise.all(members.map((c) => c.token.clearMovementHistory?.())); // piece 2 clears without awaiting: do it ourselves
+    // Piece 2 clears the movement history and the Dash flag on the same hook without awaiting: do both ourselves before reading the board.
+    await Promise.all(members.map(async (c) => { await c.token.clearMovementHistory?.(); if (c.getFlag(MODULE_ID, "dash")) await c.unsetFlag(MODULE_ID, "dash"); }));
+    const queues = new Map(); // one Tunnel Fighter prompt at a time per PC: two monsters passing the same Fighter ask one after the other
+    const serial = (id, fn) => { const next = (queues.get(id) ?? Promise.resolve()).then(fn, fn); queues.set(id, next.catch(() => {})); return next; };
     const reserved = new Set(), plans = [], boards = {};
     for (const c of members) {
       try {
@@ -178,18 +181,21 @@ export async function runTurn(combat, deps = {}) {
     const walk = (m) => (m.waypoints ?? [m]).map((w) => ({ x: w.x, y: w.y, elevation: w.elevation, action: "walk" }));
     // One monster's move: Dash flag for a flight, then the route segment by segment, stopping after each Tunnel Fighter trigger for the PC's reaction.
     const moveOne = async (c, p) => {
-      if (p.dash && !c.getFlag(MODULE_ID, "dash")) await c.setFlag(MODULE_ID, "dash", true);
+      if (p.dash) await c.setFlag(MODULE_ID, "dash", true);
       const board = boards[c.id];
+      const tol = (canvas.dimensions?.size ?? canvas.grid?.size ?? 100) / 2;
       for (const seg of split(board, p.move)) {
         await c.token.move(walk(seg), { autoRotate: true, showRuler: false, bg3Autopilot: true });
         await arrive(c.token, { poll });
+        const end = seg.waypoints.at(-1);
+        if (typeof c.token.x === "number" && (Math.abs(c.token.x - end.x) > tol || Math.abs(c.token.y - end.y) > tol)) break; // stopped short (a Sentinel reaction): the move is over
         const enemy = seg.trigger && board.enemies.find((e) => e.id === seg.trigger.enemyId);
         if (!enemy?.oa) continue;
         let hit = false;
         try {
           const gm = () => gmAttack(enemy.oa.activityUuid, c.token.uuid);
           const u = owner(fromUuidSync(enemy.uuid));
-          const r = u ? await wait(ask(u.id, enemy.actorUuid, enemy.oa.activityUuid, c.token.uuid), { title: L("Autopilot.TunnelFighter.Waiting", { name: enemy.name }), label: L("Prompt.RollForThem") }, gm) : await gm();
+          const r = await serial(enemy.id, () => u ? wait(ask(u.id, enemy.actorUuid, enemy.oa.activityUuid, c.token.uuid), { title: L("Autopilot.TunnelFighter.Waiting", { name: enemy.name }), label: L("Prompt.RollForThem") }, gm) : gm());
           hit = !!r?.hit;
         } catch (err) { log(`Tunnel Fighter reaction of ${enemy.name} failed`, err); }
         const hp = c.actor?.system?.attributes?.hp?.value;
@@ -261,9 +267,8 @@ export async function runTurn(combat, deps = {}) {
           }
         }
         const still = { ...board, me: { ...board.me, budget: 0 } }; // act from where it stands: a move that fell short never fires out of reach
-        const next = plan(still);
-        if (fled) await whisper(L("Autopilot.Decision", { name: c.token.name, reason: first.reason })); // the flight is the action (Dash); anything else it still does follows
-        const done = fled && !next.actions.length ? true : await act(c, still, next);
+        if (fled) await whisper(L("Autopilot.Decision", { name: c.token.name, reason: first.reason })); // the flight was the action (Dash): nothing else this turn but the bonus action
+        const done = fled ? true : await act(c, still, plan(still));
         if (done === null) return;
         if (done === false) { clean = false; continue; }
         const after = await snap(combat, c, reserved);
