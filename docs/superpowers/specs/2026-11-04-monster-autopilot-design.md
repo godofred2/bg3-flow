@@ -314,3 +314,7 @@ Midi does the rest).
 
 - L1, L2, L10, L11 (a, b, c and a 20+20 extra case) green on v0.9.2: the lair loses ties exactly as specified.
 - Found by the tester: several next-turn presses while a use waited on Midi kept only the last change, and when that step did not cross the lair's place the landed round lost its lair. Pending changes now merge from the first "before" to the last "after", so the replay sees the round change and fires the landed round's lair once; rounds stepped past are not replayed (the GM passed them).
+
+## Amendment 2026-11-06 (v0.9.3 server run: green)
+
+- L10 variant green: four next-turn presses while a reaction dialog stayed open; on resolution, one lair whisper and card for the round landed in, the goblins played once, nothing for the rounds stepped past, no duplicates. Section 7d is fully green; piece 5 and its follow-ups are closed.
