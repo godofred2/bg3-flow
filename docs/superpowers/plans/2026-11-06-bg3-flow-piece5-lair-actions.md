@@ -2,18 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** At the top of every round the module takes, for every monster that is in its lair, the lair action that hurts the party most (scored like any other activity, aimed anywhere in the lair, never the same one two rounds in a row), and whispers the GM what it did and which lair actions it left for the GM's hands. Monsters with legendary actions are off the autopilot by default (the DM plays them by hand); their lair still acts.
+**Goal:** At the top of every round the module takes, for every monster that is in its lair, the lair action that hurts the party most (scored like any other activity, aimed anywhere in the lair, never the same one two rounds in a row): damage by expected damage, conditions by the damage they deny, aimed at the most dangerous PCs. It whispers the GM what it did and which lair actions it left for the GM's hands. Monsters with legendary actions are off the autopilot by default (the DM plays them by hand); their lair still acts. Plus one table house rule, outside the autopilot: an enlarged character adds its Strength modifier a second time instead of the 1d4 on Strength attacks.
 
-**Architecture:** Three existing files. `board.js` lets activities with activation `lair` into the snapshot (unlimited range unless the sheet gives one), and adds `me.lair` (in its lair), `me.lairLast` (the lair action used last round) and `me.lairNames` (every lair action on the sheet, for the whisper). `plan.js` scores the `lair` slot from where the monster stands. `run.js` factors the "act from here" closure out of `runTurn`, adds `runLair` on a round change (before the first group plays, under the same `running` guard), remembers the action used in a combatant flag, and makes `isAuto` false by default for a monster with legendary actions. One new world setting, `lairActions`. No legendary-action code at all.
+**Architecture:** Three existing files and one new one. `board.js` lets activities with activation `lair` into the snapshot (unlimited range unless the sheet gives one), adds `me.lair` (in its lair), `me.lairLast` (the lair action used last round), `me.lairNames` (every lair action on the sheet, for the whisper), per enemy a `threat` (its best damage and healing per turn against the monster) and per activity a `denial` (the share of a turn its condition takes away, from the statuses of its effects). `plan.js` scores the `lair` slot from where the monster stands, valuing a condition-only save as `threat × fail chance × denial` through a `deny` kind of `expectedValue`, so the existing target and area picking aims it at the most dangerous PCs. `run.js` factors the "act from here" closure out of `runTurn`, adds `runLair` on a round change (before the first group plays, under the same `running` guard), remembers the action used in a combatant flag, and makes `isAuto` false by default for a monster with legendary actions. `houserules.js` rewrites an Enlarge effect's 1d4 damage bonus into a conditional Strength bonus when the effect is created (dnd5e 6's rule conditions do the rest at roll time). Two new world settings, `lairActions` and `enlargeStrength`. No legendary-action code at all.
 
-**Tech Stack:** As 4c plus dnd5e 6.0.6 facts verified in the source at tag `release-6.0.6`: activation type `lair` (no consumption, no uses: `module/config.mjs` ~1077); `actor.system.resources.lair = { value: boolean, initiative: number|null, inside: boolean }` (the NPC sheet shows the lair block under modern rules when `lair.value`, under legacy rules when `lair.initiative`; `lair.inside` is the 2024 "inside its lair" switch, `module/applications/actor/npc-sheet.mjs` ~290); `actor.system.resources.legact.max` (legendary actions per turn, 0 when none); rules version per actor `actor.system.source?.rules` (`"2014"` / `"2024"`) else `game.settings.get("dnd5e", "rulesVersion")` (`"legacy"` / `"modern"`). dnd5e 6 creates no lair combatant and no initiative-20 turn: the module fires lair actions itself. Foundry's `combatTurnChange(combat, prior, current)` carries the rounds.
+**Tech Stack:** As 4c plus dnd5e 6.0.6 facts verified in the source at tag `release-6.0.6`: activation type `lair` (no consumption, no uses: `module/config.mjs` ~1077); an activity's applied effects `activity.effects[].effect` (ActiveEffect, core `statuses: Set<string>`); damage rolls carry `rollData.roll.ability` (`"str"`, `"dex"`, ...: `module/data/activity/attack-data.mjs` `getRollData`, used by `getDamageConfig`) and every effect change (`effect.system.changes[]`: `key`, `value`, `type: "add"`, `phase`, `conditions`) may carry `conditions`, a JSON string of dnd5e's `Filter` (`[{ "k": "roll.ability", "v": "str", "o": "exact" }]` = AND of checks; `{ "o": "NOT", "v": { "k": ..., "v": ... } }` negates; `module/filter.mjs`, `module/data/fields/filters-field.mjs`, `module/documents/applied-rules.mjs` `filterWith`); the SRD *Enlarged* effect adds `1d4` through `system.rolls.damage.mwak.bonus` and `...rwak.bonus` (2024 pack) or the legacy keys `system.bonuses.mwak.damage` / `...rwak.damage` (2014 pack and most third-party automations), which dnd5e maps onto the new ones (`module/data/actor/templates/common.mjs` `#BONUS_FIELD_PATHS`); Foundry `preCreateActiveEffect(effect, data, options, userId)` runs on the creating client, where `effect.updateSource({...})` is allowed; `actor.system.resources.lair = { value: boolean, initiative: number|null, inside: boolean }` (the NPC sheet shows the lair block under modern rules when `lair.value`, under legacy rules when `lair.initiative`; `lair.inside` is the 2024 "inside its lair" switch, `module/applications/actor/npc-sheet.mjs` ~290); `actor.system.resources.legact.max` (legendary actions per turn, 0 when none); rules version per actor `actor.system.source?.rules` (`"2014"` / `"2024"`) else `game.settings.get("dnd5e", "rulesVersion")` (`"legacy"` / `"modern"`). dnd5e 6 creates no lair combatant and no initiative-20 turn: the module fires lair actions itself. Foundry's `combatTurnChange(combat, prior, current)` carries the rounds.
 
 **Spec:** docs/superpowers/specs/2026-11-04-monster-autopilot-design.md, "Piece 5 (later): legendary and lair actions". The user narrowed it (2026-11-06): no legendary actions on the autopilot, lair actions automated "as well as possible for the biggest impact on the fight". Every rule below is a plan-level ruling written into the spec as an amendment in Task 4.
 
 ## Global Constraints
 
 - As the 4a-4c plans: Foundry 14, dnd5e 6.0.x, Midi >= 14.6, ES modules, CRLF, `safe` wrappers, lead GM only, Midi for every roll, pure decisions in `plan.js`, TDD with `node --test`, commits with the user's identity and the Claude trailer, strings under `BG3FLOW.Settings.*` in `lang/en.json` and `lang/es.json` (whisper reasons stay plain English like `flee: ...` and `approach ...`).
-- Setting (world): `lairActions` Boolean default `true`.
+- Settings (world): `lairActions` Boolean default `true`; `enlargeStrength` Boolean default `true`.
 - Release at the end: `module.json` 0.9.0.
 
 ## Rulings (plan-level: the spec is silent on all of it)
@@ -22,24 +22,30 @@
 - **When the lair acts.** Once per round at the top of the round: `combatTurnChange` stepping forward into a new round (`current.round > prior.round`, round 1 included since Foundry fires it on combat start), before the new turn's monsters play, under the same `running` guard. RAW's "initiative count 20, losing ties" becomes "before everyone" (ponytail comment). "Previous turn" never fires it.
 - **Whose lair.** Every combatant of the combat with a token on the current scene, not player-owned, not defeated, hp > 0, in its lair (`lairOf(actor)`): modern rules for the actor (`source.rules === "2024"`, or no `source.rules` and the dnd5e setting is `modern`): `lair.value && lair.inside`; legacy: `lair.initiative > 0 || lair.value`. The autopilot flag is **not** consulted: the DM plays the dragon by hand, the module plays the lair. The setting `lairActions` off disables it all.
 - **Which lair action.** From where the monster stands (budget 0: no move), among its `lair` activities except the one used last round (`me.lairLast`, RAW "can't use the same effect two rounds in a row"; a round with no lair action lifts it): the best `pickTarget` value (areas aim at the enemy cluster covering the most, as today). A lair activity with no range on its sheet reaches anywhere (`range: Infinity`: the lair is the origin); a sheet range is honoured; a `self` area keeps today's rule (`area.size` around the monster). Nothing scoring (only utility or zero-damage lair actions: fog, roots, darkness): nothing is used.
-- **The GM always hears the lair** at the top of the round, one whisper per lair monster: `lair: Acid Pool vs Rogue (expected 9.0); not scored: Grasping Roots` or `lair: nothing to score; by hand: Grasping Roots, Fog Cloud` (the lair actions the module cannot value, by item name, so the GM runs one by hand at initiative 20 if they want). `pickTarget` is the only scorer: conditions and terrain effects are not valued (spec: not in the score).
-- **Out of scope** (README "not counted"): legendary actions (by design), legendary resistance (dnd5e's own prompt), mythic actions, lair actions that only impose conditions or shape the terrain (whispered as "by hand"), initiative-20 tie rules, regional effects.
+- **How dangerous each PC is** (`enemy.threat`, user request, lair only): the damage it deals per turn against this monster, the best of its action-slot activities as `activityInfo` sees them (attack: hit chance against the monster's AC × average damage; save: the monster's fail chance × damage; an area counts as one target), times 2 when the actor has an item named *Extra Attack*, plus the best healing of any slot (a healer's turn is worth its heal). Spell slots and uses are honoured by `activityInfo`; cantrip scaling is whatever the sheet's damage formula gives; resistances, monk flurries and control spells without a save are not counted. Cost if wrong: a lair action aimed at the second most dangerous PC.
+- **Condition lair actions are valued by the damage they deny**: a `save` activity with no damage scores `threat × fail chance × denial` per target (areas sum over the covered), where `denial` is the share of a turn the condition takes away, from the statuses of the activity's effects: `paralyzed`, `stunned`, `incapacitated`, `unconscious`, `petrified` = 1; `restrained`, `blinded`, `frightened`, `poisoned`, `prone` = 0.5; `grappled`, `deafened` = 0.1 (the highest when several); an activity with a save, no damage and no status (Plutonium often imports the text only) gets 0.5. A pure utility (no save) is still "by hand". This `deny` scoring exists only in the lair slot: the action and bonus slots keep scoring such activities 0 (spec: conditions are not in the score). The whisper says `lair: Grasping Roots vs Fighter (denies 4.9)`. Cost if wrong: a condition cast on a cluster of weak PCs instead of a damaging action on one.
+- **The GM always hears the lair** at the top of the round, one whisper per lair monster: `lair: Acid Pool vs Rogue (expected 9.0); also: Grasping Roots 4.9; not scored: Fog Cloud` or `lair: nothing to score; by hand: Grasping Roots, Fog Cloud` (the lair actions the module cannot value, by item name, so the GM runs one by hand at initiative 20 if they want).
+- **Enlarge house rule** (user request, outside the autopilot): an enlarged character adds its Strength modifier a second time instead of the 1d4 on Strength attacks; other attacks keep the 1d4. Implemented as data, at the moment the effect appears: `preCreateActiveEffect` on an effect whose name contains `enlarge` or `agrand` (case-insensitive) with a change `system.bonuses.mwak.damage` / `system.rolls.damage.mwak.bonus` (or the `rwak` pair, for thrown weapons) whose value is `1d4` (optional `+`, spaces) rewrites that change into two: `@abilities.str.mod` with the condition `[{ "k": "roll.ability", "v": "str", "o": "exact" }]` and `1d4` with `[{ "o": "NOT", "v": { "k": "roll.ability", "v": "str", "o": "exact" } }]`, keys in the new form. dnd5e applies the right one at each damage roll on every client, Midi included. An effect edited after creation, or one carrying its 1d4 some other way (a macro, a Midi flag), is left alone and noted in the README. Setting `enlargeStrength`. Cost if wrong: an effect the GM edits by hand once.
+- **Out of scope** (README "not counted"): legendary actions (by design), legendary resistance (dnd5e's own prompt), mythic actions, lair actions that are pure utility (no save: whispered as "by hand"), initiative-20 tie rules, regional effects, threat in the ordinary turn's targeting (user decision: lair only).
 
 ## Review Focus
 
-1. A lair monster whose only damaging lair action was used last round: it is skipped this round, the whisper says `nothing to score; by hand: ...`, and next round it is available again (Task 2 planner on `lairLast`, Task 3 runner clears the flag on a silent round).
-2. A legendary monster (legact max 3) with no `autopilot` flag: not played on its turn, its group waits for the GM; with the flag `true`: played; its lair acts either way (Task 3).
-3. A round change fired by the autopilot's own `nextTurn()` (goblins last in the order): the lair phase runs once, before the PCs' turn, and the `running` guard never blocks the next monsters' turn (Task 3).
-4. A monster not in its lair (modern `inside` unchecked; legacy without initiative and `value` false): no snapshot, no whisper (Task 1 `lairOf`, Task 3 pre-filter on the actor before any snapshot).
-5. A player-owned actor with a lair on its sheet (a druid's grove): never (Task 3 `hasPlayerOwner` filter).
+1. A lair monster whose only damaging lair action was used last round: it is skipped this round, the whisper says `nothing to score; by hand: ...`, and next round it is available again (Task 2 planner on `lairLast`, Task 4 runner clears the flag on a silent round).
+2. A legendary monster (legact max 3) with no `autopilot` flag: not played on its turn, its group waits for the GM; with the flag `true`: played; its lair acts either way (Task 4).
+3. A round change fired by the autopilot's own `nextTurn()` (goblins last in the order): the lair phase runs once, before the PCs' turn, and the `running` guard never blocks the next monsters' turn (Task 4).
+4. A monster not in its lair (modern `inside` unchecked; legacy without initiative and `value` false): no snapshot, no whisper (Task 1 `lairOf`, Task 4 pre-filter on the actor before any snapshot).
+5. A player-owned actor with a lair on its sheet (a druid's grove): never (Task 4 `hasPlayerOwner` filter).
+6. A condition lair action against a party with one dangerous PC far away and two weak ones together: the single-target save goes to the dangerous one, the area to wherever `threat` adds up most; a PC with no activities (`threat` 0) is never the aim of a condition (Task 3).
+7. An effect with a 1d4 bonus that is not Enlarge (*Favored Foe*, a magic item), or an Enlarge effect whose bonus is `1d6` or already conditional: untouched (Task 5).
 
 ## File structure
 
-- Modify `scripts/ai/board.js`: `activityInfo` (`SLOTS` += `lair`, lair range), `snapshot` (`me.lair`, `me.lairLast`, `me.lairNames`), `export lairOf(actor)`.
-- Modify `scripts/ai/plan.js`: `planTurn` slot `lair`.
+- Modify `scripts/ai/board.js`: `activityInfo` (`SLOTS` += `lair`, lair range, `denial`), `snapshot` (`me.lair`, `me.lairLast`, `me.lairNames`, `enemy.threat`), `export lairOf(actor)`, `threatOf(actor, me)`.
+- Modify `scripts/ai/plan.js`: `expectedValue` kind `deny`, `planTurn` slot `lair`.
 - Modify `scripts/ai/run.js`: `isAuto`, the robot button, `actWith(ctx)` (the former `act` closure), `runLair`, `onCombatTurnChange`, `brief`.
-- Modify `scripts/main.js` (one setting), `lang/en.json`, `lang/es.json`, `README.md`, `docs/SERVER-TESTING.md` (section 7d, L-steps), spec amendment, `module.json` (0.9.0).
-- Tests: `test/board.test.mjs`, `test/plan.test.mjs`, `test/run.test.mjs`.
+- Create `scripts/houserules.js`: `enlargeChanges(name, changes)`, `registerHouseRules()`.
+- Modify `scripts/main.js` (two settings, `registerHouseRules` on `ready`), `lang/en.json`, `lang/es.json`, `README.md`, `docs/SERVER-TESTING.md` (section 7d, L-steps and E-steps), spec amendment, `module.json` (0.9.0).
+- Tests: `test/board.test.mjs`, `test/plan.test.mjs`, `test/run.test.mjs`, `test/houserules.test.mjs` (new).
 
 Test command for every task: `cd "/c/Foundry vtt module" && timeout 120 node --test test/*.test.mjs > "$SCRATCH/t.txt" 2>&1; grep "pass \|fail \|^not ok" "$SCRATCH/t.txt"` (194 pass before Task 1; the summary lines read `ℹ pass N` / `ℹ fail N`).
 
@@ -151,7 +157,7 @@ test("lair slot: the best lair action from where it stands, anywhere in the lair
   p = planTurn(lairBoard({ activities: [scimitar, pool], me: { lairLast: "A.ap", lairNames: ["Acid Pool", "Grasping Roots"] } }), { slot: "lair" });
   assert.deepEqual(p, { move: null, actions: [], reason: "lair: nothing to score; by hand: Acid Pool, Grasping Roots" });
   assert.deepEqual(planTurn(lairBoard({ activities: [scimitar], me: { lairNames: [] } }), { slot: "lair" }), { move: null, actions: [], reason: "lair: nothing to score" });
-  assert.equal(planTurn(lairBoard(), { slot: "action" }).reason.startsWith("Scimitar vs"), true); // the action slot never sees the lair ones
+  assert.equal(planTurn(lairBoard(), { slot: "action" }).reason, "approach fighter"); // the action slot never sees the lair ones (budget 0, nobody in Scimitar reach: approach)
   assert.equal(planTurn(lairBoard(), { slot: "bonus" }).reason, "no bonus action");
 });
 ```
@@ -179,7 +185,90 @@ git commit -m "feat(autopilot): lair slot in the planner (best lair action, not 
 
 ---
 
-### Task 3: Execution: the lair phase at the top of the round, legendary monsters off by default
+### Task 3: How dangerous each PC is, and conditions valued by the damage they deny (lair only)
+
+**Files:**
+- Modify: `scripts/ai/board.js`, `scripts/ai/plan.js`
+- Test: `test/board.test.mjs`, `test/plan.test.mjs` (append)
+
+**Interfaces:**
+- Consumes (Tasks 1-2): the lair slot, `lairBoard` fixture, `pool` fixture.
+- Produces:
+  - `board.js`: `activityInfo` gains `denial: number` when the activity's effects carry a known status (`activity.effects[].effect.statuses`): the highest of `DENIAL = { paralyzed: 1, stunned: 1, incapacitated: 1, unconscious: 1, petrified: 1, restrained: 0.5, blinded: 0.5, frightened: 0.5, poisoned: 0.5, prone: 0.5, grappled: 0.1, deafened: 0.1 }`; no key otherwise. `threatOf(actor, me) -> number` (module-private, tested through `snapshot`): over every activity of the actor's items with a non-null `activityInfo`: `damage = max(expectedValue(info, me))` over `slot === "action"` activities of kind attack, save or damage (`me` gives `ac` and `saves`), `× 2` when the actor has an item named `Extra Attack` (case-insensitive, trimmed); `heal = max(info.healing)` over any slot; returns `damage + heal`. `snapshot` gives every enemy `threat: threatOf(t.actor, me)`.
+  - `plan.js`: `expectedValue` kind `"deny"`: `failChance({ dc: activity.dc ?? 10, bonus: target.saves?.[activity.saveAbility] ?? 0 }) * (activity.denial ?? 0.5) * (target.threat ?? 0)`. In `planTurn` for `slot === "lair"` only, a candidate of kind `save` with no damage (`!(a.damage > 0)`) is scored as `{ ...a, kind: "deny" }`; the winner's reason reads `(denies X)` instead of `(expected X)` when its kind is `deny`; the `also` list is unchanged (names and values). The action and bonus slots do not use `deny` (such activities keep scoring 0 there, as today).
+
+- [ ] **Step 1: Write the failing tests**
+
+Extend the `act` fixture with `effects = []` written into the activity as `effects` (an array of `{ effect: { statuses: Set } }`). In `test/board.test.mjs`:
+
+```js
+test("activityInfo: the share of a turn a condition denies, from the statuses of the activity's effects", () => {
+  n = 0;
+  const eff = (...statuses) => ({ effect: { statuses: new Set(statuses) } });
+  assert.equal(activityInfo(act({ type: "save", activation: "lair", save: { dc: 15, ability: "dex" }, effects: [eff("restrained")] })).denial, 0.5);
+  assert.equal(activityInfo(act({ type: "save", activation: "lair", save: { dc: 15, ability: "wis" }, effects: [eff("frightened"), eff("paralyzed")] })).denial, 1);
+  assert.equal(activityInfo(act({ type: "save", activation: "lair", save: { dc: 15, ability: "str" }, effects: [eff("grappled")] })).denial, 0.1);
+  assert.equal("denial" in activityInfo(act({ type: "save", activation: "lair", save: { dc: 15, ability: "dex" } })), false); // no effect: the planner's default applies
+  assert.equal("denial" in activityInfo(act({ type: "attack" })), false);
+});
+test("snapshot: each enemy's threat is its best damage per turn against the monster (Extra Attack doubles it) plus its best heal", async () => {
+  n = 0;
+  const longsword = act({ name: "Longsword", type: "attack", toHit: "+5", parts: [["1d8 + 3", {}]], item: { type: "weapon", range: { reach: 5 } } });
+  const extra = { name: "Extra Attack", type: "feat", system: { activities: [] } };
+  longsword.item.system.activities = [longsword];
+  const fighter = token("fighter", { x: 100, disposition: 1, items: [longsword.item, extra] });
+  const cure = act({ name: "Cure Wounds", type: "heal", parts: [["1d8 + 3", {}]], spell: { level: 1, slots: 2 } });
+  const bolt = act({ name: "Guiding Bolt", type: "attack", toHit: "+5", parts: [["4d6", {}]], spell: { level: 1, slots: 2 }, attackType: "ranged" });
+  cure.item.system.activities = [cure]; bolt.item.system.activities = [bolt];
+  const cleric = token("cleric", { x: 200, disposition: 1, items: [cure.item, bolt.item] });
+  const goblin = token("goblin", { x: 0, disposition: -1, ac: 15 });
+  canvas.scene.tokens.contents = [goblin, fighter, cleric];
+  const b = await snapshot({ combatants: [goblin, fighter, cleric].map((t) => combatantOf(t)) }, combatantOf(goblin));
+  // Longsword vs AC 15: (21+5-15)/20 = 0.55 x 7.5 = 4.125, x2 for Extra Attack = 8.25; Guiding Bolt 0.55 x 14 = 7.7 + Cure Wounds 7.5 = 15.2
+  assert.deepEqual(b.enemies.map((e) => [e.id, Number(e.threat.toFixed(2))]), [["fighter", 8.25], ["cleric", 15.2]]);
+});
+```
+
+In `test/plan.test.mjs`:
+
+```js
+const roots = { id: "gr", uuid: "A.gr", name: "Grasping Roots", kind: "save", slot: "lair", range: Infinity, dc: 15, saveAbility: "dex", damage: 0, affects: "creature", denial: 0.5 };
+const threat = (p, t) => ({ ...p, threat: t });
+test("lair slot: a condition is worth the damage it denies, aimed at the most dangerous PC; half a turn when the sheet names no status; never in the action slot", () => {
+  const b = lairBoard({ activities: [scimitar, roots], enemies: [threat(pc("rogue", 100, { ac: 13 }), 12), threat(pc("fighter", 30, { ac: 19 }), 14), threat(pc("wizard", 60), 0)], me: { lairNames: ["Grasping Roots"] } });
+  let p = planTurn(b, { slot: "lair" });
+  // fighter: fail (15-1-0)/20 = 0.7 x 0.5 x 14 = 4.9; rogue 0.7 x 0.5 x 12 = 4.2; wizard 0
+  assert.deepEqual([p.actions, p.reason], [[{ activityId: "gr", targetIds: ["fighter"], aimId: "fighter" }], "lair: Grasping Roots vs fighter (denies 4.9)"]);
+  p = planTurn(lairBoard({ activities: [scimitar, { ...roots, denial: undefined }], enemies: [threat(pc("rogue", 100, { ac: 13 }), 12)], me: { lairNames: ["Grasping Roots"] } }), { slot: "lair" });
+  assert.equal(p.reason, "lair: Grasping Roots vs rogue (denies 4.2)"); // no status on the sheet: half a turn
+  p = planTurn(lairBoard({ activities: [pool, roots], enemies: [threat(pc("rogue", 100, { ac: 13 }), 20)], me: { lairNames: ["Acid Pool", "Grasping Roots"] } }), { slot: "lair" });
+  assert.equal(p.reason, "lair: Acid Pool vs rogue (expected 7.7); also: Grasping Roots 7.0"); // 0.7 x 0.5 x 20 = 7.0 loses to 7.65
+  assert.equal(planTurn(b, { slot: "action" }).reason, "approach fighter"); // the action slot never values a condition
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run the test command. Expected: FAIL: `denial` undefined on the restrained save; `e.threat` undefined; the lair plan with `roots` only is `nothing to score`.
+
+- [ ] **Step 3: Implement**
+
+`board.js`: `DENIAL`, the `denial` key in `activityInfo`, `threatOf` (import `expectedValue` from `plan.js` next to `averageOf`, `hitChance`), `threat` on each enemy in `snapshot`. `plan.js`: the `deny` case of `expectedValue`, the candidate mapping and the `denies` wording in the lair branch of `planTurn`. `brief` (run.js) adds ` threat${e.threat.toFixed(1)}` to each enemy bracket (Task 4 touches `brief` too; do it here).
+
+- [ ] **Step 4: Run the whole suite**
+
+Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/ai/board.js scripts/ai/plan.js scripts/ai/run.js test/board.test.mjs test/plan.test.mjs
+git commit -m "feat(autopilot): each PC's threat; lair conditions valued by the damage they deny, aimed at the most dangerous PC"
+```
+
+---
+
+### Task 4: Execution: the lair phase at the top of the round, legendary monsters off by default
 
 **Files:**
 - Modify: `scripts/ai/run.js`, `scripts/main.js`, `lang/en.json`, `lang/es.json`
@@ -284,14 +373,82 @@ git commit -m "feat(autopilot): lair actions at the top of the round (best one, 
 
 ---
 
-### Task 4: Docs, spec amendment and release 0.9.0
+### Task 5: Enlarge house rule: the Strength modifier twice instead of the 1d4 on Strength attacks
+
+**Files:**
+- Create: `scripts/houserules.js`
+- Modify: `scripts/main.js`, `lang/en.json`, `lang/es.json`
+- Test: `test/houserules.test.mjs` (new; set up the globals the way `test/prompts.test.mjs` does before importing, since `houserules.js` imports `main.js`)
+
+**Interfaces:**
+- Produces:
+  - `export function enlargeChanges(name, changes) -> object[] | null` (pure): `null` unless `/enlarge|agrand/i.test(name)` and at least one change whose `key` is one of `system.bonuses.mwak.damage`, `system.rolls.damage.mwak.bonus`, `system.bonuses.rwak.damage`, `system.rolls.damage.rwak.bonus`, whose `value` matches `/^\+?\s*1d4\s*$/` and whose `conditions` is empty (`undefined`, `""`, `"{}"` or `"[]"`). The result is a new array in the same order where each such change becomes two, both with the key in its new form (`system.rolls.damage.<mwak|rwak>.bonus`), `_id` dropped, every other field kept: `{ ..., value: "@abilities.str.mod", conditions: JSON.stringify([{ k: "roll.ability", v: "str", o: "exact" }]) }` then `{ ..., value: "1d4", conditions: JSON.stringify([{ o: "NOT", v: { k: "roll.ability", v: "str", o: "exact" } }]) }`; other changes are copied as they are.
+  - `export function registerHouseRules()`: `Hooks.on("preCreateActiveEffect", safeSync((effect) => { if (game.settings.get(MODULE_ID, "enlargeStrength") === false) return; const src = effect.toObject(); const changes = enlargeChanges(src.name, src.system?.changes ?? []); if (changes) effect.updateSource({ "system.changes": changes }); }))`. (`toObject()` gives the source form: `conditions` as a string, not dnd5e's `Filter` instance.)
+  - `main.js`: `reg("enlargeStrength", Boolean, true)`; `registerHouseRules()` on `ready`, independent of `enableAutopilot`; the console line `[bg3-flow] house rules on`. `lang`: `Settings.enlargeStrength.{name, hint}` (en: "Enlarge: Strength twice" / "An enlarged character adds its Strength modifier a second time instead of the 1d4 on Strength attacks (other attacks keep the 1d4). Applied to the Enlarge effect when it is created."; es: "Agrandar: Fuerza dos veces" / "Un personaje agrandado suma su bonificador de Fuerza una segunda vez en lugar del 1d4 en ataques de Fuerza (los demás ataques conservan el 1d4). Se aplica al efecto de Agrandar al crearse.").
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+const { enlargeChanges, registerHouseRules } = await import("../scripts/houserules.js");
+const str = JSON.stringify([{ k: "roll.ability", v: "str", o: "exact" }]), notStr = JSON.stringify([{ o: "NOT", v: { k: "roll.ability", v: "str", o: "exact" } }]);
+test("enlargeChanges: the Enlarge 1d4 becomes the Strength modifier on Strength attacks and stays 1d4 on the rest, legacy or new keys, melee and thrown", () => {
+  const legacy = [{ _id: "a", key: "system.bonuses.mwak.damage", value: "+1d4", type: "add", phase: "initial", conditions: "{}" }, { key: "system.bonuses.rwak.damage", value: "1d4", type: "add" }, { key: "system.abilities.str.check.roll.mode", value: "1", type: "add" }];
+  assert.deepEqual(enlargeChanges("Enlarged", legacy), [
+    { key: "system.rolls.damage.mwak.bonus", value: "@abilities.str.mod", type: "add", phase: "initial", conditions: str },
+    { key: "system.rolls.damage.mwak.bonus", value: "1d4", type: "add", phase: "initial", conditions: notStr },
+    { key: "system.rolls.damage.rwak.bonus", value: "@abilities.str.mod", type: "add", conditions: str },
+    { key: "system.rolls.damage.rwak.bonus", value: "1d4", type: "add", conditions: notStr },
+    { key: "system.abilities.str.check.roll.mode", value: "1", type: "add" }
+  ]);
+  assert.equal(enlargeChanges("Agrandar/Reducir: Agrandado", [{ key: "system.rolls.damage.mwak.bonus", value: "1d4", type: "add" }]).length, 2);
+  assert.equal(enlargeChanges("Favored Foe", [{ key: "system.bonuses.mwak.damage", value: "1d4", type: "add" }]), null); // not Enlarge
+  assert.equal(enlargeChanges("Enlarged", [{ key: "system.bonuses.mwak.damage", value: "1d6", type: "add" }]), null); // not the 1d4
+  assert.equal(enlargeChanges("Enlarged", [{ key: "system.rolls.damage.mwak.bonus", value: "1d4", type: "add", conditions: str }]), null); // already conditional: someone's hand
+  assert.equal(enlargeChanges("Enlarged", []), null);
+});
+test("registerHouseRules rewrites an Enlarge effect as it is created, unless the setting is off", () => {
+  const hooks = {}; const on = Hooks.on; Hooks.on = (n, fn) => { hooks[n] = fn; };
+  try { registerHouseRules(); } finally { Hooks.on = on; }
+  const updates = [];
+  const effect = { toObject: () => ({ name: "Enlarged", system: { changes: [{ key: "system.bonuses.mwak.damage", value: "1d4", type: "add" }] } }), updateSource: (u) => updates.push(u) };
+  settings.enlargeStrength = true;
+  hooks.preCreateActiveEffect(effect, {}, {}, "u1");
+  assert.deepEqual(updates[0]["system.changes"].map((c) => c.value), ["@abilities.str.mod", "1d4"]);
+  settings.enlargeStrength = false;
+  hooks.preCreateActiveEffect(effect, {}, {}, "u1");
+  assert.equal(updates.length, 1);
+});
+```
+
+(`settings` is the map behind `game.settings.get` in the test's globals.)
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run the test command. Expected: FAIL: cannot find module `../scripts/houserules.js`.
+
+- [ ] **Step 3: Implement `scripts/houserules.js`, the setting, the registration and the strings**
+
+- [ ] **Step 4: Run the whole suite**
+
+Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/houserules.js scripts/main.js lang/en.json lang/es.json test/houserules.test.mjs
+git commit -m "feat(houserules): an enlarged character adds Strength twice instead of the 1d4 on Strength attacks (Enlarge effect rewritten on creation)"
+```
+
+---
+
+### Task 6: Docs, spec amendment and release 0.9.0
 
 **Files:**
 - Modify: `README.md`, `docs/SERVER-TESTING.md`, `docs/superpowers/specs/2026-11-04-monster-autopilot-design.md` (append an amendment), `module.json`
 
 - [ ] **Step 1: README**
 
-In "Monster autopilot (piece 4)" a paragraph **Lair actions (piece 5).**: at the top of every round, a monster in its lair (2024 rules: *Inside lair* on the sheet; 2014: lair initiative set) takes the lair action that scores most (damage and save activities with activation *Lair*, aimed anywhere in the lair, areas at the biggest cluster), never the same one two rounds in a row; the GM whisper (`lair: Acid Pool vs Rogue (expected 9.0); not scored: Grasping Roots` / `lair: nothing to score; by hand: ...`) names what the module cannot value so the GM runs it by hand at initiative 20; the lair acts whether or not the monster is on the autopilot. **Legendary monsters**: a monster with legendary actions is off the autopilot by default (the robot button turns it on); the module never takes legendary actions. The setting in the settings list; under "not counted": legendary actions and resistances, mythic actions, lair actions that only impose conditions or shape the terrain, initiative-20 ties, regional effects.
+In "Monster autopilot (piece 4)" a paragraph **Lair actions (piece 5).**: at the top of every round, a monster in its lair (2024 rules: *Inside lair* on the sheet; 2014: lair initiative set) takes the lair action that scores most (damage and save activities with activation *Lair*, aimed anywhere in the lair, areas at the biggest cluster), never the same one two rounds in a row; the GM whisper (`lair: Acid Pool vs Rogue (expected 9.0); not scored: Grasping Roots` / `lair: nothing to score; by hand: ...`) names what the module cannot value so the GM runs it by hand at initiative 20; the lair acts whether or not the monster is on the autopilot. A lair action that only imposes a condition is worth the damage it denies: each PC's threat (its best damage per turn against the monster, doubled by *Extra Attack*, plus its best heal) times the chance it fails the save times the share of a turn the condition costs (paralysed or stunned: all of it; restrained, blinded, frightened, poisoned, prone: half; grappled, deafened: a tenth; no status on the effect: half), so the roots go for the fighter and the fog for the cluster that hurts most; the whisper says `denies`. **Legendary monsters**: a monster with legendary actions is off the autopilot by default (the robot button turns it on); the module never takes legendary actions. A new section **House rules** with **Enlarge: Strength twice** (what it does, that it rewrites the Enlarge effect's 1d4 bonus into two conditional bonuses when the effect is created, so an effect already on an actor or edited by hand is left alone, and that any module that applies Enlarge through a Foundry effect with the standard damage-bonus key is covered). The two settings in the settings list; under "not counted": legendary actions and resistances, mythic actions, lair actions with no save (pure utility), threat beyond the sheet's activities (resistances, flurries, control without a save), initiative-20 ties, regional effects.
 
 - [ ] **Step 2: SERVER-TESTING section 7d (piece 5, v0.9.0)**
 
@@ -304,12 +461,16 @@ Setup on the goblin scene, Goblin 1 given a lair on its sheet (legacy rules worl
 - L6. Previous turn across a round boundary (back from round 2 to round 1): nothing fires.
 - L7. Pause before each monster action on: the pause dialog opens for the lair action; Skip skips it (whisper already sent), Take over is honoured.
 - L8. Modern rules world (dnd5e setting *Rules version: Modern*) with *Inside lair* unchecked on the sheet: no lair action and no whisper; checked: as L1.
+- L9. Threat and conditions: give *Grasping Roots* a save (DEX DC 15, no damage) and an active effect with the Restrained status; the Fighter (Longsword, Extra Attack if the sheet has it) 60 ft from Goblin 1, the Cleric and the Rogue together 30 ft away. Top of the round with Acid Pool used last round: whisper `lair: Grasping Roots vs Fighter (denies ...)`, Midi's save card on the Fighter; report the console line (each enemy's `threat`) and compare: the Fighter's threat should be the highest. Then remove the Restrained effect from Grasping Roots (save only, no status): the whisper still aims it at the Fighter with a lower number (half a turn by default).
+- E1. Enlarge house rule: cast *Enlarge/Reduce* (Enlarge) on the Fighter (Strength 16, Longsword): the Enlarged effect on the Fighter shows two damage-bonus changes (`@abilities.str.mod` and `1d4`, each with a condition) instead of one `1d4`; a Longsword hit rolls `1d8 + 3 + 3` with no d4. Report the effect's changes as the sheet shows them and the damage formula of the card.
+- E2. Enlarge on the Rogue (Dagger, Dexterity): the damage card keeps `1d4` from Enlarge and no Strength modifier. A thrown Handaxe by the enlarged Fighter: Strength twice, no d4.
+- E3. Setting **Enlarge: Strength twice** off, Enlarge cast again: the effect keeps its single `1d4` change and the card shows the d4.
 
-Report template: add the L lines.
+Report template: add the L and E lines.
 
 - [ ] **Step 3: Spec amendment**
 
-Append `## Amendment 2026-11-06 (piece 5, v0.9.0: lair actions; legendary monsters stay the DM's)` with the Rulings section of this plan condensed: user decision (no legendary actions on the autopilot, legendary monsters off by default, the robot button overrides), the lair phase at the top of the round for every monster in its lair regardless of the flag, the best lair action from where it stands with unlimited range unless the sheet says otherwise, not twice in a row, the whisper with the by-hand list, the setting, the out-of-scope list.
+Append `## Amendment 2026-11-06 (piece 5, v0.9.0: lair actions; legendary monsters stay the DM's; Enlarge house rule)` with the Rulings section of this plan condensed: user decision (no legendary actions on the autopilot, legendary monsters off by default, the robot button overrides), the lair phase at the top of the round for every monster in its lair regardless of the flag, the best lair action from where it stands with unlimited range unless the sheet says otherwise, not twice in a row, each PC's threat and the denial value of conditions (lair slot only, user decision), the whisper with the by-hand list, the Enlarge house rule as effect data (outside the autopilot, in `houserules.js`), the two settings, the out-of-scope list.
 
 - [ ] **Step 4: `module.json` version 0.9.0; run the whole suite; commit; tag; push; build**
 
