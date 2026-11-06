@@ -60,7 +60,7 @@
       },
       "lairActions": {
         "Name": "Lair actions",
-        "Hint": "At the top of every round, a monster in its lair takes the lair action that hurts the party most; the GM is told which lair actions were left for their hands. Monsters with legendary actions are off the autopilot unless switched on."
+        "Hint": "At the top of every round, a monster in its lair takes the lair action that hurts the party most; the GM is told which lair actions were left for their hands."
       },
       "enlargeStrength": {
         "Name": "Enlarge: Strength twice",

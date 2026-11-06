@@ -323,7 +323,7 @@ test("useActivity: no configuration dialog, the target uuids, and no dnd5e templ
   globalThis.MidiQOL = { completeActivityUse: async (a, cfg, dialog) => { cfgs.push([a, cfg, dialog]); return {}; } };
   globalThis.fromUuidSync = (uuid) => ({ uuid });
   await useActivity({ uuid: "A.sc" }, ["T.rogue"]);
-  assert.deepEqual(cfgs, [[{ uuid: "A.sc" }, { create: { measuredTemplate: false }, midiOptions: { targetUuids: ["T.rogue"], ignoreUserTargets: true } }, { configure: false }]]);
+  assert.deepEqual(cfgs, [[{ uuid: "A.sc" }, { create: { measuredTemplate: false }, midiOptions: { targetUuids: ["T.rogue"], ignoreUserTargets: true, proceedChecks: { checkAoO: false } } }, { configure: false }]]); // never a reaction in Midi's eyes: a lair action comes off-turn
 });
 
 test("useActivity on an area builds the template data itself (no dnd5e placement API: TemplatePlacement.fromActivity is interactive), hands the region uuid to Midi and deletes an instantaneous one afterwards", async () => {
@@ -664,6 +664,15 @@ test("isAuto: a monster with legendary actions is the DM's unless the flag says 
   g.flags["bg3-flow"].autopilot = true;
   assert.equal(isAuto(g), true);
   assert.equal(isAuto(sheet(combatant("plain"))), true);
+  const owned = combatant("pc", { disposition: 1, playerOwner: true }); owned.flags["bg3-flow"].autopilot = true;
+  assert.equal(isAuto(owned), false); // a player's creature is never the module's, whatever the flag says
+});
+test("runLair: 'take over' in the pause dialog only skips the lair action: the monster's own autopilot flag is untouched and nothing is remembered", async () => {
+  reset(); settings.pauseBeforeAttack = true;
+  const g1 = sheet(combatant("g1")), pc = combatant("pc", { disposition: 1, playerOwner: true });
+  const d = lairDeps(); d.pause = async () => "manual";
+  await runLair(makeCombat([pc, g1], 0), d);
+  assert.deepEqual([uses, g1.flags["bg3-flow"].autopilot, g1.flags["bg3-flow"].lairLast], [[], undefined, undefined]);
 });
 test("runLair: at the top of the round every monster in its lair takes its best lair action from where it stands, remembers it, skips it next round and tells the GM; no flag, no uses, no movement", async () => {
   reset();

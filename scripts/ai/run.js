@@ -12,9 +12,10 @@ const whisper = (content) => ChatMessage.create({ content, whisper: [game.user.i
 /** On when the combatant flag says true; off when it says false, when a player owns the actor or, by default, when the monster has
  *  legendary actions (the DM plays those by hand: user decision; the robot button overrides). */
 export const isAuto = (c) => {
+  if (c.actor?.hasPlayerOwner) return false; // a player's creature is never the module's, whatever the flag says
   const flag = c.getFlag(MODULE_ID, "autopilot");
   if (flag === true || flag === false) return flag;
-  return !c.actor?.hasPlayerOwner && !((c.actor?.system?.resources?.legact?.max ?? 0) > 0);
+  return !((c.actor?.system?.resources?.legact?.max ?? 0) > 0);
 };
 
 /**
@@ -69,7 +70,7 @@ export async function useActivity(info, targetUuids, place = null, { timeout = 6
   const activity = fromUuidSync(info.uuid);
   if (!activity) throw new Error(`activity ${info.uuid} not found`);
   const template = info.area && place ? await placeArea(activity, info, place) : null;
-  const midiOptions = { targetUuids, ignoreUserTargets: true };
+  const midiOptions = { targetUuids, ignoreUserTargets: true, proceedChecks: { checkAoO: false } }; // never a reaction in Midi's eyes: a lair action comes off-turn
   let timer, hook;
   if (template) {
     midiOptions.workflowOptions = { templateUuid: template.doc.uuid };
@@ -302,7 +303,9 @@ export async function runLair(combat, deps = {}) {
   const mark = { id: combat.id, round: combat.round, turn: combat.turn };
   const stale = () => game.combat?.id !== mark.id || game.combat.round !== mark.round || game.combat.turn !== mark.turn;
   const reserved = new Set();
-  const act = actWith({ combat, reserved, stale, snap, pick, use, pause });
+  // "Take over" here only skips the lair action: the monster's own autopilot (it may not even be on it) is not the lair's business.
+  let used = false; // a skipped lair action was not used: nothing to remember, the no-repeat rule lifts
+  const act = actWith({ combat, reserved, stale, snap, pick, use: async (...a) => { used = true; return use(...a); }, pause: async (o) => { const r = await pause(o); return r === "manual" ? "skip" : r; } });
   const members = combat.turns.filter((c) => c.token && c.token.parent?.id === canvas.scene?.id && !c.actor?.hasPlayerOwner && !c.isDefeated
     && (c.actor?.system?.attributes?.hp?.value ?? 0) > 0 && lairOf(c.actor)); // read from the sheet: no snapshot for a monster without a lair
   for (const c of members) {
@@ -317,9 +320,11 @@ export async function runLair(combat, deps = {}) {
         if (c.getFlag(MODULE_ID, "lairLast")) await c.unsetFlag(MODULE_ID, "lairLast");
         continue;
       }
+      used = false;
       const r = await act(c, still, p);
       if (r === null) return;
-      if (r === true) await c.setFlag(MODULE_ID, "lairLast", p.actions[0].activityId);
+      if (used) await c.setFlag(MODULE_ID, "lairLast", p.actions[0].activityId);
+      else if (c.getFlag(MODULE_ID, "lairLast")) await c.unsetFlag(MODULE_ID, "lairLast");
     } catch (err) { console.error(`[${MODULE_ID}]`, err); await whisper(L("Autopilot.Error", { name: c.token.name, error: err?.message ?? String(err) })); }
   }
 }

@@ -320,7 +320,7 @@ test("activityInfo: the share of a turn a condition denies, from the statuses of
   assert.equal("denial" in activityInfo(act({ type: "save", activation: "lair", save: { dc: 15, ability: "dex" } })), false); // no effect: the planner's default applies
   assert.equal("denial" in activityInfo(act({ type: "attack" })), false);
 });
-test("snapshot: each enemy's threat is its best damage per turn against the monster (Extra Attack doubles it) plus its best heal", async () => {
+test("snapshot: each enemy's threat is its best damage per turn against the monster (Extra Attack doubles it, in Spanish too) plus its best heal; only a lair monster pays for the walk", async () => {
   n = 0;
   const longsword = act({ name: "Longsword", type: "attack", toHit: "+5", parts: [["1d8 + 3", {}]], item: { type: "weapon", range: { reach: 5 } } });
   const extra = { name: "Extra Attack", type: "feat", system: { activities: [] } };
@@ -329,10 +329,15 @@ test("snapshot: each enemy's threat is its best damage per turn against the mons
   const cure = act({ name: "Cure Wounds", type: "heal", parts: [["1d8 + 3", {}]], spell: { level: 1, slots: 2 } });
   const bolt = act({ name: "Guiding Bolt", type: "attack", toHit: "+5", parts: [["4d6", {}]], spell: { level: 1, slots: 2 }, attackType: "ranged" });
   cure.item.system.activities = [cure]; bolt.item.system.activities = [bolt];
-  const cleric = token("cleric", { x: 200, disposition: 1, items: [cure.item, bolt.item] });
-  const goblin = token("goblin", { x: 0, disposition: -1, ac: 15 });
+  const cleric = token("cleric", { x: 200, disposition: 1, items: [cure.item, bolt.item, { name: "Ataque adicional", type: "feat", system: { activities: [] } }] });
+  const goblin = token("goblin", { x: 0, disposition: -1, ac: 15, lair: { value: true, initiative: 20, inside: false } });
   canvas.scene.tokens.contents = [goblin, fighter, cleric];
+  settings.dnd5eRulesVersion = "legacy";
   const b = await snapshot({ combatants: [goblin, fighter, cleric].map((t) => combatantOf(t)) }, combatantOf(goblin));
-  // Longsword vs AC 15: (21+5-15)/20 = 0.55 x 7.5 = 4.125, x2 for Extra Attack = 8.25; Guiding Bolt 0.55 x 14 = 7.7 + Cure Wounds 7.5 = 15.2
-  assert.deepEqual(b.enemies.map((e) => [e.id, Number(e.threat.toFixed(2))]), [["fighter", 8.25], ["cleric", 15.2]]);
+  // Longsword vs AC 15: (21+5-15)/20 = 0.55 x 7.5 = 4.125, x2 for Extra Attack = 8.25; Guiding Bolt 0.55 x 14 = 7.7, x2 for "Ataque adicional" = 15.4, + Cure Wounds 7.5 = 22.9
+  assert.deepEqual(b.enemies.map((e) => [e.id, Number(e.threat.toFixed(2))]), [["fighter", 8.25], ["cleric", 22.9]]);
+  const bare = token("goblin2", { x: 0, disposition: -1, ac: 15 });
+  canvas.scene.tokens.contents = [bare, fighter, cleric];
+  const b2 = await snapshot({ combatants: [bare, fighter, cleric].map((t) => combatantOf(t)) }, combatantOf(bare));
+  assert.deepEqual(b2.enemies.map((e) => "threat" in e), [false, false]); // no lair: nobody reads threat, so the walk over every PC's items is skipped
 });

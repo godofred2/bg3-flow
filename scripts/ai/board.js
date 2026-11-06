@@ -188,7 +188,7 @@ function threatOf(actor, me) {
     heal = Math.max(heal, info.healing ?? 0);
     if (info.slot === "action" && ["attack", "save", "damage"].includes(info.kind)) damage = Math.max(damage, expectedValue(info, me));
   }
-  if ([...(actor?.items ?? [])].some((i) => named(i.name, "extra attack"))) damage *= 2;
+  if ([...(actor?.items ?? [])].some((i) => /^(extra attack|ataque (extra|adicional))/i.test(String(i.name ?? "").trim()))) damage *= 2;
   return damage + heal;
 }
 
@@ -229,7 +229,7 @@ export async function snapshot(combat, combatant, reserved = new Set()) {
     if ((t.disposition ?? 0) === mine) { allies.push(creature(t)); continue; } // an ally, downed ones included (heals)
     if ((t.disposition ?? 0) * mine >= 0 || !((hpOf(t).value ?? 0) > 0)) continue; // neutral: nobody is its enemy; downed: no target
     const e = creature(t);
-    enemies.push({ ...e, visible: sees(doc, t), oa: oaOf(t.actor, me.ac, e.tunnelFighter), threat: threatOf(t.actor, me) });
+    enemies.push({ ...e, visible: sees(doc, t), oa: oaOf(t.actor, me.ac, e.tunnelFighter), ...(me.lair ? { threat: threatOf(t.actor, me) } : {}) }); // threat is read by the lair slot only: no walk for the rest
   }
   const foots = enemies.map((e) => [e.id, new Set(footOf(tokensById[e.id]))]); // every square measures its distance to every enemy
   for (const e of enemies) if (e.visible) paths[e.id] = await pathTo(doc, tokensById[e.id], taken, budget, foots);

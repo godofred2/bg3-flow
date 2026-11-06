@@ -243,6 +243,7 @@ export function planTurn(board, { slot = "action" } = {}) {
   if (slot === "action" && shouldFlee(board)) { const f = planFlee(board); if (f.move) return f; }
   const actions = board.activities.filter((a) => a.slot === slot && (slot !== "lair" || a.uuid !== board.me.lairLast)) // a lair never repeats its action two rounds in a row (RAW)
     .map((a) => (slot === "lair" && a.kind === "save" && !(a.damage > 0) ? { ...a, kind: "deny", denial: a.denial ?? 0.5 } : a)); // a condition-only lair action is worth what it denies
+  const lastLair = slot === "lair" && board.me.lairLast ? board.activities.find((a) => a.uuid === board.me.lairLast)?.name ?? null : null; // named apart in the whisper
   const options = [];
   for (const a of actions) {
     const p = pickTarget(board, a);
@@ -278,10 +279,10 @@ export function planTurn(board, { slot = "action" } = {}) {
     const toll = w.oa > 0 ? `; opportunity attacks ${w.oa.toFixed(1)}` : "";
     // The lair whisper also names the lair actions the scorer could not value (the GM may run one by hand at initiative 20).
     const scored = (name) => options.some((o) => o.name === name || o.name.startsWith(`${name} (`));
-    const left = slot === "lair" ? (board.me.lairNames ?? []).filter((name) => !scored(name)) : [];
-    return { move: w.square ? moveTo(w.square) : null, actions: w.actions, reason: `${slot === "lair" ? "lair: " : ""}${w.name} vs ${nameOf(w.aimId)} (${w.kind === "deny" ? "denies" : "expected"} ${w.value.toFixed(1)}${toll})${also ? `; also: ${also}` : ""}${left.length ? `; not scored: ${left.join(", ")}` : ""}` };
+    const left = slot === "lair" ? (board.me.lairNames ?? []).filter((name) => !scored(name) && name !== lastLair) : [];
+    return { move: w.square ? moveTo(w.square) : null, actions: w.actions, reason: `${slot === "lair" ? "lair: " : ""}${w.name} vs ${nameOf(w.aimId)} (${w.kind === "deny" ? "denies" : "expected"} ${w.value.toFixed(1)}${toll})${also ? `; also: ${also}` : ""}${lastLair ? `; last round: ${lastLair}` : ""}${left.length ? `; not scored: ${left.join(", ")}` : ""}` };
   }
-  if (slot === "lair") { const names = board.me.lairNames ?? []; return { move: null, actions: [], reason: `lair: nothing to score${names.length ? `; by hand: ${names.join(", ")}` : ""}` }; }
+  if (slot === "lair") { const hand = (board.me.lairNames ?? []).filter((n) => n !== lastLair); return { move: null, actions: [], reason: `lair: nothing to score${lastLair ? `; last round: ${lastLair}` : ""}${hand.length ? `; by hand: ${hand.join(", ")}` : ""}` }; }
   if (slot !== "action") return { move: null, actions: [], reason: "no bonus action" };
   const visible = board.enemies.filter((e) => e.visible && e.hp > 0).sort((a, b) => a.distance - b.distance);
   if (!visible.length) return { move: null, actions: [], reason: "no visible enemy" };
