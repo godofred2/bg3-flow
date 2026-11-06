@@ -133,6 +133,23 @@ export function oaCost(board, square) {
   return { damage, stopFree };
 }
 
+/** A move cut into segments at the Tunnel Fighter triggers Gambit does not prompt for (one more square inside the stance's reach, or
+ *  leaving it with the reaction already spent): each segment ends on a trigger square naming the enemy, the last one on none. */
+export function splitAtTunnelFighter(board, move) {
+  const whole = [{ waypoints: move.waypoints ?? [xyz(move)], trigger: null }];
+  const tfs = board.enemies.filter((e) => e.oa?.tunnelFighter && e.visible && e.hp > 0);
+  if (!tfs.length) return whole;
+  const route = routeOf(board, move);
+  const cut = new Map();
+  for (const e of tfs) for (const t of triggers(route, e)) if (t.kind === "inside" || !e.oa.reaction) cut.set(t.square, e.id);
+  if (!cut.size) return whole;
+  const out = [];
+  let wps = [];
+  for (const s of route) { wps.push(xyz(s)); if (cut.has(s)) { out.push({ waypoints: wps, trigger: { enemyId: cut.get(s) } }); wps = []; } }
+  if (wps.length) out.push({ waypoints: wps, trigger: null });
+  return out;
+}
+
 /** Who a heal may target: wounded allies, or only the monster itself (with the board's own hit points) for self heals. */
 function healPool(board, activity) {
   const allies = board.allies ?? [];

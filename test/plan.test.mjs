@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { averageOf, hitChance, failChance, expectedValue, parseMultiattack, pickTarget, planTurn, shouldFlee, planFlee, oaCost } = await import("../scripts/ai/plan.js");
+const { averageOf, hitChance, failChance, expectedValue, parseMultiattack, pickTarget, planTurn, shouldFlee, planFlee, oaCost, splitAtTunnelFighter } = await import("../scripts/ai/plan.js");
 
 test("averageOf: dice average plus flat, unknown tokens count as 0", () => {
   assert.equal(averageOf("2d6 + 3"), 10);
@@ -288,4 +288,20 @@ test("a clever archer steps back only when the shot gains more than the opportun
   const path = [rsq(100, 0, 5, { fighter: 5, rogue: 10 }), rsq(200, 0, 10, { fighter: 10, rogue: 5 }, [[100, 0]])];
   p = planTurn({ ...board({ enemies: [{ ...fighter, oa: oa({ damage: 2 }) }, rogue], activities: [scimitar], paths: { rogue: path } }), retreats: [] });
   assert.deepEqual([at(p.move), p.reason], [{ x: 200, y: 0, elevation: 0 }, "Scimitar vs rogue (expected 0.5; opportunity attacks 2.0)"]); // 2.5 - 2.0 still beats 0.25 on the Fighter's AC 30
+});
+
+test("splitAtTunnelFighter cuts the route after each square that draws a Tunnel Fighter attack Gambit would not prompt", () => {
+  const tf = { ...pc("fighter", 5), oa: oa({ tunnelFighter: true, reaction: false }) };
+  const route = [rsq(100, 0, 5, { fighter: 5 }), rsq(200, 0, 10, { fighter: 5 }, [[100, 0]]), rsq(300, 0, 15, { fighter: 10 }, [[100, 0], [200, 0]]), rsq(400, 0, 20, { fighter: 15 }, [[100, 0], [200, 0], [300, 0]])];
+  const b = { ...board({ enemies: [tf], activities: [bow], paths: { fighter: route } }), retreats: [] };
+  const move = { x: 400, y: 0, elevation: 0, waypoints: route[3].waypoints };
+  assert.deepEqual(splitAtTunnelFighter(b, move), [
+    { waypoints: [{ x: 100, y: 0, elevation: 0 }], trigger: { enemyId: "fighter" } }, // second square inside reach (the start was the first)
+    { waypoints: [{ x: 200, y: 0, elevation: 0 }], trigger: { enemyId: "fighter" } }, // third
+    { waypoints: [{ x: 300, y: 0, elevation: 0 }], trigger: { enemyId: "fighter" } }, // leaving with the reaction spent
+    { waypoints: [{ x: 400, y: 0, elevation: 0 }], trigger: null }
+  ]);
+  const free = { ...b, enemies: [{ ...tf, oa: oa({ tunnelFighter: true, reaction: true }) }] };
+  assert.deepEqual(splitAtTunnelFighter(free, move).map((s) => s.trigger), [{ enemyId: "fighter" }, { enemyId: "fighter" }, null]); // leaving with a free reaction is Gambit's
+  assert.deepEqual(splitAtTunnelFighter({ ...b, enemies: [{ ...tf, oa: oa() }] }, move), [{ waypoints: move.waypoints, trigger: null }]);
 });
