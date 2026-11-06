@@ -300,3 +300,8 @@ Midi does the rest).
 - A `combatTurnChange` that arrives while a run is busy (a use waiting on a Midi dialog) is kept and replayed when the run ends (its lair on a round change, then the new turn's monsters); before, it was dropped silently.
 - Enlarge: dnd5e 6 checks an attribute change's conditions at data preparation, with no roll in sight, so the conditional bonuses never saw the Strength attack. The rewrite now produces one rule pair (`type: "dnd5e.bonus"`, `key: "damage"`, collected at every damage roll and filtered with that roll's data: weapon classification and ability), replacing every 1d4 weapon damage bonus of the effect.
 - Threat model confirmed on the server (Cleric with Fireball 27.5, Fighter with Extra Attack 14.8, Rogue 3.3): the condition goes to the Cleric, which is the point.
+
+## Amendment 2026-11-06 (v0.9.1 server run: piece 5 green)
+
+- L4, L8, L9, L10, H1, H2 green on v0.9.1 (the rest on v0.9.0). The rule pair for Enlarge is applied by dnd5e at each damage roll (Longsword 1d8 + 3 + 3, Dagger 1d4 + 1d4 + 2, thrown Handaxe 1d6 + 3 + 3); a turn change during a pending Midi dialog is replayed once it resolves. Piece 5 is closed.
+- Observed, not changed: the lair only aims at PCs the monster can see (the board's sight rules); an unseen Cleric behind a wall gets no lair action. Kept as the spec's sight rule; the user decides whether the lair should see the whole lair.
