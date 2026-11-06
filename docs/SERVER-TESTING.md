@@ -166,6 +166,22 @@ Setup: as 7b. Settings **Monsters flee** on, **Flee threshold** 25, **Escape reg
 - [ ] A9. Previous turn: with the autopilot on, after the goblins acted, the GM presses **previous turn** back onto their turn. Expected: nothing replays. Next turn from there: the Rogue's turn, nothing from the goblins.
 - [ ] A10. Large monster (an Ogre from the SRD, 2x2) at (10,4), Rogue at (4,4) with the Fighter beside it at (5,4). Expected: the Ogre walks to a 2x2 spot touching the Rogue (diagonal counts) without overlapping anyone, whispers **Ogre: Greatclub vs Rogue (expected ...)** and attacks. Variant: Rogue at (16,4), Goblin 1 at (14,4) in between, Ogre at (10,4). Expected: the Ogre reaches a free 2x2 spot touching the Rogue (above or below the goblin) and attacks; report its exact path if it stays put.
 
+### 7d. Lair actions, legendary monsters by hand, Enlarge house rule (piece 5, v0.9.0)
+
+Setup on the goblin scene, legacy rules world (dnd5e setting *Rules version: Legacy*). Goblin 1 gets a lair on its sheet (**Lair initiative 20** in the sheet's resources) and two feats: *Acid Pool* (activation Lair, save DEX DC 15, half on save, 2d8, no range) and *Grasping Roots* (activation Lair, utility, no damage, no save). Order Cleric 20, Rogue 18, Goblin 1 15, Goblin 2 12.
+- [ ] L1. Start the combat: before the Cleric's turn, the whisper `lair: Acid Pool vs <nearest PC> (expected ...); not scored: Grasping Roots`, the Acid Pool save card from Midi on that PC, no token moves. Report the console line (`lair` on the board line, `Acid Pool[save lair rInfinity ...]`, each enemy's `threat`).
+- [ ] L2. Round 2 top (next turn past Goblin 2): `lair: nothing to score; by hand: Acid Pool, Grasping Roots` (Acid Pool was last round's), no card. Round 3 top: Acid Pool again.
+- [ ] L3. Goblin 1's autopilot off (robot button): its turn waits for the GM, the lair still acts at the top of the round.
+- [ ] L4. Goblin 2 with **Legendary Actions** 3 on its sheet: its robot button shows off by default and the goblins' turn is not auto-passed; click the button: it plays; click again: off.
+- [ ] L5. Goblin 1 at 0 hp or marked defeated: no lair action, no whisper. Setting **Lair actions** off: nothing at the top of the round.
+- [ ] L6. Previous turn across a round boundary (back from round 2 to round 1): nothing fires.
+- [ ] L7. Pause before each monster action on: the pause dialog opens for the lair action; Skip skips it (whisper already sent), Take over is honoured.
+- [ ] L8. Modern rules world (dnd5e setting *Rules version: Modern*) with *Inside lair* unchecked on the sheet: no lair action and no whisper; checked: as L1.
+- [ ] L9. Threat and conditions: give *Grasping Roots* a save (DEX DC 15, no damage) and an active effect with the Restrained status; the Fighter (Longsword, Extra Attack if the sheet has it) 60 ft from Goblin 1, the Cleric and the Rogue together 30 ft away. Top of the round with Acid Pool used last round: whisper `lair: Grasping Roots vs Fighter (denies ...)`, Midi's save card on the Fighter; report the console line (each enemy's `threat`) and compare: the Fighter's threat should be the highest. Then remove the Restrained effect from Grasping Roots (save only, no status): the whisper still aims it at the Fighter with a lower number (half a turn by default).
+- [ ] H1. Enlarge house rule: cast *Enlarge/Reduce* (Enlarge) on the Fighter (Strength 16, Longsword): the Enlarged effect on the Fighter shows two damage-bonus changes (`@abilities.str.mod` and `1d4`, each with a condition) instead of one `1d4`; a Longsword hit rolls `1d8 + 3 + 3` with no d4. Report the effect's changes as the sheet shows them and the damage formula of the card.
+- [ ] H2. Enlarge on the Rogue (Dagger, Dexterity): the damage card keeps `1d4` from Enlarge and no Strength modifier. A thrown Handaxe by the enlarged Fighter: Strength twice, no d4.
+- [ ] H3. Setting **Enlarge: Strength twice** off, Enlarge cast again: the effect keeps its single `1d4` change and the card shows the d4.
+
 ## 8. Report template
 
 ```
@@ -193,6 +209,12 @@ B10 ...
 F1 ...
 ...
 F12 ...
+L1 ...
+...
+L9 ...
+H1 ...
+H2 ...
+H3 ...
 Console lines containing [bg3-flow]:
 <paste>
 Other console errors during the run:
