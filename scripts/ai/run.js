@@ -1,6 +1,6 @@
 // Piece 4: monster autopilot execution. Lead GM only: the group moves together, then acts one monster at a time through Midi.
 import { MODULE_ID, log, safe, safeSync } from "../main.js";
-import { activeIds } from "../turns.js";
+import { activeIds, lairTurn } from "../turns.js";
 import { snapshot, lairOf } from "./board.js";
 import { planTurn, pickTarget, splitAtTunnelFighter } from "./plan.js";
 import { promptTunnelFighter, tunnelFighterAttack, activeOwner, awaitOrGm } from "../prompts.js";
@@ -297,7 +297,7 @@ export async function runTurn(combat, deps = {}) {
 /**
  * Top of the round: every monster in its lair (on the autopilot or not: the DM may play the dragon, the module plays the lair) takes
  * its best lair action from where it stands, never the one it used last round; the GM hears what it did and what is left for their
- * hands. Lead GM only, before the round's first turn plays (ponytail: RAW "initiative 20, losing ties" becomes "before everyone").
+ * hands. Lead GM only, at initiative count 20 losing ties: before the first group that starts below 20 (see lairTurn).
  */
 export async function runLair(combat, deps = {}) {
   if (game.settings.get(MODULE_ID, "lairActions") === false) return;
@@ -331,13 +331,14 @@ export async function runLair(combat, deps = {}) {
   }
 }
 
-/** combatTurnChange: the lead GM plays the new turn's automatic members (after the lair, on a new round). Only on a step forward: "previous turn" never replays a group. */
+/** combatTurnChange: the lead GM plays the new turn's automatic members (after the lair, at its place in the round). Only on a step forward: "previous turn" never replays a group. */
 export async function onCombatTurnChange(combat, prior, current, deps) {
   if (!leadGm() || !combat?.started) return;
   const r0 = prior?.round ?? 0, r1 = current?.round ?? 0, t0 = prior?.turn ?? -1, t1 = current?.turn ?? 0;
   if (r1 < r0 || (r1 === r0 && t1 <= t0)) return;
   if (running) { pending = [combat, prior, current, deps]; return; } // busy (a use waiting on Midi): replayed when the run ends, never dropped
-  if (r1 > r0) {
+  const lt = lairTurn(combat, game.settings.get(MODULE_ID, "enableTurns") !== false); // initiative count 20, losing ties
+  if (t1 >= lt && (r1 > r0 || t0 < lt)) { // stepping onto (or past) the lair's place in the round, once per round
     running = true;
     try { await runLair(combat, deps); } finally { running = false; }
     if (await replay()) return;

@@ -732,3 +732,16 @@ test("a turn change that arrives while the autopilot is busy (a Midi dialog pend
   await onCombatTurnChange(combat, { round: 1, turn: 0 }, { round: 1, turn: 1 }, d); // g1's turn: Scimitar, during which the GM moves on
   assert.deepEqual([uses.map((u) => u[0]), combat.nextTurns, calls.chat.some((m) => m.content.includes("lair:"))], [["sc", "A.ap"], 0, true]); // the pending change ran after the use: lair of round 2, then the PCs' turn (not auto)
 });
+
+test("the lair loses initiative ties: with a PC at 20 or more it acts after that group's turn and before the goblins, not at the top of the round", async () => {
+  reset();
+  const g1 = sheet(combatant("g1")), pc1 = combatant("pc1", { disposition: 1, playerOwner: true });
+  pc1.initiative = 22; g1.initiative = 15;
+  const combat = makeCombat([pc1, g1], 0);
+  const d = lairDeps();
+  await onCombatTurnChange(combat, { round: 1, turn: 1 }, { round: 2, turn: 0 }, d); // new round, the PC's turn first: no lair yet
+  assert.deepEqual([uses, calls.chat], [[], []]);
+  combat.turn = 1;
+  await onCombatTurnChange(combat, { round: 2, turn: 0 }, { round: 2, turn: 1 }, d); // then the goblin: the lair first, then its own turn
+  assert.deepEqual([uses.map((u) => u[0]), calls.chat[0].content.includes("lair:"), combat.nextTurns], [["A.ap"], true, 1]);
+});

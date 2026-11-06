@@ -305,3 +305,7 @@ Midi does the rest).
 
 - L4, L8, L9, L10, H1, H2 green on v0.9.1 (the rest on v0.9.0). The rule pair for Enlarge is applied by dnd5e at each damage roll (Longsword 1d8 + 3 + 3, Dagger 1d4 + 1d4 + 2, thrown Handaxe 1d6 + 3 + 3); a turn change during a pending Midi dialog is replayed once it resolves. Piece 5 is closed.
 - Observed, not changed: the lair only aims at PCs the monster can see (the board's sight rules); an unseen Cleric behind a wall gets no lair action. Kept as the spec's sight rule; the user decides whether the lair should see the whole lair.
+
+## Amendment 2026-11-06 (v0.9.2: the lair loses initiative ties)
+
+- User request after reading the lair rules: the lair acts on initiative count 20 and loses ties. The lair phase now fires before the first group whose leader rolled below 20 (lairTurn: with shared turns, a group led by a 20 or more acts whole before the lair; without them, right after the last combatant at 20 or more); at the top of the round when nobody is below 20. Once per round, forward steps only, replayed after a busy run as before.

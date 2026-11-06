@@ -43,7 +43,7 @@ const move = ({ action = "walk", cost = 10, pending = 0, spent = 0 } = {}) => ({
   passed: { cost, waypoints: [{ action }] }, pending: { cost: pending, waypoints: [] }, history: { cost: spent }
 });
 
-const { onCombatTurn, onCombatTurnChange, onPreMoveToken, onPostUseActivity, onPreTargetingTurns, drawReach, registerTurns, refreshTurnMarker, refreshTurnMarkers, activeIds } = await import("../scripts/turns.js");
+const { onCombatTurn, onCombatTurnChange, onPreMoveToken, onPostUseActivity, onPreTargetingTurns, drawReach, registerTurns, refreshTurnMarker, refreshTurnMarkers, activeIds, lairTurn } = await import("../scripts/turns.js");
 
 const cleric = combatant("c", 1), rogue = combatant("r", 1), g1 = combatant("g1", -1), g2 = combatant("g2", -1);
 
@@ -305,4 +305,14 @@ test("a defeated member of the shared turn may not act: left out of activeIds, s
   const t = token(dead);
   refreshTurnMarker(t, () => wrapped++);
   assert.deepEqual([t.turnMarker, wrapped], [null, 1]);
+});
+
+test("lairTurn: the lair acts before the first group whose leader is below 20 (a group led by a 20+ acts whole first), at the top of the round when nobody is below 20", () => {
+  const init = (c, n) => ({ ...c, initiative: n });
+  const cb = combat([init(cleric, 22), init(rogue, 18), init(g1, 15), init(g2, 12)], 0);
+  assert.equal(lairTurn(cb), 2); // the Rogue is below 20 but shares the Cleric's turn: after that group, before the goblins
+  assert.equal(lairTurn(cb, false), 1); // no shared turns: right after the Cleric
+  assert.equal(lairTurn(combat([init(cleric, 19), init(rogue, 18), init(g1, 15), init(g2, 12)], 0)), 0);
+  assert.equal(lairTurn(combat([init(cleric, 25), init(rogue, 24), init(g1, 21), init(g2, 20)], 0)), 0); // nobody below 20: top of the round
+  assert.equal(lairTurn(combat([init(g1, 21), init(cleric, 18), init(rogue, 17)], 0)), 1);
 });

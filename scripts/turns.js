@@ -155,6 +155,18 @@ export function refreshTurnMarker(token, wrapped) {
   token.turnMarker.draw();
 }
 
+/** Initiative count 20, losing ties: the lair acts before the first group (or turn, without shared turns) that starts below 20, and at
+ *  the top of the round when nobody is below 20. Returns the turn index the lair precedes. */
+export function lairTurn(combat, grouped = true) {
+  const turns = combat.turns ?? [];
+  const i0 = turns.findIndex((c) => !((c.initiative ?? 0) >= 20));
+  if (i0 < 0) return 0;
+  if (!grouped) return i0;
+  const groups = groupsOf(combat), ts = turnsOf(combat);
+  for (let i = i0; i < turns.length; i++) if (!groupOf(groups, ts[i].id) || isGroupStart(groups, ts, i, skipDefeated(combat))) return i; // a lone combatant is its own start
+  return 0;
+}
+
 /** Core only flags the current combatant's token and the tokens already marked: ask every token to look again when the group changes. */
 export function refreshTurnMarkers() {
   if (!canvas?.ready) return;
