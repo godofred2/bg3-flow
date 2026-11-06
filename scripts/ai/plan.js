@@ -237,7 +237,7 @@ export function planFlee(board) {
  *  the Multiattack sequence), else approach. With `slot: "bonus"`: the best bonus-action activity from where the monster stands, or nothing. */
 export function planTurn(board, { slot = "action" } = {}) {
   if (slot === "action" && shouldFlee(board)) { const f = planFlee(board); if (f.move) return f; }
-  const actions = board.activities.filter((a) => a.slot === slot);
+  const actions = board.activities.filter((a) => a.slot === slot && (slot !== "lair" || a.uuid !== board.me.lairLast)); // a lair never repeats its action two rounds in a row (RAW)
   const options = [];
   for (const a of actions) {
     const p = pickTarget(board, a);
@@ -271,8 +271,12 @@ export function planTurn(board, { slot = "action" } = {}) {
     const [w, ...rest] = options;
     const also = rest.slice(0, 3).map((o) => `${o.name} ${o.value.toFixed(1)}`).join(", ");
     const toll = w.oa > 0 ? `; opportunity attacks ${w.oa.toFixed(1)}` : "";
-    return { move: w.square ? moveTo(w.square) : null, actions: w.actions, reason: `${w.name} vs ${nameOf(w.aimId)} (expected ${w.value.toFixed(1)}${toll})${also ? `; also: ${also}` : ""}` };
+    // The lair whisper also names the lair actions the scorer could not value (the GM may run one by hand at initiative 20).
+    const scored = (name) => options.some((o) => o.name === name || o.name.startsWith(`${name} (`));
+    const left = slot === "lair" ? (board.me.lairNames ?? []).filter((name) => !scored(name)) : [];
+    return { move: w.square ? moveTo(w.square) : null, actions: w.actions, reason: `${slot === "lair" ? "lair: " : ""}${w.name} vs ${nameOf(w.aimId)} (expected ${w.value.toFixed(1)}${toll})${also ? `; also: ${also}` : ""}${left.length ? `; not scored: ${left.join(", ")}` : ""}` };
   }
+  if (slot === "lair") { const names = board.me.lairNames ?? []; return { move: null, actions: [], reason: `lair: nothing to score${names.length ? `; by hand: ${names.join(", ")}` : ""}` }; }
   if (slot !== "action") return { move: null, actions: [], reason: "no bonus action" };
   const visible = board.enemies.filter((e) => e.visible && e.hp > 0).sort((a, b) => a.distance - b.distance);
   if (!visible.length) return { move: null, actions: [], reason: "no visible enemy" };

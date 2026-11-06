@@ -323,3 +323,20 @@ test("a ranged attack with any visible enemy within 5 ft is at disadvantage, not
   p = planTurn({ ...b, enemies: [{ ...fighter, oa: oa({ damage: 4.1, reaction: false }) }, rogue] });
   assert.deepEqual([at(p.move), p.reason], [{ x: 0, y: 100, elevation: 0 }, "Shortbow vs rogue (expected 3.0); also: Scimitar 1.5"]); // reaction spent: the step back is free
 });
+
+const pool = { id: "ap", uuid: "A.ap", name: "Acid Pool", kind: "save", slot: "lair", range: Infinity, dc: 15, saveAbility: "dex", onSave: "half", damage: 9, affects: "creature" };
+const rumble = { id: "rm", uuid: "A.rm", name: "Lair Rumble", kind: "save", slot: "lair", range: 60, dc: 12, saveAbility: "con", onSave: "half", damage: 7, affects: "creature" };
+const lairBoard = (over = {}) => { const b = board({ budget: 0, enemies: [pc("rogue", 100, { ac: 13 }), pc("fighter", 30, { ac: 19 })], activities: [scimitar, pool, rumble], ...over }); b.me = { ...b.me, lair: true, lairLast: null, lairNames: ["Acid Pool", "Lair Rumble", "Grasping Roots"], ...over.me }; return b; };
+test("lair slot: the best lair action from where it stands, anywhere in the lair, never the one used last round; the whisper names what was left for the GM", () => {
+  let p = planTurn(lairBoard(), { slot: "lair" });
+  // Acid Pool: fail (15-1)/20 = 0.7 -> 0.7 x 9 + 0.3 x 4.5 = 7.65 against either; same hp: the nearer (fighter, 30 ft) wins the tie
+  assert.deepEqual([p.move, p.actions, p.reason], [null, [{ activityId: "ap", targetIds: ["fighter"], aimId: "fighter" }], "lair: Acid Pool vs fighter (expected 7.7); also: Lair Rumble 5.4; not scored: Grasping Roots"]);
+  // Lair Rumble vs fighter at 30 ft (range 60): fail (12-1)/20 = 0.55 -> 0.55 x 7 + 0.45 x 3.5 = 5.425
+  p = planTurn(lairBoard({ me: { lairLast: "A.ap" } }), { slot: "lair" });
+  assert.equal(p.reason, "lair: Lair Rumble vs fighter (expected 5.4); not scored: Acid Pool, Grasping Roots"); // used last round: skipped, and told
+  p = planTurn(lairBoard({ activities: [scimitar, pool], me: { lairLast: "A.ap", lairNames: ["Acid Pool", "Grasping Roots"] } }), { slot: "lair" });
+  assert.deepEqual(p, { move: null, actions: [], reason: "lair: nothing to score; by hand: Acid Pool, Grasping Roots" });
+  assert.deepEqual(planTurn(lairBoard({ activities: [scimitar], me: { lairNames: [] } }), { slot: "lair" }), { move: null, actions: [], reason: "lair: nothing to score" });
+  assert.equal(planTurn(lairBoard(), { slot: "action" }).reason, "approach fighter"); // the action slot never sees the lair ones (budget 0, nobody in Scimitar reach: approach)
+  assert.equal(planTurn(lairBoard(), { slot: "bonus" }).reason, "no bonus action");
+});
