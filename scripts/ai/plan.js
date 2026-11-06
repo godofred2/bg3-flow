@@ -57,7 +57,7 @@ export function coverage({ area, origin, aim, creatures, grid }) {
     const vx = c.cx - origin.cx, vy = c.cy - origin.cy;
     switch (area.shape) {
       case "cube": case "square": return ft(Math.max(Math.abs(c.cx - aim.cx), Math.abs(c.cy - aim.cy))) <= area.size / 2 + extra;
-      case "cone": { const d = Math.hypot(vx, vy); if (d === 0 || ft(d) > area.size + extra) return false; return Math.acos(Math.min(1, (vx * ux + vy * uy) / d)) <= 26.57 * Math.PI / 180; }
+      case "cone": { const d = Math.hypot(vx, vy); if (d === 0 || ft(d) > area.size + extra) return false; return Math.acos(Math.min(1, (vx * ux + vy * uy) / d)) < 26.5 * Math.PI / 180; } // Foundry's 53.13 degree cone leaves a centre on its edge ray outside
       case "line": { const along = vx * ux + vy * uy; if (along <= 0 || ft(along) > area.size + extra) return false; return ft(Math.abs(vx * uy - vy * ux)) <= (area.width || 5) / 2 + extra; }
       default: return ft(Math.hypot(c.cx - aim.cx, c.cy - aim.cy)) <= area.size + extra; // sphere, cylinder, circle, radius
     }

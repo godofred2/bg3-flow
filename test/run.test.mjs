@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 
 const calls = { chat: [], hooks: [], render: 0 };
 const hookFns = {};
-globalThis.Hooks = { once() {}, on: (name, fn) => { calls.hooks.push(name); hookFns[name] = fn; return 1; }, off: (name) => { delete hookFns[name]; }, callAll() {} };
+globalThis.Hooks = { once() {}, on: (name, fn) => { calls.hooks.push(name); hookFns[name] = fn; return 1; }, off: (name) => { delete hookFns[name]; }, callAll: (name, ...a) => hookFns[name]?.(...a) };
 globalThis.ui = { notifications: { info() {}, warn() {} }, controls: { render() {} }, combat: { render: () => calls.render++ } };
 globalThis.ChatMessage = { create: async (d) => calls.chat.push(d) };
 globalThis.CONFIG = { time: { turnTime: 6, roundTime: 60 }, Token: { movement: { actions: { walk: {} } } }, DND5E: { movementTypes: { walk: {} } } };
@@ -329,7 +329,8 @@ test("useActivity: no configuration dialog, the target uuids, and no dnd5e templ
 test("useActivity on an area builds the template data itself (no dnd5e placement API: TemplatePlacement.fromActivity is interactive), hands the region uuid to Midi and deletes an instantaneous one afterwards", async () => {
   const cfgs = [], created = [], deleted = [];
   const activity = { uuid: "A.br", duration: { units: "inst" }, item: { uuid: "I.br", system: { level: 0 } }, actor: { uuid: "Ac.d" }, target: { template: { type: "cone", size: "15", width: "" } } };
-  globalThis.MidiQOL = { completeActivityUse: async (a, cfg, dialog) => { cfgs.push(cfg); cfgs.templates = a.templates; return {}; } }; // Midi reads activity.templates during the use
+  // Midi clones the item and runs the use on the clone's activity, which dnd5e announces through dnd5e.preUseActivity; it reads `templates` on that one.
+  globalThis.MidiQOL = { completeActivityUse: async (a, cfg, dialog) => { const clone = { uuid: a.uuid }; Hooks.callAll("dnd5e.preUseActivity", clone, cfg, dialog, {}); cfgs.push(cfg); cfgs.templates = clone.templates; cfgs.original = a.templates; return {}; } };
   globalThis.game.user = { ...globalThis.game.user, id: "gm", color: "#ff0000" };
   CONFIG.DND5E.areaTargetTypes = { cone: { template: "cone" }, sphere: { template: "circle" }, cube: { template: "rect" }, line: { template: "ray" }, radius: { template: "emanation" } };
   CONFIG.MeasuredTemplate = { defaults: { angle: 53.13 } };
@@ -342,8 +343,9 @@ test("useActivity on an area builds the template data itself (no dnd5e placement
   const cone = created[0][1];
   assert.deepEqual([created[0][0], cone.t, cone.x, cone.y, cone.direction, cone.distance, cone.angle, cone.flags.dnd5e.origin, cone.flags["midi-qol"].actorUuid], ["MeasuredTemplate", "cone", 150, 50, 45, 15, 53.13, "A.br", "Ac.d"]);
   assert.equal(cfgs[0].midiOptions.workflowOptions.templateUuid, "Scene.s.Region.tpl1");
-  assert.deepEqual(cfgs.templates.map((t) => t._id), ["tpl1"]); // the proxy MeasuredTemplate document, as dnd5e's own placement hands it over
-  assert.equal(activity.templates, undefined); // cleared again after the use
+  assert.deepEqual(cfgs.templates.map((t) => t._id), ["tpl1"]); // the proxy MeasuredTemplate document on the clone Midi works with, as dnd5e's own placement hands it over
+  assert.equal(cfgs.original, undefined); // nothing left on the sheet's activity
+  assert.equal(hookFns["dnd5e.preUseActivity"], undefined); // the hook lives only for this use
   assert.deepEqual(deleted, ["Scene.s.Region.tpl1"]);
   created.length = 0;
   activity.target.template = { type: "sphere", size: "20", width: "" };

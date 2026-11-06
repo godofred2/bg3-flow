@@ -247,3 +247,8 @@ Midi does the rest).
 - Midi clears the template list right after reading `workflowOptions.templateUuid`, so a pre-placed template left the workflow waiting. The template document is now handed over as `activity.templates` (what dnd5e's own "Place Measured Template" produces): Midi's `processPlacedTemplates` links it, auto-targets from it and resumes.
 - A use Midi never finishes is given up after 60 s (template removed, error whispered, monster left to the GM) so one stall never blocks the session.
 - Cone and line lengths are straight-line distance again, matching the Foundry template Midi targets from; the planner evaluates every firing square, so a near miss moves it one square closer instead of counting a creature the template would not.
+
+## Amendment 2026-11-05 (v0.7.3 server run, fixed in v0.7.4)
+
+- Midi runs a use on a clone of the item's activity (`item.clone({}, { keepId: true })`) and reads `templates` on that clone; dnd5e announces it through `dnd5e.preUseActivity`. The autopilot attaches the placed template document there, for the length of the use only.
+- A centre exactly on the cone's 26.57 degree edge ray is outside, as Foundry's template leaves it: the planner uses a hair less than the half angle.

@@ -133,10 +133,12 @@ test("coverage: sphere by distance, cube by Chebyshev, cone by angle and length,
   assert.deepEqual(ids(coverage({ area: { shape: "sphere", size: 20 }, origin: c("m", 50, 50), aim: { cx: 450, cy: 50 }, creatures: all, grid })), ["a", "b", "c"]);
   assert.deepEqual(ids(coverage({ area: { shape: "cube", size: 10 }, origin: c("m", 50, 50), aim: { cx: 450, cy: 50 }, creatures: all, grid })), ["a"]);
   assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 30 }, origin: c("m", 50, 50), aim: { cx: 450, cy: 50 }, creatures: all, grid })), ["a", "b"]);
-  // cone and line lengths are straight-line distance, as Foundry draws the template Midi targets from: the Fighter one row off at the cone's full length is just outside, one square closer he is in
-  assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 15 }, origin: c("m", 150, 50), aim: { cx: 450, cy: 50 }, creatures: [c("rogue", 450, 50), c("fighter", 450, 150)], grid })), ["rogue"]);
-  assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 15 }, origin: c("m", 250, 50), aim: { cx: 450, cy: 50 }, creatures: [c("rogue", 450, 50), c("fighter", 450, 150)], grid })), ["rogue", "fighter"]);
+  // cone and line lengths are straight-line distance, as Foundry draws the template Midi targets from: the Fighter behind the Rogue at 20 ft is outside, one square closer he is in at 15
+  assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 15 }, origin: c("m", 150, 50), aim: { cx: 450, cy: 50 }, creatures: [c("rogue", 450, 50), c("fighter", 550, 50)], grid })), ["rogue"]);
+  assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 15 }, origin: c("m", 250, 50), aim: { cx: 450, cy: 50 }, creatures: [c("rogue", 450, 50), c("fighter", 550, 50)], grid })), ["rogue", "fighter"]);
   assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 15 }, origin: c("m", 50, 50), aim: { cx: 350, cy: 350 }, creatures: [c("diag", 350, 350)], grid })), []); // 3 squares diagonally: 21 ft on the map
+  // a centre exactly on the cone's edge ray (2 squares ahead, 1 aside: 26.57 degrees) is outside, as Foundry's template leaves it
+  assert.deepEqual(ids(coverage({ area: { shape: "cone", size: 15 }, origin: c("m", 650, 450), aim: { cx: 450, cy: 450 }, creatures: [c("rogue", 450, 450), c("edge", 450, 550)], grid })), ["rogue"]);
   assert.deepEqual(ids(coverage({ area: { shape: "line", size: 60, width: 5 }, origin: c("m", 50, 50), aim: { cx: 450, cy: 50 }, creatures: all, grid })), ["a", "b", "d"]);
 });
 
@@ -191,8 +193,8 @@ test("a breath weapon walks to the square whose cone covers the most, the caster
   const breath = { id: "br", uuid: "A.br", name: "Fire Breath", kind: "save", slot: "action", range: 15, dc: 13, saveAbility: "dex", onSave: "half", damage: 24, area: { shape: "cone", size: 15 }, affects: "" };
   const e = (id, x, y, hp = 10) => ({ ...pc(id, 0, { hp }), cx: x, cy: y, w: 1, distance: Math.max(Math.abs(x - 50), Math.abs(y - 50)) / 20 });
   const path = (xs) => xs.map((x, k) => ({ x: x - 50, y: 0, elevation: 0, cost: 5 * (k + 1), distance: (450 - x) / 20, occupied: false, waypoints: [{ x: x - 50, y: 0, elevation: 0 }] }));
-  // B1: Wyrmling at the left, Rogue 4 squares ahead on the row, Fighter beside the Rogue one row down. From the first square in range only the Rogue is in the cone; one square closer both are.
-  const b = { ...board({ enemies: [e("rogue", 450, 50), e("fighter", 450, 150)], activities: [breath] }), allies: [], grid: { px: 100, ft: 5 }, paths: { rogue: path([150, 250, 350]), fighter: path([150, 250, 350]) } };
+  // B1: Wyrmling at the left, Rogue 4 squares ahead on the row, Fighter right behind the Rogue. From the first square in range only the Rogue is in the cone; one square closer both are.
+  const b = { ...board({ enemies: [e("rogue", 450, 50), e("fighter", 550, 50)], activities: [breath] }), allies: [], grid: { px: 100, ft: 5 }, paths: { rogue: path([150, 250, 350]), fighter: path([150, 250, 350]) } };
   b.me = { ...b.me, cx: 50, cy: 50, w: 1 };
   const p = planTurn(b);
   assert.deepEqual(p.actions[0].targetIds.sort(), ["fighter", "rogue"]);

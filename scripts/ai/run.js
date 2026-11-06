@@ -62,11 +62,13 @@ export async function useActivity(info, targetUuids, place = null, { timeout = 6
   if (!activity) throw new Error(`activity ${info.uuid} not found`);
   const template = info.area && place ? await placeArea(activity, info, place) : null;
   const midiOptions = { targetUuids, ignoreUserTargets: true };
+  let timer, hook;
   if (template) {
     midiOptions.workflowOptions = { templateUuid: template.doc.uuid };
-    activity.templates = [template.proxy]; // what dnd5e's own "Place Measured Template" hands Midi: it links, targets and resumes from it
+    // Midi runs the use on a clone of the item's activity and reads `templates` on it (what dnd5e's own "Place Measured
+    // Template" produces): dnd5e announces that clone through dnd5e.preUseActivity, so the template is attached there.
+    hook = Hooks.on("dnd5e.preUseActivity", (used) => { if (used?.uuid === activity.uuid) used.templates = [template.proxy]; });
   }
-  let timer;
   try {
     return await Promise.race([
       MidiQOL.completeActivityUse(activity, { create: { measuredTemplate: false }, midiOptions }, { configure: false }),
@@ -74,7 +76,7 @@ export async function useActivity(info, targetUuids, place = null, { timeout = 6
     ]);
   } finally {
     clearTimeout(timer);
-    delete activity.templates;
+    if (hook) Hooks.off("dnd5e.preUseActivity", hook);
     if (template && activity.duration?.units === "inst") await removeTemplate(template.doc.uuid);
   }
 }
