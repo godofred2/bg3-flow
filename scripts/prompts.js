@@ -16,7 +16,34 @@ export function registerSockets(s, { startEncounter }) {
     return c.initiative ?? null;
   });
   s.register("startEncounter", (sceneId, groupId) => startEncounter(sceneId, groupId));
+  // Piece 4c: the Tunnel Fighter stance's reaction at the triggers Gambit does not cover, on the PC owner's client (3D dice show there). 30 s, then Pass.
+  s.register("tunnelFighter", async (actorUuid, activityUuid, targetUuid) => {
+    const activity = fromUuidSync(activityUuid);
+    if (!activity) return { hit: false };
+    const title = L("Autopilot.TunnelFighter.Title", { name: activity.actor?.name ?? fromUuidSync(actorUuid)?.name ?? "", target: fromUuidSync(targetUuid)?.name ?? "" });
+    let timer;
+    const r = await foundry.applications.api.DialogV2.wait({
+      window: { title }, content: `<p>${foundry.utils.escapeHTML(title)}</p>`,
+      buttons: [
+        { action: "attack", label: L("Autopilot.TunnelFighter.Attack"), default: true, callback: () => "attack" },
+        { action: "pass", label: L("Autopilot.TunnelFighter.Pass"), callback: () => "pass" }
+      ],
+      rejectClose: false,
+      render: (ev, dialog) => { timer = setTimeout(() => dialog.close(), 30000); }
+    });
+    clearTimeout(timer);
+    return r === "attack" ? tunnelFighterAttack(activityUuid, targetUuid) : { hit: false };
+  });
 }
+
+/** One melee attack of the PC on the monster through Midi, with no reaction check (the stance needs none). `{ hit }` from the workflow. */
+export async function tunnelFighterAttack(activityUuid, targetUuid) {
+  const activity = fromUuidSync(activityUuid);
+  if (!activity) return { hit: false };
+  const wf = await MidiQOL.completeActivityUse(activity, { midiOptions: { targetUuids: [targetUuid], ignoreUserTargets: true, proceedChecks: { checkAoO: false } } }, { configure: false });
+  return { hit: (wf?.hitTargets?.size ?? 0) > 0 };
+}
+export const promptTunnelFighter = (userId, actorUuid, activityUuid, targetUuid) => socket.executeAsUser("tunnelFighter", userId, actorUuid, activityUuid, targetUuid);
 
 export const promptInitiative = (userId, combatId, combatantId) => socket.executeAsUser("promptInitiative", userId, combatId, combatantId);
 export const askGmToStart = (sceneId, groupId) => socket.executeAsGM("startEncounter", sceneId, groupId);

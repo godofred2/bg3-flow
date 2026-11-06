@@ -82,7 +82,7 @@ test("rollOrType: roll button returns the skill roll total, use button the typed
 test("registerSockets registers the three handlers and promptInitiative rolls on the player's client", async () => {
   const handlers = {};
   registerSockets({ register: (n, fn) => { handlers[n] = fn; } }, { startEncounter: async (s, g) => ["started", s, g] });
-  assert.deepEqual(Object.keys(handlers).sort(), ["promptInitiative", "startEncounter"]);
+  assert.deepEqual(Object.keys(handlers).sort(), ["promptInitiative", "startEncounter", "tunnelFighter"]);
   assert.deepEqual(await handlers.startEncounter("scene", "g"), ["started", "scene", "g"]);
   const rolled = [];
   const combat = { combatants: new Map([["c1", { initiative: 12 }]]), rollInitiative: async (ids, o) => rolled.push([ids, o]) };
@@ -105,4 +105,19 @@ test("awaitOrGm does not run the fallback when it closes the dialog itself after
   let ran = 0;
   await awaitOrGm(Promise.resolve(1), { title: "t", label: "l" }, async () => { ran++; return 5; });
   assert.equal(ran, 0);
+});
+
+test("the tunnelFighter socket handler attacks through Midi with the monster as the only target and no reaction check, passes on Pass, close or after 30 s", async () => {
+  const uses = [];
+  globalThis.MidiQOL = { completeActivityUse: async (a, cfg, dialog) => { uses.push([a.uuid, cfg.midiOptions, dialog]); return { hitTargets: new Set([{}]) }; } };
+  globalThis.fromUuidSync = (uuid) => uuid === "A.ls" ? { uuid, name: "Longsword", actor: { name: "Fighter" } } : uuid === "T.g1" ? { name: "Goblin" } : null;
+  const handlers = {};
+  registerSockets({ register: (n, fn) => { handlers[n] = fn; } }, { startEncounter() {} });
+  DialogStub.next = "attack";
+  assert.deepEqual(await handlers.tunnelFighter("Actor.f", "A.ls", "T.g1"), { hit: true });
+  assert.deepEqual(uses, [["A.ls", { targetUuids: ["T.g1"], ignoreUserTargets: true, proceedChecks: { checkAoO: false } }, { configure: false }]]);
+  assert.ok(dialogs.at(-1).config.window.title.includes("Fighter") && dialogs.at(-1).config.window.title.includes("Goblin"));
+  DialogStub.next = "pass";
+  assert.deepEqual(await handlers.tunnelFighter("Actor.f", "A.ls", "T.g1"), { hit: false });
+  assert.equal(uses.length, 1);
 });

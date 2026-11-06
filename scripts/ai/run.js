@@ -2,7 +2,8 @@
 import { MODULE_ID, log, safe, safeSync } from "../main.js";
 import { activeIds } from "../turns.js";
 import { snapshot } from "./board.js";
-import { planTurn, pickTarget } from "./plan.js";
+import { planTurn, pickTarget, splitAtTunnelFighter } from "./plan.js";
+import { promptTunnelFighter, tunnelFighterAttack, activeOwner, awaitOrGm } from "../prompts.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 const leadGm = () => !!game.users.activeGM?.isSelf;
@@ -142,11 +143,13 @@ export async function arrive(doc, { poll = 100, cap = 45000 } = {}) {
   while (obj?.movementAnimationPromise && Date.now() - t0 < cap) await Promise.race([obj.movementAnimationPromise, sleep(poll)]);
 }
 
-const brief = (b) => `${b.me.name} hp ${b.me.hp} budget ${b.me.budget}; activities: ${b.activities.map((a) => `${a.name}[${a.kind}${a.slot === "bonus" ? " bonus" : ""} r${a.range} +${a.bonus ?? 0} ${a.kind === "heal" ? `heal${(a.healing ?? 0).toFixed(1)}` : `dmg${(a.damage ?? 0).toFixed(1)}`}${a.area ? ` ${a.area.shape}${a.area.size}` : ""}${a.ranged ? " ranged" : ""}${a.recharge ? " recharge" : ""}]`).join(" ") || "none"}; enemies: ${b.enemies.map((e) => `${e.name}[d${e.distance} ac${e.ac} hp${e.hp}${e.visible ? "" : " unseen"} path${(b.paths[e.id] ?? []).length}]`).join(" ") || "none"}; allies: ${(b.allies ?? []).filter((a) => a.id !== b.me.id).map((a) => `${a.name}[hp${a.hp}/${a.maxHp}]`).join(" ") || "none"}; retreats ${(b.retreats ?? []).length}`;
+const oaBrief = (e) => e.oa ? `oa{r${e.oa.reach} dmg${e.oa.damage.toFixed(1)} hit${e.oa.hit.toFixed(2)}${e.oa.reaction ? " reaction" : ""}${e.oa.tunnelFighter ? " tf" : ""}}` : "oa-";
+const brief = (b) => `${b.me.name} hp ${b.me.hp}/${b.me.maxHp} budget ${b.me.budget} speed ${b.me.speed ?? "?"}${b.me.alone ? " alone" : ""}; escape ${b.escape ? `${b.escape.name} (${b.escape.squares.length} squares)` : "none"}, away ${(b.away ?? []).length}; activities: ${b.activities.map((a) => `${a.name}[${a.kind}${a.slot === "bonus" ? " bonus" : ""} r${a.range} +${a.bonus ?? 0} ${a.kind === "heal" ? `heal${(a.healing ?? 0).toFixed(1)}` : `dmg${(a.damage ?? 0).toFixed(1)}`}${a.area ? ` ${a.area.shape}${a.area.size}` : ""}${a.ranged ? " ranged" : ""}${a.recharge ? " recharge" : ""}]`).join(" ") || "none"}; enemies: ${b.enemies.map((e) => `${e.name}[d${e.distance} ac${e.ac} hp${e.hp}${e.visible ? "" : " unseen"} path${(b.paths[e.id] ?? []).length} ${oaBrief(e)}${e.sentinel ? " sentinel" : ""}]`).join(" ") || "none"}; allies: ${(b.allies ?? []).filter((a) => a.id !== b.me.id).map((a) => `${a.name}[hp${a.hp}/${a.maxHp}]`).join(" ") || "none"}; retreats ${(b.retreats ?? []).length}`;
 
 /** Play the active group's automatic members: all moves at once, then actions in initiative order. */
 export async function runTurn(combat, deps = {}) {
-  const { snap = snapshot, plan = planTurn, pick = pickTarget, use = useActivity, pause = pauseDialog, poll = 100 } = deps;
+  const { snap = snapshot, plan = planTurn, pick = pickTarget, use = useActivity, pause = pauseDialog, poll = 100,
+    split = splitAtTunnelFighter, ask = promptTunnelFighter, gmAttack = tunnelFighterAttack, owner = activeOwner, wait = awaitOrGm } = deps;
   const ids = game.settings.get(MODULE_ID, "enableTurns") === false ? new Set([combat.combatant?.id]) : activeIds(combat); // groups only exist with piece 2
   const active = combat.turns.filter((c) => ids.has(c.id) && !c.isDefeated);
   const members = active.filter((c) => isAuto(c) && c.token && c.token.parent?.id === canvas.scene?.id);
@@ -173,17 +176,48 @@ export async function runTurn(combat, deps = {}) {
     }
     if (stale()) return;
     const walk = (m) => (m.waypoints ?? [m]).map((w) => ({ x: w.x, y: w.y, elevation: w.elevation, action: "walk" }));
+    // One monster's move: Dash flag for a flight, then the route segment by segment, stopping after each Tunnel Fighter trigger for the PC's reaction.
+    const moveOne = async (c, p) => {
+      if (p.dash && !c.getFlag(MODULE_ID, "dash")) await c.setFlag(MODULE_ID, "dash", true);
+      const board = boards[c.id];
+      for (const seg of split(board, p.move)) {
+        await c.token.move(walk(seg), { autoRotate: true, showRuler: false, bg3Autopilot: true });
+        await arrive(c.token, { poll });
+        const enemy = seg.trigger && board.enemies.find((e) => e.id === seg.trigger.enemyId);
+        if (!enemy?.oa) continue;
+        let hit = false;
+        try {
+          const gm = () => gmAttack(enemy.oa.activityUuid, c.token.uuid);
+          const u = owner(fromUuidSync(enemy.uuid));
+          const r = u ? await wait(ask(u.id, enemy.actorUuid, enemy.oa.activityUuid, c.token.uuid), { title: L("Autopilot.TunnelFighter.Waiting", { name: enemy.name }), label: L("Prompt.RollForThem") }, gm) : await gm();
+          hit = !!r?.hit;
+        } catch (err) { log(`Tunnel Fighter reaction of ${enemy.name} failed`, err); }
+        const hp = c.actor?.system?.attributes?.hp?.value;
+        if ((hit && enemy.sentinel) || (typeof hp === "number" && hp <= 0)) break; // a Sentinel hit ends the move; so does dropping
+      }
+    };
     const moveAll = async (list) => { // [combatant, plan] pairs: move together, wait for every sprite, snap what a reaction left between squares
       const movers = list.filter(([, p]) => p.move).map(([c]) => c);
       if (!movers.length) return;
       const unwatch = sentinelWatch(movers, boards);
-      try {
-        await Promise.all(list.map(([c, p]) => p.move && c.token.move(walk(p.move), { autoRotate: true, showRuler: false, bg3Autopilot: true })));
-        await Promise.all(list.map(([c, p]) => p.move && arrive(c.token, { poll })));
-      } finally { unwatch(); }
+      try { await Promise.all(list.map(([c, p]) => p.move && moveOne(c, p))); } finally { unwatch(); }
       for (const c of movers) await snapToGrid(c.token);
     };
+    const escaped = new Set();
+    const checkEscapes = async (list) => { // a fleeing monster standing inside its escape region leaves the fight: defeated, hidden, one public line
+      for (const [c, p] of list) {
+        if (!p.escape || !p.move) continue;
+        const region = fromUuidSync(p.escape), centre = c.token.getCenterPoint?.();
+        if (!region?.testPoint || !centre || !region.testPoint({ x: centre.x, y: centre.y, elevation: c.token.elevation ?? 0 })) continue;
+        escaped.add(c.id);
+        await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason }));
+        await c.update({ defeated: true });
+        await c.token.update({ hidden: true });
+        await ChatMessage.create({ content: L("Autopilot.Escaped", { name: c.token.name }) });
+      }
+    };
     await moveAll(plans);
+    await checkEscapes(plans);
     // Run one plan's uses from where the monster stands. Returns false when the GM took the monster over.
     const act = async (c, board, p) => {
       await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason }));
@@ -210,17 +244,26 @@ export async function runTurn(combat, deps = {}) {
       }
       return true;
     };
-    for (const [c, first] of plans) {
+    for (let [c, first] of plans) {
       if (stale()) return;
+      if (escaped.has(c.id)) continue;
       try {
         let board = await snap(combat, c, reserved);
         if (board.me.hp <= 0) continue; // dropped on the way (an opportunity attack): no action
+        let fled = !!first.dash;
         if (!first.move) { // it stayed put while the others moved: the board changed under it (an ally walked off), so it may still walk now
           const again = plan(board);
-          if (again.move) { boards[c.id] = board; await moveAll([[c, again]]); if (stale()) return; board = await snap(combat, c, reserved); if (board.me.hp <= 0) continue; }
+          if (again.move) {
+            boards[c.id] = board; await moveAll([[c, again]]); await checkEscapes([[c, again]]);
+            if (stale()) return; if (escaped.has(c.id)) continue;
+            fled = !!again.dash; if (fled) first = again;
+            board = await snap(combat, c, reserved); if (board.me.hp <= 0) continue;
+          }
         }
         const still = { ...board, me: { ...board.me, budget: 0 } }; // act from where it stands: a move that fell short never fires out of reach
-        const done = await act(c, still, plan(still));
+        const next = plan(still);
+        if (fled) await whisper(L("Autopilot.Decision", { name: c.token.name, reason: first.reason })); // the flight is the action (Dash); anything else it still does follows
+        const done = fled && !next.actions.length ? true : await act(c, still, next);
         if (done === null) return;
         if (done === false) { clean = false; continue; }
         const after = await snap(combat, c, reserved);

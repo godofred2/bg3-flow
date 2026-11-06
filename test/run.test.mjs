@@ -199,7 +199,7 @@ test("lang files carry every Autopilot and settings key the module uses", async 
   const en = JSON.parse(readFileSync(new URL("../lang/en.json", import.meta.url))).BG3FLOW;
   const es = JSON.parse(readFileSync(new URL("../lang/es.json", import.meta.url))).BG3FLOW;
   for (const k of ["enableAutopilot", "pauseBeforeAttack", "autoNextTurn", "intelligenceThreshold", "fleeEnabled", "fleeThreshold", "escapeRegionName"]) { assert.ok(en.Settings[k]?.Name && en.Settings[k]?.Hint, k); assert.ok(es.Settings[k]?.Name && es.Settings[k]?.Hint, k); }
-  for (const k of ["Toggle", "Decision", "Error"]) { assert.ok(en.Autopilot[k], k); assert.ok(es.Autopilot[k], k); }
+  for (const k of ["Toggle", "Decision", "Error", "Escaped"]) { assert.ok(en.Autopilot[k], k); assert.ok(es.Autopilot[k], k); }
 });
 
 test("runTurn: the next turn's monsters are played when the autopilot itself passes the turn", async () => {
@@ -509,4 +509,57 @@ test("a use Midi never finishes is given up after the cap, and the template it p
   await assert.rejects(() => useActivity({ uuid: "A.br", area: { shape: "cone", size: 15, width: 5 } }, ["T.rogue"], { origin: { cx: 150, cy: 50 }, aim: { cx: 450, cy: 350 } }, { timeout: 10 }), /did not finish/);
   assert.deepEqual(deleted, ["Scene.s.Region.tpl2"]);
   delete globalThis.canvas.scene.createEmbeddedDocuments; delete globalThis.canvas.scene.regions;
+});
+
+test("a flee plan sets the Dash flag before the move, whispers the flee reason, and a monster that reached the escape region is marked defeated and hidden with a public line", async () => {
+  reset();
+  const g1 = combatant("g1"), updates = [];
+  g1.update = async (u) => updates.push(["combatant", u]); g1.token.update = async (u) => updates.push(["token", u]); g1.token.getCenterPoint = () => ({ x: 450, y: 50 }); g1.token.uuid = "T.g1"; g1.actor.system = { attributes: { hp: { value: 1 } } };
+  globalThis.fromUuidSync = (uuid) => uuid === "Scene.s.Region.r1" ? { testPoint: (p) => p.x > 400 } : null;
+  const fleePlan = { move: { x: 400, y: 0, elevation: 0, waypoints: [{ x: 400, y: 0, elevation: 0 }] }, actions: [], reason: "flee: Dash toward Escape (hp 1/7)", dash: true, escape: "Scene.s.Region.r1" };
+  const combat = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]);
+  await runTurn(combat, deps({ plans: { g1: fleePlan } }));
+  assert.equal(g1.flags["bg3-flow"].dash, true);
+  assert.deepEqual(order, ["clear g1", "move g1"]);
+  assert.deepEqual(updates, [["combatant", { defeated: true }], ["token", { hidden: true }]]);
+  assert.deepEqual(calls.chat.map((m) => [m.whisper ?? "public", m.content.includes("Escaped") || m.content.includes("flee")]), [[["gm"], true], ["public", true]]);
+  assert.equal(combat.nextTurns, 1);
+});
+test("a flight that falls short of the region is not an escape: the monster stays in the fight and still gets its bonus action", async () => {
+  reset();
+  const g1 = combatant("g1"), updates = [];
+  g1.update = async (u) => updates.push(u); g1.token.getCenterPoint = () => ({ x: 250, y: 50 });
+  globalThis.fromUuidSync = (uuid) => ({ testPoint: (p) => p.x > 400 });
+  const fleePlan = { move: { x: 200, y: 0, elevation: 0, waypoints: [{ x: 200, y: 0, elevation: 0 }] }, actions: [], reason: "flee: Dash toward Escape (hp 1/7)", dash: true, escape: "Scene.s.Region.r1" };
+  await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), deps({ plans: { g1: fleePlan }, bonus: { g1: { move: null, actions: [{ activityId: "hw", targetIds: ["g1"] }], reason: "Healing Word vs g1" } }, allies: () => [{ id: "g1", uuid: "T.g1", name: "g1", hp: 1, maxHp: 7 }] }));
+  assert.deepEqual(updates, []);
+  assert.deepEqual(order, ["clear g1", "move g1", "use T.g1"]);
+});
+test("a move split at Tunnel Fighter triggers runs segment by segment, prompts the PC's owner after each, continues on a miss and stops after a Sentinel hit", async () => {
+  reset();
+  const g1 = combatant("g1"); g1.token.uuid = "T.g1"; g1.actor.system = { attributes: { hp: { value: 7 } } };
+  const fighter = { ...enemy("fighter"), uuid: "T.fighter", actorUuid: "Actor.f", sentinel: true, oa: { activityUuid: "A.ls", reach: 5, damage: 3, hit: 0.5, reaction: false, tunnelFighter: true } };
+  const asks = [], hits = [false, true];
+  const d = deps({ plans: { g1: attackPlan() }, enemies: () => [fighter] });
+  d.split = () => [{ waypoints: [{ x: 100, y: 0, elevation: 0 }], trigger: { enemyId: "fighter" } }, { waypoints: [{ x: 200, y: 0, elevation: 0 }], trigger: { enemyId: "fighter" } }, { waypoints: [{ x: 400, y: 0, elevation: 0 }], trigger: null }];
+  d.owner = () => ({ id: "p1" }); d.wait = (p) => p;
+  d.ask = async (userId, actorUuid, activityUuid, targetUuid) => { asks.push([userId, actorUuid, activityUuid, targetUuid]); return { hit: hits[asks.length - 1] }; };
+  globalThis.fromUuidSync = () => ({});
+  await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), d);
+  assert.deepEqual(asks, [["p1", "Actor.f", "A.ls", "T.g1"], ["p1", "Actor.f", "A.ls", "T.g1"]]);
+  assert.deepEqual(moves.map((m) => m[1].at(-1).x), [100, 200]); // the third segment never runs: the Sentinel hit stopped it
+  assert.deepEqual(order.filter((o) => o.startsWith("use")), ["use T.fighter"]); // it still acts from where it stands
+});
+test("a Tunnel Fighter trigger with no connected owner goes straight to the GM's roll; a hit by a PC without Sentinel does not stop the move", async () => {
+  reset();
+  const g1 = combatant("g1"); g1.token.uuid = "T.g1"; g1.actor.system = { attributes: { hp: { value: 7 } } };
+  const fighter = { ...enemy("fighter"), uuid: "T.fighter", actorUuid: "Actor.f", sentinel: false, oa: { activityUuid: "A.ls", reach: 5, damage: 3, hit: 0.5, reaction: false, tunnelFighter: true } };
+  const gmRolls = [];
+  const d = deps({ plans: { g1: attackPlan() }, enemies: () => [fighter] });
+  d.split = () => [{ waypoints: [{ x: 100, y: 0, elevation: 0 }], trigger: { enemyId: "fighter" } }, { waypoints: [{ x: 400, y: 0, elevation: 0 }], trigger: null }];
+  d.owner = () => null; d.ask = async () => { throw new Error("no owner"); }; d.gmAttack = async (a, t) => { gmRolls.push([a, t]); return { hit: true }; };
+  globalThis.fromUuidSync = () => ({});
+  await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), d);
+  assert.deepEqual(gmRolls, [["A.ls", "T.g1"]]);
+  assert.deepEqual(moves.map((m) => m[1].at(-1).x), [100, 400]);
 });

@@ -99,7 +99,9 @@
       "Toggle": "Piloto automático",
       "Pause": { "Title": "{name}: piloto automático", "Execute": "Ejecutar", "Skip": "Saltar", "Manual": "Llevar a mano" },
       "Decision": "<b>{name}</b>: {reason}",
-      "Error": "Piloto detenido para <b>{name}</b>: {error}"
+      "Error": "Piloto detenido para <b>{name}</b>: {error}",
+      "Escaped": "<b>{name}</b> ha escapado.",
+      "TunnelFighter": { "Title": "{name}: ¿atacar a {target} con Tunnel Fighter?", "Attack": "Atacar", "Pass": "Pasar", "Waiting": "Esperando la reacción de Tunnel Fighter de {name}" }
     }
   }
 }
