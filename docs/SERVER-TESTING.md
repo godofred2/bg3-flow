@@ -184,6 +184,27 @@ Setup on the goblin scene, legacy rules world (dnd5e setting *Rules version: Leg
 - [ ] H2. Enlarge on the Rogue (Dagger, Dexterity): the damage card keeps `1d4` from Enlarge and no Strength modifier. A thrown Handaxe by the enlarged Fighter: Strength twice, no d4.
 - [ ] H3. Setting **Enlarge: Strength twice** off, Enlarge cast again: the effect keeps its single `1d4` change and the card shows the d4.
 
+### 7e. Compatibility run: Plutonium Addon: Automation + Chris's Premades stack (no module change)
+
+Goal: see whether bg3-flow keeps working with the automation stack that Plutonium Addon: Automation brings in, and where it overlaps with Gambit's Premades. Test world only (bg3-flow-test), every module the table uses left active. Manifests verified for Foundry 14.369 / dnd5e 6.0.6:
+- DAE 14.6.6 (the dnd5e 6 build): https://github.com/tposney/dae/releases/download/latest-dnd6/module.json
+- Coven's Automation Toolkit (CAT) 0.1.7: https://github.com/chrisk123999/covens-automation-toolkit/releases/download/0.1.7/module.json
+- Cauldron of Plentiful Resources (CPR, Chris's Premades) 2.1.7, prerelease: https://github.com/chrisk123999/chris-premades/releases/download/2.1.7/module.json
+- Plutonium Addon: Automation 0.9.1: https://github.com/TheGiddyLimit/plutonium-addon-automation/releases/latest/download/module.json
+(Times Up is not required by any of them.)
+- [ ] X0. Install in that order, enable all four, reload GM and Player1. Report the full active module list with versions, every console error or warning at load (both clients), the bg3-flow `on` lines, and any setup dialog CPR or the addon opens (answer "no" to anything that would change Midi settings, and say what it asked).
+- [ ] X1. Import with Plutonium, addon active: Enlarge/Reduce, Shield, Spirit Guardians, Counterspell (spells); Sentinel (feat); Uncanny Dodge (rogue class feature); a Goblin and an Ogre (monsters). For each, report whether it came with CPR automation (flags `chris-premades` on the item, effects, activities) or plain.
+- [ ] X2. Enlarge from the imported spell on the Fighter: the Enlarged effect carries our two Rules changes (`damage`, Bonus) and the size change; Longsword card `1d8 + 3 + 3`. Reduce on the Rogue: the `-1d4` change is left alone, size shrinks. Report the effect's changes as the sheet shows them.
+- [ ] X3. Reactions with both Gambit's and CPR active: Shield when the Fighter is hit, Uncanny Dodge when the Rogue is damaged, Counterspell when Goblin 1 casts (give it a spell). Expected to look for: exactly one prompt per trigger. Report every double prompt and which module each prompt came from.
+- [ ] X4. Spirit Guardians (the imported CPR version) on the Cleric with an ally inside: does the friend-or-foe prompt (**Enemies only / Everyone**) appear, and is the ally spared when you pick Enemies only? Report whether the spell uses a Midi region behaviour or CPR's own mechanism (the activity's Midi section).
+- [ ] X5. Turn flow regression: a 2v2 combat; shared turn line, movement lock off-turn, movement budget message, blue circles, turn markers on both PCs. Anything different from before.
+- [ ] X6. Encounters regression: mark the goblins, walk the Rogue into range unhidden; spotted line, initiative prompt on Player1, combat starts.
+- [ ] X7. Autopilot with the CPR-imported Goblin and Ogre on the autopilot: both act on their turn (move, attack, whisper); any Midi refusal or error whisper; the console lines.
+- [ ] X8. Sentinel (the imported CPR feat) on the Fighter plus Gambit's opportunity attack: a goblin walking out of reach; how many prompts, which module, does the goblin stop on a hit (our Sentinel stop), any double attack.
+- [ ] X9. Lair L1 with the stack active (Goblin 1's lair as in 7d): whisper, card, timing unchanged.
+- [ ] X10. Player1 side through all of it: prompts, cards, console. Then disable the four modules again (or keep them, your call in the report) and say what the world looks like after.
+Report: pass/fail per step, the list of conflicts found (double prompts, broken prompts, errors), and your recommendation: keep the stack, keep only some of it (which), or drop it.
+
 ## 8. Report template
 
 ```
@@ -217,6 +238,9 @@ L11 ...
 H1 ...
 H2 ...
 H3 ...
+X0 ...
+...
+X10 ...
 Console lines containing [bg3-flow]:
 <paste>
 Other console errors during the run:
