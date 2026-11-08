@@ -52,13 +52,14 @@ async function placeArea(activity, info, { origin, aim }) {
 
 const removeTemplate = async (uuid) => { const live = fromUuidSync(uuid); if (live?.delete) await live.delete(); };
 
-/** A reaction may leave a token between squares: put it on the square under its centre. */
+/** A reaction may leave a token between squares: put it on the square under its centre. A displace move (Foundry's teleport action),
+ *  not a walk: Gambit's opportunity attack regions ignore teleports and the movement veto lets them through (Sentinel left the speed at 0). */
 async function snapToGrid(doc) {
   const g = canvas.grid;
-  if (!g?.getOffset || typeof doc.x !== "number" || !doc.update) return;
+  if (!g?.getOffset || typeof doc.x !== "number" || !doc.move) return;
   const half = (g.size ?? canvas.dimensions?.size ?? 0) / 2;
   const tl = g.getTopLeftPoint(g.getOffset({ x: doc.x + half, y: doc.y + half }));
-  if (Math.abs(tl.x - doc.x) > 1 || Math.abs(tl.y - doc.y) > 1) await doc.update({ x: tl.x, y: tl.y });
+  if (Math.abs(tl.x - doc.x) > 1 || Math.abs(tl.y - doc.y) > 1) await doc.move([{ x: tl.x, y: tl.y, elevation: doc.elevation ?? 0, action: "displace" }], { showRuler: false });
 }
 
 /**
@@ -71,18 +72,18 @@ export async function useActivity(info, targetUuids, place = null, { timeout = 6
   if (!activity) throw new Error(`activity ${info.uuid} not found`);
   const template = info.area && place ? await placeArea(activity, info, place) : null;
   const midiOptions = { targetUuids, ignoreUserTargets: true, proceedChecks: { checkAoO: false } }; // never a reaction in Midi's eyes: a lair action comes off-turn
-  let timer, hook;
+  let timer;
   if (template) midiOptions.workflowOptions = { templateUuid: template.doc.uuid };
-  if (template || info.attackMode) {
-    // Midi runs the use on a clone of the item's activity and reads `templates` on it (what dnd5e's own "Place Measured
-    // Template" produces) and its own `attackMode` field (the thrown mode of a javelin): dnd5e announces that clone through
-    // dnd5e.preUseActivity, so both are set there.
-    hook = Hooks.on("dnd5e.preUseActivity", (used) => {
-      if (used?.uuid !== activity.uuid) return;
-      if (template) used.templates = [template.proxy];
-      if (info.attackMode) used.attackMode = info.attackMode;
-    });
-  }
+  // Midi runs the use on a clone of the item's activity: it reads `templates` on it (what dnd5e's own "Place Measured Template"
+  // produces), its own `attackMode` field (the thrown mode of a javelin) and its `forceRollDialog` property (Midi forces its
+  // roll dialog on thrown weapons unless it is "never"; an autopilot use never wants one). dnd5e announces that clone through
+  // dnd5e.preUseActivity, so all three are set there.
+  const hook = Hooks.on("dnd5e.preUseActivity", (used) => {
+    if (used?.uuid !== activity.uuid) return;
+    if (template) used.templates = [template.proxy];
+    if (info.attackMode) used.attackMode = info.attackMode;
+    if (used.midiProperties) used.midiProperties.forceRollDialog = "never";
+  });
   try {
     return await Promise.race([
       MidiQOL.completeActivityUse(activity, { ...(info.attackMode ? { attackMode: info.attackMode } : {}), create: { measuredTemplate: false }, midiOptions }, { configure: false }),
@@ -90,7 +91,7 @@ export async function useActivity(info, targetUuids, place = null, { timeout = 6
     ]);
   } finally {
     clearTimeout(timer);
-    if (hook) Hooks.off("dnd5e.preUseActivity", hook);
+    Hooks.off("dnd5e.preUseActivity", hook);
     if (template && activity.duration?.units === "inst") await removeTemplate(template.doc.uuid);
   }
 }

@@ -184,7 +184,9 @@ Setup on the goblin scene, legacy rules world (dnd5e setting *Rules version: Leg
 - [ ] H2. Enlarge on the Rogue (Dagger, Dexterity): the damage card keeps `1d4` from Enlarge and no Strength modifier. A thrown Handaxe by the enlarged Fighter: Strength twice, no d4.
 - [ ] H3. Setting **Enlarge: Strength twice** off, Enlarge cast again: the effect keeps its single `1d4` change and the card shows the d4.
 
-### 7e. Compatibility run: Plutonium Addon: Automation + Chris's Premades stack (run on v0.9.3; X11, X12 new in v0.9.4)
+### 7e. Compatibility run: Plutonium Addon: Automation + Chris's Premades stack (run on v0.9.3; X11, X12 new in v0.9.4; X13, X14 new in v0.9.5)
+
+Result of the v0.9.4 run (X11, X12, X6 recheck): X6 recheck pass. X11 pass: the Ogre throws its javelin at 30 ft (roll `attackMode` thrown, quantity down by one, Greatclub when adjacent), but Midi forced dnd5e's Attack Roll dialog on the GM for every throw (Midi does that on thrown weapons unless the activity's *force roll dialog* is "never") and the autopilot waited on it: v0.9.5 sets "never" on the activity clone it uses. X12 partial: the Sentinel stop itself worked (Gambit's hit, the goblin stopped on the square it was leaving, Gambit's *Sentinel - Movement* effect), but the snap back to the grid afterwards was a walk: Gambit's region opened a false opportunity attack prompt for the Rogue, and with the token still between squares the board floored its square to the one next to the Rogue and attacked out of reach (Midi: "target is 10 away"). v0.9.5: the snap is a displace move (a teleport action: Gambit's regions ignore teleports and the movement veto lets it through) and the board reads a token's square from the centre of its top-left cell. Not ours: Midi counts a move-only wall as total cover. Known: a Large token routed to a boxed-in target (every neighbour taken) walks, gets blocked and ends between squares; it re-plans from there (the throw).
 
 Result of the v0.9.3 run: X0, X1, X3, X5, X6, X9 pass; X2, X4, X7, X8 partial; no double prompt anywhere. Not ours: Plutonium's plain Enlarge/Reduce applies both effects from one save and has no size change (our rule pair still lands: 1d8 + 3 + 3); its plain Uncanny Dodge prompts on hit and halves nothing (use Midi's sample item); CPR's Spirit Guardians spares allies by its own CAT macros, so our friend-or-foe prompt does not appear (its region behaviour is disabled; the outcome is right); CAT's Troubleshooter asks to change Midi, DAE, dnd5e and Argon settings on every load (left untouched). Ours, fixed in v0.9.4: the addon's split "Javelin (Ranged)" (a thrown melee weapon: dnd5e keeps it melee with reach 5) is now also a ranged option at the weapon's thrown range (X11); the initiative roll no longer passes the deprecated `messageOptions.rollMode` (X6 warning).
 
@@ -206,7 +208,9 @@ Goal: see whether bg3-flow keeps working with the automation stack that Plutoniu
 - [ ] X9. Lair L1 with the stack active (Goblin 1's lair as in 7d): whisper, card, timing unchanged.
 - [ ] X10. Player1 side through all of it: prompts, cards, console. Then disable the four modules again (or keep them, your call in the report) and say what the world looks like after.
 - [ ] X11. Thrown weapons (v0.9.4): the imported Ogre (autopilot on) 30 ft from the Rogue with no path to melee (a wall or two tokens between them), the Greatclub out of reach. Expected: the brief lists `Javelin (Ranged)[attack r5 ...]` and `Javelin (Ranged) (thrown)[attack r30 ... ranged]`; the whisper picks the thrown one; Midi's card is a javelin attack from 30 ft with no "out of range" refusal, the attack mode shown as thrown (the card or the roll's `attackMode`), the quantity of javelins down by one. Then the Ogre adjacent to the Rogue: Greatclub, not the throw. Report the item's data as well: `system.type.value`, `system.properties`, `system.range`, the activity's `attack.type.value` and Midi's `attackMode` field.
-- [ ] X12. Sentinel stop, again: the goblin must have a walk of 3+ squares planned (start it adjacent to the Fighter with the Rogue 20 ft behind the Fighter); AC 5 on the goblin. Expected: Gambit's opportunity attack hits, the goblin stops on the square it was leaving from (not the one it was stepping to) and its turn ends there (the brief's move cut short; it may still shoot from where it stands).
+- [ ] X12. Sentinel stop, again (v0.9.5: after the stop no prompt for the Rogue, no Midi refusal, the goblin re-plans from the square it stopped on: `Goblin: Scimitar vs Fighter (expected ...)` when adjacent to the Fighter, or `approach Rogue` with nothing in reach; report the second whisper and the squares): the goblin must have a walk of 3+ squares planned (start it adjacent to the Fighter with the Rogue 20 ft behind the Fighter); AC 5 on the goblin. Expected: Gambit's opportunity attack hits, the goblin stops on the square it was leaving from (not the one it was stepping to) and its turn ends there (the brief's move cut short; it may still shoot from where it stands).
+- [ ] X13. Thrown weapon without a dialog (v0.9.5): X11's run 3 again (Ogre speed 0, 30 ft from the Rogue). Expected: no Attack Roll dialog on the GM, the throw resolves by itself (card, `attackMode` thrown, quantity down by one), the turn passes.
+- [ ] X14. A reaction that stops a monster between squares: X12's final setup (goblin with 30 temp hp, AC 25 then 5 on Gambit's prompt). Expected after the stop: no "Rogue has a reaction available" line and no prompt on Player1; a position trace ending on a whole square; the goblin's second whisper from that square and its attack (or no attack) consistent with Midi's range (no "Midi refused the use").
 Report: pass/fail per step, the list of conflicts found (double prompts, broken prompts, errors), and your recommendation: keep the stack, keep only some of it (which), or drop it.
 
 ## 8. Report template
@@ -244,7 +248,7 @@ H2 ...
 H3 ...
 X0 ...
 ...
-X12 ...
+X14 ...
 Console lines containing [bg3-flow]:
 <paste>
 Other console errors during the run:

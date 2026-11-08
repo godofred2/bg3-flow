@@ -325,3 +325,9 @@ Midi does the rest).
 - Thrown weapons: dnd5e keeps a melee weapon with the thrown property (javelin) a melee attack with the weapon's reach; the throw is an attack mode. The snapshot now adds a second option per such weapon (`<name> (thrown)`, id `<uuid>#thrown`, the weapon's range, ranged, `attackMode: "thrown"`), and `useActivity` sets that mode on the activity clone Midi rolls with (Midi reads its own `attackMode` field there) and in the use config. The addon's split "Javelin (Ranged)" is such a weapon.
 - The initiative rolls pass `messageMode` only (Foundry 14 deprecates `messageOptions.rollMode`).
 - Not adapted: CPR's Spirit Guardians spares allies through its own CAT macros (region behaviour disabled), so the friend-or-foe prompt does not run for it; the outcome is the same. Plutonium's plain Enlarge/Reduce and Uncanny Dodge are import defects, not ours.
+
+## Amendment 2026-11-08 (v0.9.5: thrown without Midi's dialog, snap back by displace)
+
+- Midi forces its attack roll dialog on weapons with the thrown property unless the activity's `midiProperties.forceRollDialog` is "never"; `useActivity` sets that on the activity clone (the same `dnd5e.preUseActivity` hook that attaches templates and the attack mode), for every autopilot use.
+- After a reaction stops a monster between squares, the snap back to the grid is a `displace` move (Foundry's teleport action): Gambit's opportunity attack regions ignore teleports (a walk opened a false prompt for the PC it stood next to) and the movement veto exempts teleports (Gambit's Sentinel effect leaves the speed at 0, so a walk could be refused and leave the token off the grid).
+- The board reads a token's square from the centre of its top-left cell, so a token left between squares is not placed on the square its corner floors to (it attacked a PC 7.7 ft away as if adjacent; Midi refused at 10 ft).

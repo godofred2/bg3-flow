@@ -495,7 +495,8 @@ test("after the move a token left off the grid (a reaction stopped it) is snappe
   g1.token.update = async (u) => updates.push(u);
   globalThis.canvas.grid = { getOffset: (p) => ({ i: Math.floor(p.y / 100), j: Math.floor(p.x / 100) }), getTopLeftPoint: (o) => ({ x: o.j * 100, y: o.i * 100 }) };
   await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })]), deps({ plans: { g1: attackPlan() } }));
-  assert.deepEqual(updates, [{ x: 1100, y: 400 }]);
+  // a displace move (a teleport action): Gambit's opportunity attack regions ignore teleports and the movement veto lets them through; an update would be a walk
+  assert.deepEqual([updates, moves.at(-1)[1]], [[], [{ x: 1100, y: 400, elevation: 0, action: "displace" }]]);
   delete globalThis.canvas.grid;
 });
 
@@ -769,9 +770,10 @@ test("useActivity with an attack mode sets it on the activity clone Midi rolls w
   reset();
   const cfgs = [];
   globalThis.fromUuidSync = (uuid) => ({ uuid });
-  globalThis.MidiQOL = { completeActivityUse: async (a, cfg, dialog) => { const clone = { uuid: a.uuid }; Hooks.callAll("dnd5e.preUseActivity", clone, cfg, dialog, {}); cfgs.push([cfg.attackMode, clone.attackMode]); return {}; } };
+  // Midi forces its roll dialog on a thrown weapon unless the activity's forceRollDialog is "never": the autopilot never wants a dialog
+  globalThis.MidiQOL = { completeActivityUse: async (a, cfg, dialog) => { const clone = { uuid: a.uuid, midiProperties: { forceRollDialog: "default" } }; Hooks.callAll("dnd5e.preUseActivity", clone, cfg, dialog, {}); cfgs.push([cfg.attackMode, clone.attackMode, clone.midiProperties.forceRollDialog]); return {}; } };
   await useActivity({ uuid: "A.sc", attackMode: "thrown" }, ["T.rogue"]);
   await useActivity({ uuid: "A.sc" }, ["T.rogue"]);
-  assert.deepEqual(cfgs, [["thrown", "thrown"], [undefined, undefined]]);
+  assert.deepEqual(cfgs, [["thrown", "thrown", "never"], [undefined, undefined, "never"]]);
   assert.equal(hookFns["dnd5e.preUseActivity"], undefined);
 });

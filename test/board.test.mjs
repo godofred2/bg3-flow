@@ -363,3 +363,12 @@ test("snapshot: a thrown melee weapon is also a ranged option (dnd5e keeps it me
     ["Greatclub", club.uuid, club.uuid, 5, false, undefined]
   ]);
 });
+
+test("snapshot: a token left between squares (a reaction stopped it) stands on the square under its centre, not the one its top-left corner floors to", async () => {
+  const goblin = token("goblin", { x: 854, disposition: -1 }); // 8.54 squares: its centre is in square 9
+  const rogue = token("rogue", { x: 700, disposition: 1 });
+  canvas.scene.tokens.contents = [goblin, rogue];
+  const combat = { combatants: [goblin, rogue].map((t) => combatantOf(t)) };
+  const b = await snapshot(combat, combat.combatants[0], new Set());
+  assert.equal(b.enemies[0].distance, 10); // squares 9 and 7: not adjacent (Midi measures 7.7 ft and refuses a 5 ft attack)
+});

@@ -64,7 +64,8 @@ function footprint(o, w, h) {
   for (let i = 0; i < h; i++) for (let j = 0; j < w; j++) out.push(key({ i: o.i + i, j: o.j + j }));
   return out;
 }
-const tlOffset = (t) => canvas.grid.getOffset({ x: t.x, y: t.y });
+/** The square under the centre of the token's top-left cell: a token a reaction left between squares still stands on one square, not the one its corner floors to. */
+const tlOffset = (t) => { const h = (canvas.grid.size ?? canvas.dimensions?.size ?? 0) / 2; return canvas.grid.getOffset({ x: t.x + h, y: t.y + h }); };
 const chebyshev = (a, b) => Math.max(Math.abs(a.i - b.i), Math.abs(a.j - b.j));
 const parse = (k) => { const [i, j] = k.split(",").map(Number); return { i, j }; };
 /** Top-left offsets from which a w x h mover touches the enemy's footprint without overlapping anyone. */
