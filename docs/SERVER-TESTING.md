@@ -215,6 +215,23 @@ Goal: see whether bg3-flow keeps working with the automation stack that Plutoniu
 - [ ] X14. A reaction that stops a monster between squares: X12's final setup (goblin with 30 temp hp, AC 25 then 5 on Gambit's prompt). Expected after the stop: no "Rogue has a reaction available" line and no prompt on Player1; a position trace ending on a whole square; the goblin's second whisper from that square and its attack (or no attack) consistent with Midi's range (no "Midi refused the use").
 Report: pass/fail per step, the list of conflicts found (double prompts, broken prompts, errors), and your recommendation: keep the stack, keep only some of it (which), or drop it.
 
+### 7f. Stack configuration: bg3-flow first, Plutonium imports work as they come (no module change)
+
+Goal (user request): with DAE, CAT, CPR and Plutonium Addon: Automation installed, anything imported with Plutonium must work at the table exactly as bg3-flow configures it, with nothing to touch afterwards; where a third-party automation and bg3-flow overlap, bg3-flow's flow wins. Test world only; the outcome is a recipe (every setting touched, with its value) to repeat on Eldemar.
+
+What "bg3-flow first" means concretely: the Midi preset bg3-flow applies from its settings menu is the reference (auto roll and apply everything, item effects applyRemove, reactions prompted, no target confirmation); CAT's Troubleshooter must not change Midi's damage or effect settings, and when it did, the preset is re-applied from the menu. Spells with an area that bg3-flow handles itself (the friend-or-foe prompt and Midi's region damage: Spirit Guardians, Moonbeam, Cloud of Daggers and other emanations) keep their plain Midi form, not CPR's. Gambit's Premades stays the owner of Opportunity Attack, Counterspell and Sentinel.
+
+- [ ] P0. Baseline: record Midi's `ConfigSettings` keys `autoApplyDamage`, `autoCEEffects`, `addDamageButtons`, `autoItemEffects` and the reaction keys. Then re-apply the bg3-flow preset from its settings menu (Configure Settings, BG3 Flow, the preset button) and record them again: that is the reference state.
+- [ ] P1. CAT Troubleshooter: apply only the fixes that do not touch Midi: dnd5e *Allow Transformation* true, DAE *Special Duration Expiry Action* and *Effect Expiry Action* delete. Do NOT apply the Midi ones (apply Convenient Effects, auto apply damage, damage buttons) nor the Argon target picker one; report whether the Troubleshooter keeps whispering and whether a setting exists to silence it.
+- [ ] P2. Automation sources (CPR's "Set Up Automation Sources" / CAT settings): order Gambit's Premades, then CPR, then the addon's own data. Report the exact UI path and the resulting list.
+- [ ] P3. Exclusions for the spells bg3-flow handles: find CAT's mechanism to keep an item plain (a per-item automation source "none", an exclusion list, or a CatKit choice) and set it for Spirit Guardians, Moonbeam, Cloud of Daggers (and any emanation CPR would take over). Import Spirit Guardians plain, cast it with an ally inside: the Enemies only / Everyone prompt appears, the ally is spared, Midi's region damages the enemy. If the plain import has no Midi region behaviour, compare with the dnd5e SRD compendium version and report what is missing.
+- [ ] P4. Plutonium: set the "Import via Plutonium?" prompt to never ask (import directly) and find the option that marks imported spells prepared (or report that none exists); keep *split melee/ranged attacks* on. Add Shield from the sidebar to the Fighter: no dialog, prepared, Midi offers it on the next hit.
+- [ ] P5. Representative import, each item then used once at the table: Shield, Absorb Elements, Hellish Rebuke, Counterspell, Spiritual Weapon, Bless, Healing Word, Fireball, Enlarge/Reduce, Misty Step, Uncanny Dodge, Sentinel, Second Wind, Cunning Action. For each: the source CAT applied, whether it worked with the bg3-flow flow (one prompt, no configuration dialog, card and effect), or whether it needs a swap (Midi's sample item or the dnd5e compendium version). Enlarge/Reduce with CPR first: it must ask Enlarge or Reduce, the Enlarged effect must carry our two Rules changes, Longsword 1d8 + 3 + 3. Misty Step: no opportunity attack from Gambit's.
+- [ ] P6. Monsters: import Goblin, Ogre and Priest (MM'14), autopilot on, a 3v3: they act with no change (move, attack, the Ogre throws when out of reach, the Priest casts), no refusal, no dialog.
+- [ ] P7. Regression with the stack configured: encounter start from the Rogue walking in, shared turn line and markers, one lair round (Goblin 1's lair as in 7d L1), one Sentinel stop (as X14). All as before.
+- [ ] P8. The recipe: list every setting changed in P1-P4 with module, menu path and value, plus the per-item exclusions and the items that needed a swap in P5. Leave bg3-flow-test configured this way.
+Report: pass/fail per step, the recipe, and what could not be made to work as-is.
+
 ## 8. Report template
 
 ```
@@ -251,6 +268,9 @@ H3 ...
 X0 ...
 ...
 X14 ...
+P0 ...
+...
+P8 ...
 Console lines containing [bg3-flow]:
 <paste>
 Other console errors during the run:
