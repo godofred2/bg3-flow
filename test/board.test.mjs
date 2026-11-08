@@ -54,7 +54,7 @@ function act({ type, activation = "action", toHit = "+0", parts = [], item = {},
   const id = `a${++n}`;
   const actor = { system: { spells: { spell1: { value: spell?.slots ?? 0 } } } };
   // dnd5e gives every item's default activity the same id (dnd5eactivity000) and Midi names it "Midi Attack": only the uuid and the item name tell them apart.
-  const it = { type: item.type ?? "feat", name, system: { range: item.range ?? {}, uses: { max: "", value: 0 }, level: spell?.level ?? 0, activities: { size: siblings } }, actor };
+  const it = { type: item.type ?? "feat", name, system: { range: item.range ?? {}, properties: new Set(item.properties ?? []), uses: { max: "", value: 0 }, level: spell?.level ?? 0, activities: { size: siblings } }, actor };
   return {
     id: "dnd5eactivity000", uuid: `A.${id}`, name: "Midi Attack", type, item: it, actor, canUse, effects,
     activation: { type: activation }, range: range ?? { value: null, units: "", override: false },
@@ -347,4 +347,19 @@ test("snapshot: each enemy's threat is its best damage per turn against the mons
   canvas.scene.tokens.contents = [bare, fighter, cleric];
   const b2 = await snapshot({ combatants: [bare, fighter, cleric].map((t) => combatantOf(t)) }, combatantOf(bare));
   assert.deepEqual(b2.enemies.map((e) => "threat" in e), [false, false]); // no lair: nobody reads threat, so the walk over every PC's items is skipped
+});
+
+test("snapshot: a thrown melee weapon is also a ranged option (dnd5e keeps it melee with the weapon's reach; thrown range comes from the item), the addon's split Javelin (Ranged) included", async () => {
+  const javelin = act({ name: "Javelin (Ranged)", type: "attack", toHit: "+6", parts: [["2d6 + 4", {}]], item: { type: "weapon", range: { reach: 5, value: 30, long: 120 }, properties: ["thr"] } });
+  const club = act({ name: "Greatclub", type: "attack", toHit: "+6", parts: [["2d8 + 4", {}]], item: { type: "weapon", range: { reach: 5, value: null }, properties: ["two"] } });
+  const ogre = token("ogre", { x: 0, disposition: -1, items: [{ name: "Javelin (Ranged)", type: "weapon", system: { activities: [javelin] } }, { name: "Greatclub", type: "weapon", system: { activities: [club] } }] });
+  const rogue = token("rogue", { x: 600, disposition: 1 });
+  canvas.scene.tokens.contents = [ogre, rogue];
+  const combat = { combatants: [ogre, rogue].map((t) => combatantOf(t)) };
+  const b = await snapshot(combat, combat.combatants[0], new Set());
+  assert.deepEqual(b.activities.map((a) => [a.name, a.id, a.uuid, a.range, a.ranged, a.attackMode]), [
+    ["Javelin (Ranged)", javelin.uuid, javelin.uuid, 5, false, undefined],
+    ["Javelin (Ranged) (thrown)", `${javelin.uuid}#thrown`, javelin.uuid, 30, true, "thrown"],
+    ["Greatclub", club.uuid, club.uuid, 5, false, undefined]
+  ]);
 });

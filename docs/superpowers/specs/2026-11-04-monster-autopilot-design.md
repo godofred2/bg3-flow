@@ -318,3 +318,10 @@ Midi does the rest).
 ## Amendment 2026-11-06 (v0.9.3 server run: green)
 
 - L10 variant green: four next-turn presses while a reaction dialog stayed open; on resolution, one lair whisper and card for the round landed in, the goblins played once, nothing for the rounds stepped past, no duplicates. Section 7d is fully green; piece 5 and its follow-ups are closed.
+
+## Amendment 2026-11-07 (v0.9.4: compatibility run with the Plutonium Addon: Automation stack)
+
+- bg3-flow kept working with DAE 14.6.6, CAT 0.1.7, CPR 2.1.7 and the addon 0.9.1 next to Gambit's Premades: no double prompts (CAT routes Opportunity Attack, Counterspell and Sentinel to Gambit's), turn flow, encounters and the lair unchanged.
+- Thrown weapons: dnd5e keeps a melee weapon with the thrown property (javelin) a melee attack with the weapon's reach; the throw is an attack mode. The snapshot now adds a second option per such weapon (`<name> (thrown)`, id `<uuid>#thrown`, the weapon's range, ranged, `attackMode: "thrown"`), and `useActivity` sets that mode on the activity clone Midi rolls with (Midi reads its own `attackMode` field there) and in the use config. The addon's split "Javelin (Ranged)" is such a weapon.
+- The initiative rolls pass `messageMode` only (Foundry 14 deprecates `messageOptions.rollMode`).
+- Not adapted: CPR's Spirit Guardians spares allies through its own CAT macros (region behaviour disabled), so the friend-or-foe prompt does not run for it; the outcome is the same. Plutonium's plain Enlarge/Reduce and Uncanny Dodge are import defects, not ours.

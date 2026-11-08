@@ -764,3 +764,14 @@ test("several turn changes while the autopilot is busy are replayed as one, from
   await onCombatTurnChange(combat, { round: 1, turn: 0 }, { round: 1, turn: 1 }, d);
   assert.deepEqual([uses.map((u) => u[0]), calls.chat.filter((m) => m.content.includes("lair:")).length], [["sc", "A.ap", "sc"], 1]); // one lair for round 2, not zero (the last step alone never crosses the lair's place) and not two; then the goblin's round-2 turn
 });
+
+test("useActivity with an attack mode sets it on the activity clone Midi rolls with (thrown: the weapon's range, not its reach)", async () => {
+  reset();
+  const cfgs = [];
+  globalThis.fromUuidSync = (uuid) => ({ uuid });
+  globalThis.MidiQOL = { completeActivityUse: async (a, cfg, dialog) => { const clone = { uuid: a.uuid }; Hooks.callAll("dnd5e.preUseActivity", clone, cfg, dialog, {}); cfgs.push([cfg.attackMode, clone.attackMode]); return {}; } };
+  await useActivity({ uuid: "A.sc", attackMode: "thrown" }, ["T.rogue"]);
+  await useActivity({ uuid: "A.sc" }, ["T.rogue"]);
+  assert.deepEqual(cfgs, [["thrown", "thrown"], [undefined, undefined]]);
+  assert.equal(hookFns["dnd5e.preUseActivity"], undefined);
+});

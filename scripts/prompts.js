@@ -12,7 +12,7 @@ export function registerSockets(s, { startEncounter }) {
     // By id, not game.combat: the player may be viewing another scene or combat.
     const combat = game.combats.get(combatId), c = combat?.combatants.get(combatantId);
     if (!c) return null;
-    await combat.rollInitiative([combatantId], { messageMode: "publicroll", messageOptions: { rollMode: "publicroll" } });
+    await combat.rollInitiative([combatantId], { messageMode: "publicroll" });
     return c.initiative ?? null;
   });
   s.register("startEncounter", (sceneId, groupId) => startEncounter(sceneId, groupId));

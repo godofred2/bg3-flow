@@ -89,7 +89,7 @@ test("registerSockets registers the three handlers and promptInitiative rolls on
   game.combat = null; // the player may be viewing another combat or scene: the handler must not depend on it
   game.combats = new Map([["cb", combat]]);
   assert.equal(await handlers.promptInitiative("cb", "c1"), 12);
-  assert.deepEqual(rolled, [[["c1"], { messageMode: "publicroll", messageOptions: { rollMode: "publicroll" } }]]);
+  assert.deepEqual(rolled, [[["c1"], { messageMode: "publicroll" }]]); // v14: messageOptions.rollMode is deprecated for messageMode
   assert.equal(await handlers.promptInitiative("cb", "nope"), null);
   assert.equal(await handlers.promptInitiative("gone", "c1"), null);
 });

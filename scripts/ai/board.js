@@ -282,7 +282,15 @@ export async function snapshot(combat, combatant, reserved = new Set()) {
     }
   }
   const activities = [];
-  for (const item of actor?.items ?? []) for (const a of item.system?.activities ?? []) { const info = activityInfo(a); if (info) activities.push(info); }
+  for (const item of actor?.items ?? []) for (const a of item.system?.activities ?? []) {
+    const info = activityInfo(a);
+    if (!info) continue;
+    activities.push(info);
+    // dnd5e keeps a thrown melee weapon (javelin, the addon's split "Javelin (Ranged)") a melee attack with the weapon's reach: the throw
+    // is an attack mode, so it is a second option with the weapon's range, sharing the activity. The id tells the planner's picks apart.
+    const range = a.item?.system?.range;
+    if (info.kind === "attack" && !info.ranged && a.item?.system?.properties?.has?.("thr") && range?.value > info.range) activities.push({ ...info, id: `${info.id}#thrown`, name: `${info.name} (thrown)`, range: range.value, ranged: true, attackMode: "thrown" });
+  }
   const multi = [...(actor?.items ?? [])].find((i) => named(i.name, "multiattack"));
   return {
     me, enemies, allies, activities, multiattack: multi ? stripHtml(multi.system?.description?.value) : null, paths, retreats, grid, reserved,

@@ -72,15 +72,20 @@ export async function useActivity(info, targetUuids, place = null, { timeout = 6
   const template = info.area && place ? await placeArea(activity, info, place) : null;
   const midiOptions = { targetUuids, ignoreUserTargets: true, proceedChecks: { checkAoO: false } }; // never a reaction in Midi's eyes: a lair action comes off-turn
   let timer, hook;
-  if (template) {
-    midiOptions.workflowOptions = { templateUuid: template.doc.uuid };
+  if (template) midiOptions.workflowOptions = { templateUuid: template.doc.uuid };
+  if (template || info.attackMode) {
     // Midi runs the use on a clone of the item's activity and reads `templates` on it (what dnd5e's own "Place Measured
-    // Template" produces): dnd5e announces that clone through dnd5e.preUseActivity, so the template is attached there.
-    hook = Hooks.on("dnd5e.preUseActivity", (used) => { if (used?.uuid === activity.uuid) used.templates = [template.proxy]; });
+    // Template" produces) and its own `attackMode` field (the thrown mode of a javelin): dnd5e announces that clone through
+    // dnd5e.preUseActivity, so both are set there.
+    hook = Hooks.on("dnd5e.preUseActivity", (used) => {
+      if (used?.uuid !== activity.uuid) return;
+      if (template) used.templates = [template.proxy];
+      if (info.attackMode) used.attackMode = info.attackMode;
+    });
   }
   try {
     return await Promise.race([
-      MidiQOL.completeActivityUse(activity, { create: { measuredTemplate: false }, midiOptions }, { configure: false }),
+      MidiQOL.completeActivityUse(activity, { ...(info.attackMode ? { attackMode: info.attackMode } : {}), create: { measuredTemplate: false }, midiOptions }, { configure: false }),
       new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Midi did not finish the use in ${timeout / 1000} s`)), timeout); })
     ]);
   } finally {

@@ -168,7 +168,7 @@ export async function startEncounter(sceneId, groupId, deps = {}) {
     if (!enemies.length) return null;
     combat = await Combat.create({ scene: sceneId, active: true });
     await combat.createEmbeddedDocuments("Combatant", [...enemies, ...pcs].map((t) => ({ tokenId: t.id, sceneId, actorId: t.actorId })));
-    const gmRoll = (c) => combat.rollInitiative([c.id], { messageMode: "publicroll", messageOptions: { rollMode: "publicroll" } });
+    const gmRoll = (c) => combat.rollInitiative([c.id], { messageMode: "publicroll" });
     for (const t of pcs) {
       const c = combat.combatants.find((c) => c.tokenId === t.id);
       if (!c) continue;
