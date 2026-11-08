@@ -67,7 +67,7 @@ async function snapToGrid(doc) {
  * template from `placeArea` and Midi targets from it; an instantaneous area's template is removed afterwards.
  * Resolves when the workflow is done, `undefined` when Midi refused it.
  */
-export async function useActivity(info, targetUuids, place = null, { timeout = 60000 } = {}) {
+export async function useActivity(info, targetUuids, place = null, { timeout = 180000 } = {}) { // a chain of player reactions (Counterspell, Shield, Hellish Rebuke) can take well over a minute
   const activity = fromUuidSync(info.uuid);
   if (!activity) throw new Error(`activity ${info.uuid} not found`);
   const template = info.area && place ? await placeArea(activity, info, place) : null;
@@ -187,10 +187,25 @@ const actWith = ({ combat, reserved, stale, snap, pick, use, pause }) => async (
     return true;
 };
 
+/** Gambit's Premades creates its opportunity attack regions when combat starts, asynchronously and one combatant at a time:
+ *  a monster acting on the very first turn would walk past a fighter before its region exists. Wait until their count holds
+ *  still for one poll (at most `max`); nothing to wait for without Gambit's opportunity attacks. */
+export async function awaitOaRegions({ poll = 250, max = 3000 } = {}) {
+  if (!game.modules?.get?.("gambits-premades")?.active || !game.settings.get("gambits-premades", "Enable Opportunity Attack")) return;
+  const count = () => [...(canvas.scene?.regions ?? [])].filter((r) => r.flags?.["gambits-premades"]?.actorUuid).length;
+  let last = -1;
+  for (let t = 0; t < max; t += poll) {
+    const n = count();
+    if (n > 0 && n === last) return;
+    last = n;
+    await sleep(poll);
+  }
+}
+
 /** Play the active group's automatic members: all moves at once, then actions in initiative order. */
 export async function runTurn(combat, deps = {}) {
   const { snap = snapshot, plan = planTurn, pick = pickTarget, use = useActivity, pause = pauseDialog, poll = 100,
-    split = splitAtTunnelFighter, ask = promptTunnelFighter, gmAttack = tunnelFighterAttack, owner = activeOwner, wait = awaitOrGm } = deps;
+    split = splitAtTunnelFighter, ask = promptTunnelFighter, gmAttack = tunnelFighterAttack, owner = activeOwner, wait = awaitOrGm, grace = awaitOaRegions } = deps;
   const ids = game.settings.get(MODULE_ID, "enableTurns") === false ? new Set([combat.combatant?.id]) : activeIds(combat); // groups only exist with piece 2
   const active = combat.turns.filter((c) => ids.has(c.id) && !c.isDefeated);
   const members = active.filter((c) => isAuto(c) && c.token && c.token.parent?.id === canvas.scene?.id);
@@ -263,6 +278,7 @@ export async function runTurn(combat, deps = {}) {
         await ChatMessage.create({ content: L("Autopilot.Escaped", { name: c.token.name }) });
       }
     };
+    if (combat.round === 1 && combat.turn === 0) await grace(); // a fresh combat's first turn: let Gambit's opportunity attack regions appear first
     await moveAll(plans);
     await checkEscapes(plans);
     const act = actWith({ combat, reserved, stale, snap, pick, use, pause });

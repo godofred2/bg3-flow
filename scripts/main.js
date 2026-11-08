@@ -53,6 +53,7 @@ Hooks.once("init", () => {
   reg("escapeRegionName", String, "escape");
   reg("lairActions", Boolean, true);
   reg("enlargeStrength", Boolean, true);
+  reg("preparedSpells", Boolean, true);
   game.settings.registerMenu(MODULE_ID, "preset", {
     name: L("Preset.Menu"), label: L("Preset.Menu"), hint: L("Preset.Hint"),
     icon: "fas fa-bolt", type: PresetMenu, restricted: true

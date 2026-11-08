@@ -23,6 +23,17 @@ export function enlargeChanges(name, changes) {
   return [...changes.filter((c) => !isEnlargeBonus(c)), ...PAIR.map((c) => ({ ...c }))];
 }
 
+/** A spell of the prepared kind created on a character arrives prepared: CPR's automation (applied at import by Coven's Automation
+ *  Toolkit) leaves imported spells unprepared, and a spell nobody can cast is not "working as it comes". Other preparation modes
+ *  (always, pact, at will, innate), NPCs and spells already prepared are left alone. Returns whether it changed the item. */
+export function prepareOnCreate(item) {
+  if (game.settings.get(MODULE_ID, "preparedSpells") === false) return false;
+  const prep = item.system?.preparation;
+  if (item.type !== "spell" || item.parent?.type !== "character" || prep?.mode !== "prepared" || prep.prepared) return false;
+  item.updateSource({ "system.preparation.prepared": true });
+  return true;
+}
+
 export function registerHouseRules() {
   Hooks.on("preCreateActiveEffect", safeSync((effect) => {
     if (game.settings.get(MODULE_ID, "enlargeStrength") === false) return;
@@ -30,5 +41,6 @@ export function registerHouseRules() {
     const changes = enlargeChanges(src.name, src.system?.changes ?? []);
     if (changes) effect.updateSource({ "system.changes": changes });
   }));
+  Hooks.on("preCreateItem", safeSync((item) => { prepareOnCreate(item); }));
   log("house rules on");
 }

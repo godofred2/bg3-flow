@@ -331,3 +331,10 @@ Midi does the rest).
 - Midi forces its attack roll dialog on weapons with the thrown property unless the activity's `midiProperties.forceRollDialog` is "never"; `useActivity` sets that on the activity clone (the same `dnd5e.preUseActivity` hook that attaches templates and the attack mode), for every autopilot use.
 - After a reaction stops a monster between squares, the snap back to the grid is a `displace` move (Foundry's teleport action): Gambit's opportunity attack regions ignore teleports (a walk opened a false prompt for the PC it stood next to) and the movement veto exempts teleports (Gambit's Sentinel effect leaves the speed at 0, so a walk could be refused and leave the token off the grid).
 - The board reads a token's square from the centre of its top-left cell, so a token left between squares is not placed on the square its corner floors to (it attacked a PC 7.7 ft away as if adjacent; Midi refused at 10 ft).
+
+## Amendment 2026-11-08 (v0.9.6: the stack configured with bg3-flow first)
+
+- User direction: keep the whole stack (DAE, CAT, CPR, Plutonium Addon: Automation, Gambit's), configured so that bg3-flow's flow wins and Plutonium imports work untouched. CAT offers no per-item exclusion, so emanations stay with CPR or Gambit's (CPR spares allies by itself; our prompt does not run for them).
+- The cap on one autopilot use is 180 s (was 60): a chain of player reaction prompts is legitimate waiting, not a stall.
+- Before the first move of a fresh combat (round 1, first turn) the autopilot waits for Gambit's opportunity attack regions (created asynchronously at combat start; `awaitOaRegions`, at most 3 s, only with Gambit's opportunity attacks on).
+- House rule *New spells arrive prepared* (`preparedSpells`, default on): a prepared-kind spell created on a character is marked prepared (`preCreateItem`); CPR's automation leaves imported spells unprepared.

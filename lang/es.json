@@ -65,6 +65,10 @@
       "enlargeStrength": {
         "Name": "Agrandar: Fuerza dos veces",
         "Hint": "Un personaje agrandado suma su bonificador de Fuerza una segunda vez en lugar del 1d4 en ataques de Fuerza (los demás ataques conservan el 1d4). Se aplica al efecto de Agrandar al crearse."
+      },
+      "preparedSpells": {
+        "Name": "Los conjuros nuevos llegan preparados",
+        "Hint": "Un conjuro de tipo preparado añadido a un personaje se marca como preparado al crearse (las automatizaciones importadas suelen dejarlo sin preparar). Otros modos de preparación y los PNJ no se tocan."
       }
     },
     "Preset": {

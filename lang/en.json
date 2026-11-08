@@ -65,6 +65,10 @@
       "enlargeStrength": {
         "Name": "Enlarge: Strength twice",
         "Hint": "An enlarged character adds its Strength modifier a second time instead of the 1d4 on Strength attacks (other attacks keep the 1d4). Applied to the Enlarge effect when it is created."
+      },
+      "preparedSpells": {
+        "Name": "New spells arrive prepared",
+        "Hint": "A spell of the prepared kind added to a character is marked prepared on creation (imported automations tend to leave it unprepared). Other preparation modes and NPCs are untouched."
       }
     },
     "Preset": {

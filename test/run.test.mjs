@@ -52,7 +52,7 @@ function deps({ plans, bonus = {}, enemies = () => [enemy("rogue")], allies = ()
 }
 function reset() { order = []; moves = []; uses = []; places = []; calls.chat = []; settings.pauseBeforeAttack = false; settings.autoNextTurn = true; settings.enableTurns = true; settings.autoRecharge = "no"; settings.lairActions = true; game.user.isGM = true; }
 
-const { isAuto, runTurn, runLair, onCombatTurnChange, onRenderCombatTracker, pauseDialog, registerAutopilot, arrive, useActivity, rollRecharge, sentinelWatch } = await import("../scripts/ai/run.js");
+const { isAuto, runTurn, runLair, onCombatTurnChange, onRenderCombatTracker, pauseDialog, registerAutopilot, arrive, useActivity, rollRecharge, sentinelWatch, awaitOaRegions } = await import("../scripts/ai/run.js");
 
 test("isAuto: on unless the flag says false or a player owns the actor", () => {
   assert.equal(isAuto(combatant("g")), true);
@@ -776,4 +776,41 @@ test("useActivity with an attack mode sets it on the activity clone Midi rolls w
   await useActivity({ uuid: "A.sc" }, ["T.rogue"]);
   assert.deepEqual(cfgs, [["thrown", "thrown", "never"], [undefined, undefined, "never"]]);
   assert.equal(hookFns["dnd5e.preUseActivity"], undefined);
+});
+
+test("awaitOaRegions: with Gambit's opportunity attacks on, waits until its regions stop appearing (created asynchronously at combat start); nothing to wait for otherwise", async () => {
+  const regions = [];
+  globalThis.canvas.scene.regions = regions;
+  settings["Enable Opportunity Attack"] = true;
+  game.modules = { get: (id) => (id === "gambits-premades" ? { active: true } : undefined) };
+  setTimeout(() => regions.push({ flags: { "gambits-premades": { actorUuid: "Actor.f" } } }), 5);
+  setTimeout(() => regions.push({ flags: { "gambits-premades": { actorUuid: "Actor.r" } } }), 12);
+  let t = Date.now();
+  await awaitOaRegions({ poll: 3, max: 500 });
+  assert.equal(regions.length, 2); // returned once the count held still, well before the cap
+  assert.ok(Date.now() - t < 400);
+  regions.length = 0; t = Date.now();
+  await awaitOaRegions({ poll: 3, max: 30 }); // none ever appear (nobody with a melee weapon): the cap ends the wait
+  assert.ok(Date.now() - t >= 25);
+  settings["Enable Opportunity Attack"] = false; t = Date.now();
+  await awaitOaRegions({ poll: 3, max: 500 }); // Gambit's opportunity attacks off: no wait
+  assert.ok(Date.now() - t < 20);
+  game.modules = { get: () => ({}) };
+  delete globalThis.canvas.scene.regions;
+});
+
+test("runTurn waits for Gambit's opportunity attack regions before the first move of a fresh combat only (round 1, first turn): a monster acting first would otherwise walk past a fighter with no prompt", async () => {
+  reset();
+  const g1 = combatant("g1");
+  const d = { ...deps({ plans: { g1: attackPlan() } }), grace: async () => order.push("grace") };
+  await runTurn(makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })], 0), d);
+  assert.deepEqual(order.slice(0, 3), ["clear g1", "grace", "move g1"]);
+  reset();
+  const c = makeCombat([combatant("pc", { disposition: 1, playerOwner: true }), g1], 1);
+  await runTurn(c, d);
+  assert.ok(!order.includes("grace"));
+  reset();
+  const c2 = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })], 0); c2.round = 2;
+  await runTurn(c2, d);
+  assert.ok(!order.includes("grace"));
 });

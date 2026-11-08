@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 globalThis.Hooks = { once() {}, on() {}, callAll() {} };
 globalThis.ui = { notifications: { info() {}, warn() {} } };
 globalThis.CONFIG = { DND5E: {} };
-const settings = { enlargeStrength: true };
+const settings = { enlargeStrength: true, preparedSpells: true };
 globalThis.game = {
   i18n: { localize: (k) => k, format: (k, d) => `${k}:${JSON.stringify(d)}` },
   user: { isGM: true }, users: [], combat: null,
@@ -13,7 +13,7 @@ globalThis.game = {
 };
 globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: { wait: async () => null } } }, utils: { escapeHTML: (s) => s } };
 
-const { enlargeChanges, registerHouseRules } = await import("../scripts/houserules.js");
+const { enlargeChanges, registerHouseRules, prepareOnCreate } = await import("../scripts/houserules.js");
 const str = '[{"k":"roll.attack.classification","v":"weapon","o":"exact"},{"k":"roll.ability","v":"str","o":"exact"}]', notStr = '[{"k":"roll.attack.classification","v":"weapon","o":"exact"},{"o":"NOT","v":{"k":"roll.ability","v":"str","o":"exact"}}]';
 // dnd5e 6 checks the conditions of an attribute change at data preparation (no roll in sight), so the Strength bonus must be a
 // rule-type change (type "dnd5e.bonus", key "damage"): collected at every damage roll and filtered with that roll's data.
@@ -42,4 +42,21 @@ test("registerHouseRules rewrites an Enlarge effect as it is created, unless the
   settings.enlargeStrength = false;
   hooks.preCreateActiveEffect(effect, {}, {}, "u1");
   assert.equal(updates.length, 1);
+});
+
+test("prepareOnCreate: a spell of the prepared kind created on a character arrives prepared (CPR's automation leaves imported spells unprepared); other modes, other actors, prepared ones and the setting off are left alone", () => {
+  const item = ({ type = "spell", actor = "character", mode = "prepared", prepared = false } = {}) => {
+    const it = { type, parent: actor && { type: actor }, system: { preparation: { mode, prepared } }, updates: [], updateSource(u) { it.updates.push(u); } };
+    return it;
+  };
+  const a = item();
+  assert.equal(prepareOnCreate(a), true);
+  assert.deepEqual(a.updates, [{ "system.preparation.prepared": true }]);
+  for (const it of [item({ prepared: true }), item({ mode: "always" }), item({ mode: "pact" }), item({ actor: "npc" }), item({ actor: null }), item({ type: "feat" })]) {
+    assert.equal(prepareOnCreate(it), false); assert.deepEqual(it.updates, []);
+  }
+  settings.preparedSpells = false;
+  const b = item();
+  assert.equal(prepareOnCreate(b), false); assert.deepEqual(b.updates, []);
+  settings.preparedSpells = true;
 });
