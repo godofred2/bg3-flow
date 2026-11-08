@@ -42,7 +42,7 @@ export function activityInfo(activity) {
   const siblings = activity.item?.system?.activities?.size ?? activity.item?.system?.activities?.length ?? 1;
   const name = activity.item?.name ? (siblings > 1 && activity.name ? `${activity.item.name} (${activity.name})` : activity.item.name) : activity.name;
   const avg = averageDamage(activity), heal = activity.type === "heal";
-  const statuses = (activity.effects ?? []).flatMap((e) => [...(e.effect?.statuses ?? [])]).filter((s) => s in DENIAL);
+  const statuses = (activity.effects ?? []).flatMap((e) => [...((e.getEffect?.() ?? e.effect)?.statuses ?? [])]).filter((s) => s in DENIAL); // getEffect(): dnd5e 6.2 drops the getter
   return {
     ...(statuses.length ? { denial: Math.max(...statuses.map((s) => DENIAL[s])) } : {}),
     id: activity.uuid, uuid: activity.uuid, name, kind: activity.type, slot: activity.activation.type,
@@ -127,12 +127,44 @@ function squaresAlong(me, found, { taken, budget, foots, exclude = new Set(), br
 
 const findPath = async (me, goal) => (await me.object?.findMovementPath?.([{ x: me.x, y: me.y, elevation: me.elevation }, goal])?.promise) ?? null;
 
+/** Does Foundry's route step on a `blocking` square (an enemy's space) before its goal? Its pathfinder knows walls only. */
+function crosses(me, found, blocking, exclude) {
+  const w = widthOf(me), h = Math.max(1, Math.round(me.height ?? 1)), start = tlOffset(me);
+  return canvas.grid.getDirectPath(found.map((p) => ({ x: p.x, y: p.y }))).some((o) => !(o.i === start.i && o.j === start.j)
+    && footprint(o, w, h).some((k) => blocking.has(k) && !exclude.has(k)));
+}
+
+/** Breadth-first route over squares that keeps off `blocking` squares and move-blocking walls, to the nearest of `goals` (offset keys),
+ *  within the budget in squares. Top-left points from the start, or null. ponytail: uniform step cost; measurePath prices the result. */
+function detour(me, goals, blocking, budget) {
+  const w = widthOf(me), h = Math.max(1, Math.round(me.height ?? 1)), start = tlOffset(me), rect = canvas.dimensions.sceneRect;
+  const limit = Math.ceil(budget / (canvas.dimensions.distance || 5)) + 1, wall = CONFIG.Canvas?.polygonBackends?.move;
+  const centre = (o) => me.getCenterPoint(canvas.grid.getTopLeftPoint(o));
+  const open = (a, b) => !wall?.testCollision?.(centre(a), centre(b), { type: "move", mode: "any" });
+  const seen = new Set([key(start)]), queue = [[start, []]];
+  while (queue.length) {
+    const [o, route] = queue.shift();
+    if (route.length >= limit) continue;
+    for (const n of canvas.grid.getAdjacentOffsets(o)) {
+      const k = key(n);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const tl = canvas.grid.getTopLeftPoint(n);
+      if (!inRect(tl, rect) || footprint(n, w, h).some((q) => blocking.has(q)) || !open(o, n)) continue;
+      const next = [...route, { x: tl.x, y: tl.y, elevation: me.elevation ?? 0 }];
+      if (goals.has(k)) return [{ x: me.x, y: me.y, elevation: me.elevation }, ...next];
+      queue.push([n, next]);
+    }
+  }
+  return null;
+}
+
 /**
  * Squares (top-left offsets of `me`) along Foundry's path to `enemy`, plus the free neighbours of the last one that still
  * touch the enemy (so group mates converging on one square spread around it). Each carries the route to reach it.
  * ponytail: branch squares assume a straight step from the last square; no second pathfinding call.
  */
-async function pathTo(me, enemy, taken, budget, foots) {
+async function pathTo(me, enemy, taken, budget, foots, blocking = new Set()) {
   const w = widthOf(me), h = Math.max(1, Math.round(me.height ?? 1));
   const goal = { x: enemy.x, y: enemy.y, elevation: enemy.elevation };
   const start = tlOffset(me), enemyFoot = new Set(footOf(enemy));
@@ -146,6 +178,8 @@ async function pathTo(me, enemy, taken, budget, foots) {
     }));
     found = tries.filter(Boolean).sort((a, b) => a.cost - b.cost)[0]?.p ?? [{ x: me.x, y: me.y, elevation: me.elevation }, goal];
   }
+  // A creature's space cannot be walked through (the move would be refused and the monster would never walk): go round it.
+  if (crosses(me, found, blocking, enemyFoot)) found = detour(me, new Set(goalsAround(enemyFoot, w, h, taken, start).map(key)), blocking, budget) ?? found;
   return squaresAlong(me, found, { taken, budget, foots, exclude: enemyFoot, branchesTo: enemyFoot });
 }
 
@@ -233,8 +267,9 @@ export async function snapshot(combat, combatant, reserved = new Set()) {
     enemies.push({ ...e, visible: sees(doc, t), oa: oaOf(t.actor, me.ac, e.tunnelFighter), ...(me.lair ? { threat: threatOf(t.actor, me) } : {}) }); // threat is read by the lair slot only: no walk for the rest
   }
   const foots = enemies.map((e) => [e.id, new Set(footOf(tokensById[e.id]))]); // every square measures its distance to every enemy
-  for (const e of enemies) if (e.visible) paths[e.id] = await pathTo(doc, tokensById[e.id], taken, budget, foots);
-  for (const a of allies) if (a.id !== me.id && a.hp < a.maxHp) paths[a.id] = await pathTo(doc, tokensById[a.id], taken, budget, foots); // a path only to the wounded
+  const blocking = new Set(foots.flatMap(([, f]) => [...f])); // enemies' squares cannot be walked through; allies' can
+  for (const e of enemies) if (e.visible) paths[e.id] = await pathTo(doc, tokensById[e.id], taken, budget, foots, blocking);
+  for (const a of allies) if (a.id !== me.id && a.hp < a.maxHp) paths[a.id] = await pathTo(doc, tokensById[a.id], taken, budget, foots, blocking); // a path only to the wounded
   // Retreat squares: free neighbours of the monster that keep 10 ft from every visible enemy (a clever archer steps back there).
   const w = widthOf(doc), h = Math.max(1, Math.round(doc.height ?? 1)), rect = canvas.dimensions.sceneRect, seen = enemies.filter((e) => e.visible);
   const retreats = [];

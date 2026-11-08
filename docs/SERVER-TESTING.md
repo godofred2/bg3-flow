@@ -215,7 +215,9 @@ Goal: see whether bg3-flow keeps working with the automation stack that Plutoniu
 - [ ] X14. A reaction that stops a monster between squares: X12's final setup (goblin with 30 temp hp, AC 25 then 5 on Gambit's prompt). Expected after the stop: no "Rogue has a reaction available" line and no prompt on Player1; a position trace ending on a whole square; the goblin's second whisper from that square and its attack (or no attack) consistent with Midi's range (no "Midi refused the use").
 Report: pass/fail per step, the list of conflicts found (double prompts, broken prompts, errors), and your recommendation: keep the stack, keep only some of it (which), or drop it.
 
-### 7f. Stack configuration: bg3-flow first, Plutonium imports work as they come (run on v0.9.5; P9-P11 new in v0.9.6)
+### 7f. Stack configuration: bg3-flow first, Plutonium imports work as they come (run on v0.9.5; P9-P11 new in v0.9.6; P12 new in v0.9.7)
+
+Result of the v0.9.6 run: P11 pass (72 s reaction chain inside the cap). P9 partial: the wait worked, but with the Rogue on the Fighter's row Foundry's route went through the Fighter's square, the move was refused at once and the goblin attacked the Fighter instead (v0.9.7: a route through an enemy's space is replaced by a breadth-first detour around enemies' squares and move walls, P12); and once the wait ended between two of Gambit's regions (they come ~250 ms apart; v0.9.7: two unchanged polls, or every combatant's region). P10 fail: dnd5e 6 spells carry `system.method` and `system.prepared` 0/1/2, not `preparation` (v0.9.7: fixed, the system's spellcasting config says which methods prepare). Also fixed: dnd5e's `getEffect()` deprecation logged on every autopilot turn. Noted: the world comes up paused after launch and the autopilot plays regardless (the GM unpauses; players cannot move while paused, so an encounter cannot start from them).
 
 Result of the v0.9.5 run: P0, P2, P7 pass; P1, P4, P5, P6 partial; P3 fail. The recipe is in the run's report (summarised at the end of this section). Ours, fixed in v0.9.6: a chain of player reactions (Gambit's Counterspell 15 s, Shield 30 s, Hellish Rebuke 15 s) passed the autopilot's 60 s cap on a use and stopped the Priest's turn: the cap is 180 s now; Gambit's opportunity attack regions are created asynchronously at combat start, so a monster with the first turn walked past the Fighter with no prompt: the autopilot now waits for them (at most 3 s) before the first move of a fresh combat; CPR-automated spells added from the sidebar stayed unprepared: a new house rule marks a prepared-kind spell prepared when it is created on a character (setting *New spells arrive prepared*). Not ours and accepted: CAT has no per-item exclusion, so CPR or Gambit's own the emanations (Spirit Guardians, Moonbeam, Cloud of Daggers...): CPR's spare allies on their own, without our prompt, same outcome; Plutonium's plain Enlarge/Reduce lets a willing target save (apply CPR through CAT's Item Medkit); plain Uncanny Dodge does nothing (Midi's sample item); Gambit's Counterspell prompts on cantrips too; missing animation packs (JB2A, jaamod, animated-spell-effects-cartoon) give red Sequencer errors on Fireball, Hellish Rebuke and Spiritual Weapon.
 
@@ -233,7 +235,8 @@ What "bg3-flow first" means concretely: the Midi preset bg3-flow applies from it
 - [ ] P7. Regression with the stack configured: encounter start from the Rogue walking in, shared turn line and markers, one lair round (Goblin 1's lair as in 7d L1), one Sentinel stop (as X14). All as before.
 - [ ] P8. The recipe: list every setting changed in P1-P4 with module, menu path and value, plus the per-item exclusions and the items that needed a swap in P5. Leave bg3-flow-test configured this way.
 - [ ] P9. First turn of a fresh combat (v0.9.6): the imported Goblin (autopilot on) wins initiative in a combat started by the encounter (the Rogue walks in), the Fighter with Gambit's Sentinel adjacent to the goblin's path, the Rogue 20 ft behind. Expected: a short pause (under 3 s) before the goblin moves, then Gambit's opportunity attack prompt for the Fighter as in X14. Report the console times of the shared turn line and the first move.
-- [ ] P10. Prepared on creation (v0.9.6): drag the CPR-automated Shield and Bless from the sidebar onto the Fighter and the Cleric: both arrive prepared with no hand edit; Midi offers Shield on the next hit. Then a spell with mode *always prepared* or a warlock's *pact* spell: untouched. On an NPC (the Priest): untouched.
+- [ ] P10. Prepared on creation (v0.9.6; fixed for dnd5e 6 data in v0.9.7): drag the CPR-automated Shield and Bless from the sidebar onto the Fighter and the Cleric: both arrive with `system.prepared` 1 and no hand edit; Midi offers Shield on the next hit. A spell dropped on the Priest (NPC): dnd5e's own 1, untouched by us. Setting off, Bless again: 0. (dnd5e rewrites always-prepared and pact copies on a drop onto a Cleric, so those cannot be tested that way.)
+- [ ] P12. Detour round an enemy (v0.9.7): P9's layout with the Rogue on the Fighter's row (goblin (11,15), Fighter (10,15), Rogue (6,15)). Expected: the goblin's route leaves the row and comes back next to the Rogue instead of through the Fighter's square; it walks (Gambit's prompt for the Fighter as it leaves its reach), no refused move, and the whisper names the Rogue. Report the route squares from the console or the trace.
 - [ ] P11. Reaction chain within the cap (v0.9.6): the Priest casts Guiding Bolt at the Fighter with the Cleric's Counterspell (Gambit's) and the Fighter's Shield both offered and answered late (10 s each): the use completes, no "Midi did not finish the use" whisper, the turn passes.
 Report: pass/fail per step, the recipe, and what could not be made to work as-is.
 
@@ -277,7 +280,7 @@ X0 ...
 X14 ...
 P0 ...
 ...
-P11 ...
+P12 ...
 Console lines containing [bg3-flow]:
 <paste>
 Other console errors during the run:

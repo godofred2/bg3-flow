@@ -338,3 +338,10 @@ Midi does the rest).
 - The cap on one autopilot use is 180 s (was 60): a chain of player reaction prompts is legitimate waiting, not a stall.
 - Before the first move of a fresh combat (round 1, first turn) the autopilot waits for Gambit's opportunity attack regions (created asynchronously at combat start; `awaitOaRegions`, at most 3 s, only with Gambit's opportunity attacks on).
 - House rule *New spells arrive prepared* (`preparedSpells`, default on): a prepared-kind spell created on a character is marked prepared (`preCreateItem`); CPR's automation leaves imported spells unprepared.
+
+## Amendment 2026-11-08 (v0.9.7: detour round enemies, dnd5e 6 spell data, region wait)
+
+- A route Foundry draws through an enemy's space is replaced by a breadth-first detour over squares that avoids enemies' squares and move walls, to the nearest free square touching the target, within the budget (`detour` in board.js; Foundry's pathfinder knows walls only, and a move through a creature is refused). Allies' squares are still walked through.
+- `prepareOnCreate` reads dnd5e 6's `system.method` / `system.prepared` (0/1/2); which methods prepare comes from `CONFIG.DND5E.spellcasting[method].prepares` ("spell" when absent).
+- `awaitOaRegions` returns when every combatant has a region, or when the count held still for two polls (Gambit's creates them ~250 ms apart).
+- Activity effects are read through `getEffect()` (dnd5e 6.2 drops the getter).

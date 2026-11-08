@@ -21,7 +21,7 @@ const dist = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) / SIZE
 globalThis.CONFIG = {
   DND5E: { movementTypes: { walk: {} }, abilities: {} },
   Token: { movement: { actions: { walk: {} } } },
-  Canvas: { polygonBackends: { sight: { testCollision: (a, b) => b.y > 300 } } }
+  Canvas: { polygonBackends: { sight: { testCollision: (a, b) => b.y > 300 }, move: { testCollision: (a, b) => b.y > 300 } } }
 };
 globalThis.canvas = {
   ready: true, dimensions: { size: SIZE, distance: FT, sceneRect: { x: 0, y: 0, width: 3000, height: 3000 } },
@@ -226,7 +226,7 @@ test("snapshot: grid, centres, allies with paths to the wounded ones, retreat sq
   assert.deepEqual([b.me.cx, b.me.cy, b.me.w], [350, 150, 1]);
   assert.deepEqual(b.enemies.map((e) => [e.cx, e.cy, e.w]), [[450, 150, 1], [50, 150, 1]]);
   assert.deepEqual(b.allies.map((a) => [a.id, a.hp, a.maxHp, a.distance]), [["goblin", 7, 7, 0], ["goblin2", 3, 7, 15]]);
-  assert.deepEqual(b.paths.goblin2.slice(0, 2).map((s) => [s.x, s.occupied]), [[400, true], [500, false]]); // through the rogue's square (occupied), one free square short of the ally, then branch squares
+  assert.deepEqual(b.paths.goblin2.slice(0, 2).map((s) => [s.x, s.occupied]), [[400, false], [500, false]]); // round the rogue's square (an enemy's space cannot be walked through), one free square short of the ally, then branch squares
   // retreats: neighbours of (1,3) that keep 10 ft from the rogue at (1,4) and 10 ft from the wizard: column 2 only
   assert.deepEqual(b.retreats.map((r) => [r.x, r.y, r.cost, r.distances.rogue]).sort(), [[200, 0, 5, 10], [200, 100, 5, 10], [200, 200, 5, 10]]);
   assert.deepEqual(b.retreats[0].waypoints, [{ x: b.retreats[0].x, y: b.retreats[0].y, elevation: 0 }]);
@@ -371,4 +371,23 @@ test("snapshot: a token left between squares (a reaction stopped it) stands on t
   const combat = { combatants: [goblin, rogue].map((t) => combatantOf(t)) };
   const b = await snapshot(combat, combat.combatants[0], new Set());
   assert.equal(b.enemies[0].distance, 10); // squares 9 and 7: not adjacent (Midi measures 7.7 ft and refuses a 5 ft attack)
+});
+
+test("snapshot: a route Foundry draws through an enemy's square (the fighter between the goblin and the rogue) is replaced by a detour around it; allies are walked through as before", async () => {
+  const goblin = token("goblin", { x: 0, disposition: -1, speed: 30 });
+  const fighter = token("fighter", { x: 200, disposition: 1 });
+  const rogue = token("rogue", { x: 400, disposition: 1 });
+  canvas.scene.tokens.contents = [goblin, fighter, rogue];
+  const combat = { combatants: [goblin, fighter, rogue].map((t) => combatantOf(t)) };
+  const b = await snapshot(combat, combat.combatants[0], new Set());
+  const r = b.paths.rogue;
+  assert.ok(!r.some((s) => s.x === 200 && s.y === 0), "the fighter's square is not on the route"); // the move would be refused (creatures block) and the goblin would never walk
+  assert.deepEqual(r.slice(0, 3).map((s) => [s.x, s.y, s.cost, s.distance]), [[100, 0, 5, 15], [200, 100, 10, 10], [300, 0, 15, 5]]); // round the fighter, back onto the row next to the rogue
+  assert.deepEqual(r[2].waypoints, [{ x: 100, y: 0, elevation: 0 }, { x: 200, y: 100, elevation: 0 }, { x: 300, y: 0, elevation: 0 }]);
+  assert.deepEqual(b.paths.fighter.slice(0, 1).map((s) => [s.x, s.y, s.cost]), [[100, 0, 5]]); // straight at the fighter itself
+});
+
+test("activityInfo reads an activity's effects through getEffect() (dnd5e 6.2 drops the effect getter), falling back to the old property", () => {
+  const viaGetter = { getEffect: () => ({ statuses: new Set(["restrained"]) }) };
+  assert.equal(activityInfo(act({ type: "save", activation: "lair", save: { dc: 15, ability: "dex" }, effects: [viaGetter] })).denial, 0.5);
 });

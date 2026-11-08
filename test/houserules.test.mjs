@@ -44,17 +44,22 @@ test("registerHouseRules rewrites an Enlarge effect as it is created, unless the
   assert.equal(updates.length, 1);
 });
 
-test("prepareOnCreate: a spell of the prepared kind created on a character arrives prepared (CPR's automation leaves imported spells unprepared); other modes, other actors, prepared ones and the setting off are left alone", () => {
-  const item = ({ type = "spell", actor = "character", mode = "prepared", prepared = false } = {}) => {
-    const it = { type, parent: actor && { type: actor }, system: { preparation: { mode, prepared } }, updates: [], updateSource(u) { it.updates.push(u); } };
+test("prepareOnCreate: a spell of a preparing method created on a character arrives prepared (dnd5e 6: system.method and system.prepared 0/1/2; CPR's automation leaves imported spells at 0); other methods, other actors, prepared ones and the setting off are left alone", () => {
+  const item = ({ type = "spell", actor = "character", method = "spell", prepared = 0 } = {}) => {
+    const it = { type, parent: actor && { type: actor }, system: { method, prepared }, updates: [], updateSource(u) { it.updates.push(u); } };
     return it;
   };
   const a = item();
   assert.equal(prepareOnCreate(a), true);
-  assert.deepEqual(a.updates, [{ "system.preparation.prepared": true }]);
-  for (const it of [item({ prepared: true }), item({ mode: "always" }), item({ mode: "pact" }), item({ actor: "npc" }), item({ actor: null }), item({ type: "feat" })]) {
+  assert.deepEqual(a.updates, [{ "system.prepared": 1 }]);
+  for (const it of [item({ prepared: 1 }), item({ prepared: 2 }), item({ method: "pact" }), item({ method: "innate" }), item({ method: "atwill" }), item({ actor: "npc" }), item({ actor: null }), item({ type: "feat" })]) {
     assert.equal(prepareOnCreate(it), false); assert.deepEqual(it.updates, []);
   }
+  CONFIG.DND5E.spellcasting = { spell: { prepares: true }, pact: { prepares: true }, innate: { prepares: false } }; // the system says which methods prepare (2024 pact magic does)
+  const p = item({ method: "pact" });
+  assert.equal(prepareOnCreate(p), true); assert.deepEqual(p.updates, [{ "system.prepared": 1 }]);
+  assert.equal(prepareOnCreate(item({ method: "innate" })), false);
+  delete CONFIG.DND5E.spellcasting;
   settings.preparedSpells = false;
   const b = item();
   assert.equal(prepareOnCreate(b), false); assert.deepEqual(b.updates, []);

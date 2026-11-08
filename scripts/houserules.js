@@ -28,9 +28,10 @@ export function enlargeChanges(name, changes) {
  *  (always, pact, at will, innate), NPCs and spells already prepared are left alone. Returns whether it changed the item. */
 export function prepareOnCreate(item) {
   if (game.settings.get(MODULE_ID, "preparedSpells") === false) return false;
-  const prep = item.system?.preparation;
-  if (item.type !== "spell" || item.parent?.type !== "character" || prep?.mode !== "prepared" || prep.prepared) return false;
-  item.updateSource({ "system.preparation.prepared": true });
+  const sys = item.system ?? {}; // dnd5e 6: `method` (spell, pact, innate, atwill...) and `prepared` 0/1/2; the system says which methods prepare
+  const prepares = CONFIG.DND5E?.spellcasting?.[sys.method]?.prepares ?? sys.method === "spell";
+  if (item.type !== "spell" || item.parent?.type !== "character" || !prepares || sys.prepared) return false;
+  item.updateSource({ "system.prepared": 1 });
   return true;
 }
 

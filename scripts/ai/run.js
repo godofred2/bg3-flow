@@ -193,11 +193,14 @@ const actWith = ({ combat, reserved, stale, snap, pick, use, pause }) => async (
 export async function awaitOaRegions({ poll = 250, max = 3000 } = {}) {
   if (!game.modules?.get?.("gambits-premades")?.active || !game.settings.get("gambits-premades", "Enable Opportunity Attack")) return;
   const count = () => [...(canvas.scene?.regions ?? [])].filter((r) => r.flags?.["gambits-premades"]?.actorUuid).length;
-  let last = -1;
+  const want = [...(game.combat?.combatants ?? [])].filter((c) => c.token).length; // one region per combatant at most
+  let last = -1, still = 0;
   for (let t = 0; t < max; t += poll) {
     const n = count();
-    if (n > 0 && n === last) return;
+    if (n > 0 && n >= want) return;
+    still = n === last ? still + 1 : 0; // Gambit's makes them ~250 ms apart: one unchanged poll can fall in a gap, two cannot
     last = n;
+    if (n > 0 && still >= 2) return;
     await sleep(poll);
   }
 }

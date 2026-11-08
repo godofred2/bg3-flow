@@ -783,12 +783,19 @@ test("awaitOaRegions: with Gambit's opportunity attacks on, waits until its regi
   globalThis.canvas.scene.regions = regions;
   settings["Enable Opportunity Attack"] = true;
   game.modules = { get: (id) => (id === "gambits-premades" ? { active: true } : undefined) };
-  setTimeout(() => regions.push({ flags: { "gambits-premades": { actorUuid: "Actor.f" } } }), 5);
-  setTimeout(() => regions.push({ flags: { "gambits-premades": { actorUuid: "Actor.r" } } }), 12);
+  game.combat = { combatants: [{ token: {} }, { token: {} }, { token: {} }, { token: {} }] }; // four combatants: Gambit's makes up to four regions
+  const region = (u) => ({ flags: { "gambits-premades": { actorUuid: u } } });
+  setTimeout(() => regions.push(region("Actor.g")), 5);
+  setTimeout(() => regions.push(region("Actor.c")), 18); // gaps longer than one poll: one unchanged poll must not end the wait (Gambit's creates them ~250 ms apart)
+  setTimeout(() => regions.push(region("Actor.r")), 31);
   let t = Date.now();
-  await awaitOaRegions({ poll: 3, max: 500 });
-  assert.equal(regions.length, 2); // returned once the count held still, well before the cap
+  await awaitOaRegions({ poll: 10, max: 500 });
+  assert.equal(regions.length, 3); // returned once the count held still for two polls, well before the cap
   assert.ok(Date.now() - t < 400);
+  regions.length = 0; t = Date.now();
+  setTimeout(() => regions.push(region("a"), region("b"), region("c"), region("d")), 5);
+  await awaitOaRegions({ poll: 40, max: 500 });
+  assert.ok(Date.now() - t < 90, "every combatant has its region: no need to wait for stability (two more polls would be 120 ms)");
   regions.length = 0; t = Date.now();
   await awaitOaRegions({ poll: 3, max: 30 }); // none ever appear (nobody with a melee weapon): the cap ends the wait
   assert.ok(Date.now() - t >= 25);
