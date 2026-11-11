@@ -14,6 +14,7 @@ Este módulo hace que nuestros combates en Foundry se parezcan a Baldur's Gate 3
 
 - Todos los de tu bando que van seguidos en la iniciativa comparten **un solo turno**, como el grupo en BG3. El chat dice **Shared turn: Cleric, Rogue**. Moveos y actuad en el orden que queráis.
 - Todos los del grupo que actúa muestran el **marcador de turno** bajo su ficha, y un **círculo azul** enseña hasta dónde puede andar todavía cada uno.
+- Sobre tu ficha, un **punto verde** es tu acción y un **triángulo naranja** tu acción adicional, como en BG3. Se vacían al gastarse, y el juego rechaza una segunda acción ("A Rogue no le queda acción este turno"). Ataque extra te sigue dando tus dos golpes; un ataque con la mano torpe gasta la acción adicional; Acción impetuosa te da otra acción.
 - No puedes mover una ficha cuando no es el turno de tu grupo: Foundry dice "Not your turn".
 - El movimiento se **mide**. Anda tu velocidad y no más; el terreno difícil cuesta el doble, como en el juego. Si intentas ir más lejos, el movimiento se rechaza y el mensaje dice cuánto llevas gastado.
 - **Carrera** (Dash) es una acción de tu ficha: úsala y tu movimiento se dobla ese turno.

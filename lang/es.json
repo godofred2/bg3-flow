@@ -73,6 +73,13 @@
       "targetPicker": {
         "Name": "Selector de objetivo",
         "Hint": "Un conjuro o ataque de objetivo único usado sin nada marcado muestra su alcance y toma los objetivos de tus clics, como en BG3. Esc o clic derecho cancela el uso."
+      },
+      "actionEconomy": {
+        "Name": "Economía de acciones",
+        "Hint": "Una acción y una acción adicional por turno (con Ataque extra, mano torpe y Acción impetuosa), mostradas sobre la ficha como un punto verde y un triángulo naranja. Jugadores: a los jugadores se les bloquea, al DM se le avisa. Mostrar: solo los iconos. Los monstruos del autopiloto no se comprueban.",
+        "Players": "Jugadores bloqueados, DM avisado",
+        "Display": "Solo iconos",
+        "Off": "Apagado"
       }
     },
     "Preset": {
@@ -81,6 +88,11 @@
       "Title": "Preset de automatización BG3",
       "Confirm": "<p>Esto sobrescribe la configuración de flujo de Midi QOL para que ataques, daño y salvaciones se resuelvan sin preguntas, con todos los dados públicos, las plantillas apuntando a todos los que estén dentro, y las preguntas de reacción (Escudo, Esquiva asombrosa, ataques de oportunidad) activas con 30 segundos de espera. También desactiva la agrupación de iniciativa propia de dnd5e.</p><p>Puedes ajustar cualquier opción después. ¿Aplicar?</p>",
       "Done": "Preset de automatización BG3 aplicado."
+    },
+    "Economy": {
+      "NoAction": "A {name} no le queda acción este turno.",
+      "NoBonus": "A {name} no le queda acción adicional este turno.",
+      "GmNote": "A {name} no le queda {kind} este turno (DM: adelante)."
     },
     "Picker": {
       "Pick": "{name}: haz clic en un objetivo a {range} o menos ({count} en total). Esc o clic derecho cancela.",

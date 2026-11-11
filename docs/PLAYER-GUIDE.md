@@ -14,6 +14,7 @@ This module makes our Foundry combats feel like Baldur's Gate 3. You do not need
 
 - Everyone on your side who is next to each other in the initiative order shares **one turn**, like a party in BG3. The chat says **Shared turn: Cleric, Rogue**. Move and act in any order between you.
 - Everyone in the acting group shows the **turn marker** under their token, and a **blue circle** shows how far each of you can still walk this turn.
+- Above your token, a **green dot** is your action and an **orange triangle** your bonus action, like in BG3. They go hollow when spent, and the game refuses a second action ("Rogue has no action left this turn"). Extra Attack still gives you your two swings; an off-hand attack takes the bonus action; Action Surge gives you another action.
 - You cannot move a token when it is not your group's turn: Foundry says "Not your turn".
 - Your movement is **measured**. Walk your speed and no more; difficult terrain costs extra, like in the game. If you try to go further, the move is refused and the message tells you how much you used.
 - **Dash** is an action on your sheet: use it and your movement doubles for the turn.

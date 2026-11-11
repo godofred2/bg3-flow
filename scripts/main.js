@@ -6,6 +6,7 @@ import { startEncounter, registerEncounters, markEncounter } from "./encounters.
 import { registerAutopilot, runTurn } from "./ai/run.js";
 import { registerHouseRules } from "./houserules.js";
 import { registerTargeting } from "./targeting.js";
+import { registerEconomy } from "./economy.js";
 
 export const MODULE_ID = "bg3-flow";
 
@@ -56,6 +57,10 @@ Hooks.once("init", () => {
   reg("enlargeStrength", Boolean, true);
   reg("preparedSpells", Boolean, true);
   reg("targetPicker", Boolean, true);
+  game.settings.register(MODULE_ID, "actionEconomy", {
+    name: L("Settings.actionEconomy.Name"), hint: L("Settings.actionEconomy.Hint"), scope: "world", config: true, type: String, default: "players",
+    choices: { players: L("Settings.actionEconomy.Players"), display: L("Settings.actionEconomy.Display"), off: L("Settings.actionEconomy.Off") }
+  });
   game.settings.registerMenu(MODULE_ID, "preset", {
     name: L("Preset.Menu"), label: L("Preset.Menu"), hint: L("Preset.Hint"),
     icon: "fas fa-bolt", type: PresetMenu, restricted: true
@@ -80,6 +85,7 @@ Hooks.once("ready", () => {
   if (game.settings.get(MODULE_ID, "enableAutopilot")) registerAutopilot();
   registerHouseRules();
   registerTargeting();
+  registerEconomy();
   game.modules.get(MODULE_ID).api = { toggleDash, startEncounter, markEncounter, runTurn };
   log("ready");
 });

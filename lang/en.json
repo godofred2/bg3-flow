@@ -73,6 +73,13 @@
       "targetPicker": {
         "Name": "Target picker",
         "Hint": "A single-target spell or attack used with nothing targeted shows its range and takes its targets from your clicks, like BG3. Esc or a right click cancels the use."
+      },
+      "actionEconomy": {
+        "Name": "Action economy",
+        "Hint": "One action and one bonus action per turn (Extra Attack, off-hand attacks and Action Surge understood), shown above the token as a green dot and an orange triangle. Players: players are stopped, the GM is warned. Display: icons only. Monsters on the autopilot are never checked.",
+        "Players": "Players stopped, GM warned",
+        "Display": "Icons only",
+        "Off": "Off"
       }
     },
     "Preset": {
@@ -81,6 +88,11 @@
       "Title": "BG3 automation preset",
       "Confirm": "<p>This overwrites Midi QOL's workflow settings so attacks, damage and saves resolve with no prompts, all dice public, templates auto-target everyone inside, and reaction prompts (Shield, Uncanny Dodge, opportunity attacks) are on with a 30 second timeout. It also turns off dnd5e's own initiative grouping.</p><p>You can tweak any setting afterwards. Apply?</p>",
       "Done": "BG3 automation preset applied."
+    },
+    "Economy": {
+      "NoAction": "{name} has no action left this turn.",
+      "NoBonus": "{name} has no bonus action left this turn.",
+      "GmNote": "{name} has no {kind} left this turn (GM: going ahead)."
     },
     "Picker": {
       "Pick": "{name}: click a target within {range} ({count} needed). Esc or right click cancels.",
