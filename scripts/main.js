@@ -84,8 +84,8 @@ Hooks.once("ready", () => {
   if (game.settings.get(MODULE_ID, "enableEncounters")) registerEncounters();
   if (game.settings.get(MODULE_ID, "enableAutopilot")) registerAutopilot();
   registerHouseRules();
+  registerEconomy(); // before the picker: a player out of actions is refused before being asked to pick a target
   registerTargeting();
-  registerEconomy();
   game.modules.get(MODULE_ID).api = { toggleDash, startEncounter, markEncounter, runTurn };
-  log("ready");
+  log(`v${game.modules.get(MODULE_ID)?.version} ready`);
 });

@@ -4,7 +4,7 @@ import { rangeOf } from "./ai/board.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 
-/** What the picker must collect for this use ({ count, range } in scene units), or null when nothing is to be picked. */
+/** What the picker must collect for this use ({ count, range, self } in scene units; `self`: the caster may click itself), or null when nothing is to be picked. */
 export function needsPick({ activity, usage, targeted }) {
   if (game.settings.get(MODULE_ID, "targetPicker") === false || targeted > 0 || usage?.midiOptions?.targetUuids?.length) return null;
   if (!activity || activity.target?.template?.type) return null; // an area: the template picks
@@ -12,20 +12,20 @@ export function needsPick({ activity, usage, targeted }) {
   if (affects === "self" || units === "self") return null;
   if (!affects && activity.type !== "attack") return null; // nothing to aim at (a weapon's attack leaves affects blank)
   const count = Math.max(1, parseInt(activity.target?.affects?.count) || 1);
-  return { count, range: ["any", "spec"].includes(units) ? Infinity : rangeOf(activity) };
+  return { count, range: ["any", "spec"].includes(units) ? Infinity : rangeOf(activity), self: activity.type !== "attack" && affects !== "enemy" };
 }
 
 /** midi-qol.preTargetingV2: with nothing targeted, pick before Midi reads the targets; a cancelled pick aborts the use (nothing spent). */
 export async function onPreTargetingPick({ workflow, usage }, { pick = pickTargets } = {}) {
   const need = needsPick({ activity: workflow?.activity, usage, targeted: game.user.targets?.size ?? 0 });
   if (!need || !workflow?.token) return;
-  const picked = await pick({ token: workflow.token, range: need.range, count: need.count, name: workflow.item?.name ?? workflow.activity.name });
+  const picked = await pick({ token: workflow.token, range: need.range, count: need.count, self: need.self, name: workflow.item?.name ?? workflow.activity.name });
   if (!picked?.length) { log("target picker: cancelled"); return false; }
   log(`target picker: ${picked.map((t) => t.name).join(", ")}`);
 }
 
 /** Range circle round the caster, a prompt, and clicks on creatures until `count` are targeted. Esc or a right click cancels (null). */
-export function pickTargets({ token, range, count, name }) {
+export function pickTargets({ token, range, count, name, self = false }) {
   return new Promise((resolve) => {
     const picked = [], view = canvas.app?.view ?? canvas.app?.canvas;
     const g = drawRange(token, range);
@@ -41,7 +41,7 @@ export function pickTargets({ token, range, count, name }) {
     const onDown = (ev) => {
       if (ev.button === 2) return finish(null);
       const t = canvas.tokens.hover; // the token under the pointer: Foundry tracks it for every visible token
-      if (!t || t === token || picked.includes(t) || !t.visible) return;
+      if (!t || (t === token && !self) || picked.includes(t) || !t.visible) return; // yourself only for what can affect you (a touch heal, a potion)
       const d = MidiQOL.computeDistance?.(token, t, { wallsBlock: false }) ?? 0;
       if (d > range) { ui.notifications.warn(L("Picker.OutOfRange", { name: t.name, distance: Math.round(d), range, units })); return; }
       t.setTarget(true, { user: game.user, releaseOthers: picked.length === 0, groupSelection: true });

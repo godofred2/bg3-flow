@@ -34,17 +34,22 @@ export function canSpend(state, cost, allowance) {
   return open || state.extra > 0 ? { ok: true } : { ok: false, kind: "action" };
 }
 
-/** The state after paying `cost` (checked with canSpend first). */
+/** The state after paying `cost`. What cannot be paid (the GM going ahead) leaves the state as it is: spent, never negative. */
 export function spend(state, cost, allowance) {
   if (cost === "free") return state;
   if (cost === "bonus") return { ...state, bonus: true };
   if (cost === "attack") {
     if (!state.action && state.attacks < allowance.attacks) return { ...state, attacks: state.attacks + 1 };
-    return { ...state, attacks: 1, action: false, extra: state.extra - 1 }; // a fresh action from Action Surge
+    return state.extra > 0 ? { ...state, attacks: 1, action: false, extra: state.extra - 1 } : state; // a fresh action from Action Surge
   }
   if (!state.action && state.attacks === 0) return { ...state, action: true };
-  return { ...state, attacks: 0, action: true, extra: state.extra - 1 };
+  return state.extra > 0 ? { ...state, attacks: 0, action: true, extra: state.extra - 1 } : state;
 }
+
+/** A weapon that offers dnd5e's off-hand mode (light): with the action gone, its swing may be the bonus-action off-hand attack. */
+const offersOffhand = (workflow) => ((workflow?.item ?? workflow?.activity?.item)?.system?.attackModes ?? []).some((m) => /offhand/.test(String(m?.value ?? m)));
+/** The attack mode once rolled: Midi's field, else dnd5e's roll options (set right after the attack roll). */
+const modeOf = (workflow) => workflow?.attackMode ?? workflow?.attackRoll?.options?.attackMode;
 
 /** The combatant acting now for this actor, or null when it is not its group's turn (a reaction, an opportunity attack). */
 function actingCombatant(actor) {
@@ -65,7 +70,7 @@ export async function onPreTargetingEconomy({ workflow, usage }) {
   if (cost === "free") return;
   const allowance = allowanceOf(c.actor), state = stateOf(c);
   let check = canSpend(state, cost, allowance);
-  if (!check.ok && cost === "attack" && canSpend(state, "bonus", allowance).ok) check = { ok: true }; // it may be the off-hand swing
+  if (!check.ok && cost === "attack" && offersOffhand(workflow) && canSpend(state, "bonus", allowance).ok) check = { ok: true }; // a light weapon: it may be the off-hand swing
   if (check.ok) return;
   const name = c.token?.name ?? c.name;
   if (game.user.isGM) { ui.notifications.warn(L("Economy.GmNote", { name, kind: check.kind })); return; }
@@ -73,15 +78,21 @@ export async function onPreTargetingEconomy({ workflow, usage }) {
   return false;
 }
 
-/** midi-qol.RollComplete: a finished use on the actor's turn is paid into the combatant's flag; Action Surge grants an extra action. */
+/**
+ * midi-qol.AttackRollComplete (the mode is known as soon as the attack is rolled) and midi-qol.RollComplete: a use on the actor's turn
+ * is paid once into the combatant's flag. A light weapon swung with the action gone is the off-hand swing and costs the bonus action,
+ * whatever mode was picked. Action Surge grants an extra action.
+ */
 export async function onRollCompleteEconomy(workflow) {
-  if (mode() === "off" || workflow?.aborted) return;
+  if (mode() === "off" || workflow?.aborted || workflow?.bg3flowPaid) return;
   const c = actingCombatant(workflow?.actor);
   if (!c) return;
-  const cost = costOf(workflow.activity, { attackMode: workflow.attackMode });
-  let state = stateOf(c);
+  workflow.bg3flowPaid = true;
+  const allowance = allowanceOf(c.actor);
+  let cost = costOf(workflow.activity, { attackMode: modeOf(workflow) }), state = stateOf(c);
   if (ACTION_SURGE.test(String(workflow.activity?.item?.name ?? "").trim())) state = { ...state, extra: state.extra + 1 };
-  if (cost !== "free") state = spend(state, cost, allowanceOf(c.actor));
+  if (cost === "attack" && !canSpend(state, cost, allowance).ok && offersOffhand(workflow) && !state.bonus) cost = "bonus";
+  if (cost !== "free") state = spend(state, cost, allowance);
   if (state !== stateOf(c)) await c.setFlag(MODULE_ID, "economy", state);
 }
 
@@ -101,8 +112,15 @@ export function drawEconomy() {
   const combat = game.combat;
   if (!combat?.started || mode() === "off" || typeof PIXI === "undefined") return;
   const ids = game.settings.get(MODULE_ID, "enableTurns") === false ? new Set([combat.combatant?.id]) : activeIds(combat);
-  const g = new PIXI.Graphics(), s = (canvas.dimensions?.size ?? 100) / 100;
-  const shape = (draw, color, available) => { draw(); if (available) g.fill({ color, alpha: 0.95 }); g.stroke({ width: 2 * s, color: available ? color : 0x888888, alpha: available ? 1 : 0.7 }); };
+  const g = new PIXI.Graphics(), s = (canvas.dimensions?.size ?? 100) / 100, v8 = typeof g.circle === "function"; // Foundry 14.369 ships PIXI 7.4.3
+  const shape = (draw, color, available) => {
+    const line = { width: 2 * s, color: available ? color : 0x888888, alpha: available ? 1 : 0.7 };
+    if (v8) { draw(); if (available) g.fill({ color, alpha: 0.95 }); g.stroke(line); return; }
+    g.lineStyle(line.width, line.color, line.alpha);
+    if (available) g.beginFill(color, 0.95);
+    draw();
+    g.endFill();
+  };
   for (const token of canvas.tokens?.placeables ?? []) {
     const c = combat.combatants.find((c) => c.tokenId === token.id && c.sceneId === canvas.scene?.id);
     if (!c || !ids.has(c.id)) continue;
@@ -110,9 +128,9 @@ export function drawEconomy() {
     const state = stateOf(c), allowance = allowanceOf(c.actor);
     const action = canSpend(state, "attack", allowance).ok || canSpend(state, "action", allowance).ok, bonus = !state.bonus;
     const { x: cx, y: cy } = token.center, y = cy - (token.h ?? 0) / 2 - 10 * s;
-    if (typeof g.circle !== "function") continue; // PIXI 7: no icons (Foundry 14 ships PIXI 8)
-    shape(() => g.circle(cx - 12 * s, y, 7 * s), 0x3ec15c, action);
-    shape(() => g.poly([cx + 7 * s, y + 7 * s, cx + 21 * s, y + 7 * s, cx + 14 * s, y - 7 * s]), 0xff8c1a, bonus);
+    const tri = [cx + 7 * s, y + 7 * s, cx + 21 * s, y + 7 * s, cx + 14 * s, y - 7 * s];
+    shape(() => v8 ? g.circle(cx - 12 * s, y, 7 * s) : g.drawCircle(cx - 12 * s, y, 7 * s), 0x3ec15c, action);
+    shape(() => v8 ? g.poly(tri) : g.drawPolygon(tri), 0xff8c1a, bonus);
   }
   canvas.interface.addChild(g);
   layer = g;
@@ -120,6 +138,7 @@ export function drawEconomy() {
 
 export function registerEconomy() {
   Hooks.on("midi-qol.preTargetingV2", safe(onPreTargetingEconomy)); // safe() passes the return on: a `false` reaches Midi
+  Hooks.on("midi-qol.AttackRollComplete", safe(onRollCompleteEconomy)); // paid as soon as the mode is known, not seconds later at RollComplete
   Hooks.on("midi-qol.RollComplete", safe(onRollCompleteEconomy));
   Hooks.on("combatTurnChange", safe(resetEconomy));
   Hooks.on("combatStart", safe((combat) => resetEconomy(combat)));

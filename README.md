@@ -111,10 +111,10 @@ Like BG3: above every token of the acting group, a **green dot** is its action a
 
 - One action and one bonus action per turn of the group; movement is piece 2's budget and the reaction is Midi's (the preset enforces it).
 - **Extra Attack** (a feature named *Extra Attack*, *Ataque extra* or *Ataque adicional*): two weapon attacks inside the action, three with 11 fighter levels, four with 20. Once the creature has attacked, its action is the Attack action: no spell or other action-type use on top. Any other action-type use spends the whole action.
-- An attack rolled in dnd5e's **off-hand** mode spends the bonus action instead of an attack of the action.
+- An attack rolled in dnd5e's **off-hand** mode spends the bonus action instead of an attack of the action. A light weapon (one that offers the off-hand mode) swung once the action's attacks are done is taken as that off-hand swing whatever mode was picked: it costs the bonus action. A weapon without the mode (a Longsword) is refused.
 - **Action Surge** (*Acción impetuosa*) grants one extra action this turn, attacks counting from zero again.
 - Free: reactions, legendary and lair actions, anything with no activation or a special one.
-- A **player** whose action or bonus action is spent gets "X has no action left this turn" and the use is dropped before anything is spent (Midi's `preTargetingV2`). The **GM** is only warned and goes ahead. Monsters on the autopilot are never checked (the planner spends one action and one bonus action by itself). Uses off the creature's turn (a reaction, an opportunity attack) are never counted.
+- A **player** whose action or bonus action is spent gets "X has no action left this turn" and the use is dropped before anything is spent (Midi's `preTargetingV2`, before the target picker). The **GM** is only warned and goes ahead (the state stays spent, it never goes negative). An attack is paid as soon as its attack roll is in (`AttackRollComplete`), everything else when Midi's workflow completes. Monsters on the autopilot are never checked (the planner spends one action and one bonus action by itself). Uses off the creature's turn (a reaction, an opportunity attack) are never counted.
 - Everything resets when the group's turn starts and when combat starts.
 
 Setting **Action economy**: *Players stopped, GM warned* (default), *Icons only*, *Off*. Not covered: the bonus-action-spell rule, Ready, Haste's extra action.

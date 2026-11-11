@@ -32,7 +32,8 @@ function combatant(id, disposition, a = actor()) {
   };
 }
 const combat = (order, turn) => ({ started: true, round: 1, turn, turns: order, combatants: order, settings: { skipDefeated: true }, get combatant() { return this.turns[this.turn]; } });
-const act = (activation, type = "attack", name = "Longsword") => ({ type, activation: { type: activation }, item: { name } });
+const act = (activation, type = "attack", name = "Longsword", modes = []) => ({ type, activation: { type: activation }, item: { name, system: { attackModes: modes.map((value) => ({ value })) } } });
+const light = ["oneHanded", "offhand", "thrown", "thrown-offhand"]; // a Dagger or a Scimitar
 const reset = () => { calls.warn = []; calls.flags = []; };
 
 test("allowanceOf: one attack per action; Extra Attack gives two, three with 11 fighter levels, four with 20", () => {
@@ -77,6 +78,9 @@ test("canSpend/spend: a fighter with Extra Attack swings twice, not three times,
   assert.deepEqual(canSpend(c, "action", { attacks: 1 }), { ok: false, kind: "action" });
   c = spend({ ...c, extra: 1 }, "action", { attacks: 1 });
   assert.deepEqual(c, { attacks: 0, action: true, bonus: false, extra: 0 });
+  // overspent (the GM going ahead): the state stays spent, no phantom Action Surge
+  assert.deepEqual(spend({ attacks: 2, action: false, bonus: false, extra: 0 }, "attack", two), { attacks: 2, action: false, bonus: false, extra: 0 });
+  assert.deepEqual(spend(c, "action", { attacks: 1 }), c);
 });
 
 test("onPreTargetingEconomy: a player whose action is spent is stopped (false, a warning); the GM is warned and goes on; off turn, the autopilot's own targets, no combat and the display setting never stop anyone; an attack passes while the bonus action is free (it may be an off-hand swing)", async () => {
@@ -89,9 +93,10 @@ test("onPreTargetingEconomy: a player whose action is spent is stopped (false, a
   pc.flags["bg3-flow"].economy = { attacks: 0, action: true, bonus: false, extra: 0 };
   assert.equal(await onPreTargetingEconomy({ workflow, usage: {} }), false);
   assert.deepEqual(calls.warn, ['BG3FLOW.Economy.NoAction:{"name":"pc"}']);
-  assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("action") }, usage: {} }), undefined); // an attack may be the off-hand swing: the bonus action is free
+  assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("action") }, usage: {} }), false); // a Longsword has no off-hand mode: refused
+  assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("action", "attack", "Dagger", light) }, usage: {} }), undefined); // a Dagger may be the off-hand swing: the bonus action is free
   pc.flags["bg3-flow"].economy = { attacks: 0, action: true, bonus: true, extra: 0 };
-  assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("action") }, usage: {} }), false);
+  assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("action", "attack", "Dagger", light) }, usage: {} }), false);
   assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("bonus", "heal") }, usage: {} }), false);
   assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("reaction", "utility") }, usage: {} }), undefined); // free
   game.user.isGM = true; reset();
@@ -116,8 +121,17 @@ test("onRollCompleteEconomy: a finished use on the actor's turn is spent into th
   game.combat = cb;
   await onRollCompleteEconomy({ actor: pc.actor, activity: act("action"), attackMode: "oneHanded" });
   assert.deepEqual(pc.flags["bg3-flow"].economy, { attacks: 1, action: false, bonus: false, extra: 0 });
-  await onRollCompleteEconomy({ actor: pc.actor, activity: act("action"), attackMode: "offhand" });
+  const dagger = { actor: pc.actor, activity: act("action", "attack", "Dagger", light), attackRoll: { options: { attackMode: "offhand" } } }; // the mode read from dnd5e's roll at AttackRollComplete
+  await onRollCompleteEconomy(dagger);
   assert.deepEqual(pc.flags["bg3-flow"].economy, { attacks: 1, action: false, bonus: true, extra: 0 });
+  await onRollCompleteEconomy(dagger); // RollComplete on the same workflow: paid already
+  assert.deepEqual(pc.flags["bg3-flow"].economy, { attacks: 1, action: false, bonus: true, extra: 0 });
+  pc.flags["bg3-flow"].economy = { attacks: 2, action: false, bonus: false, extra: 0 }; // both attacks swung, bonus free
+  await onRollCompleteEconomy({ actor: pc.actor, activity: act("action", "attack", "Scimitar", light), attackMode: "oneHanded" }); // let through as the off-hand swing: it costs the bonus action
+  assert.deepEqual(pc.flags["bg3-flow"].economy, { attacks: 2, action: false, bonus: true, extra: 0 });
+  await onRollCompleteEconomy({ actor: pc.actor, activity: act("action"), attackMode: "oneHanded" }); // the GM going ahead with a Longsword: stays spent
+  assert.deepEqual(pc.flags["bg3-flow"].economy, { attacks: 2, action: false, bonus: true, extra: 0 });
+  pc.flags["bg3-flow"].economy = { attacks: 1, action: false, bonus: true, extra: 0 };
   await onRollCompleteEconomy({ actor: pc.actor, activity: act("action"), aborted: true });
   assert.deepEqual(pc.flags["bg3-flow"].economy, { attacks: 1, action: false, bonus: true, extra: 0 });
   await onRollCompleteEconomy({ actor: pc.actor, activity: act("special", "utility", "Action Surge") });
@@ -171,4 +185,15 @@ test("drawEconomy: above every active token the user can see, a filled green dot
   drawEconomy();
   assert.deepEqual(drawn, []);
   globalThis.canvas = null;
+});
+
+test("drawEconomy: on PIXI 7 (Foundry 14.369 ships 7.4.3) the icons are drawn with beginFill/drawCircle/drawPolygon", () => {
+  const drawn = [];
+  globalThis.PIXI = { Graphics: class { destroyed = false; destroy() { this.destroyed = true; } lineStyle(w, color) { drawn.push(["line", color]); return this; } beginFill(color) { drawn.push(["fill", color]); return this; } endFill() { return this; } drawCircle(x, y, r) { drawn.push(["dot", x, y]); return this; } drawPolygon(pts) { drawn.push(["tri", pts[0], pts[1]]); return this; } } };
+  const pc = combatant("pc", 1), gob = combatant("gob", -1, actor({ player: false }));
+  game.combat = combat([pc, gob], 0);
+  globalThis.canvas = { ready: true, scene: { id: "scene" }, dimensions: { size: 100, distance: 5 }, tokens: { placeables: [{ id: pc.tokenId, visible: true, center: { x: 150, y: 150 }, h: 100, w: 100 }] }, interface: { addChild() {} } };
+  drawEconomy();
+  assert.deepEqual(drawn.filter((d) => d[0] !== "line"), [["fill", 0x3ec15c], ["dot", 138, 90], ["fill", 0xff8c1a], ["tri", 157, 97]]);
+  game.combat = null; globalThis.canvas = null;
 });

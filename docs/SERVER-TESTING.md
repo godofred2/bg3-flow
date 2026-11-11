@@ -94,16 +94,16 @@ Setup: combat with Cleric, Rogue (Player1), Goblin 1, Goblin 2, Villager. Set in
 - [ ] T13 (v0.8.1; the defeated sub-step fixed in v0.8.3). Core setting *Turn Marker* enabled (Combat Tracker settings). Shared turn of Cleric and Rogue: both tokens show the animated turn marker under them (the same image, both spinning), the GM and Player1 alike. Next turn to the goblins: the marker leaves both PCs and appears under Goblin 1 and Goblin 2. Mark Goblin 2 defeated: its marker goes. Previous turn back to the PCs: markers move back. Disable the marker on the Rogue's token (token config, Turn Marker mode "Disabled"): only the Cleric shows it. Report any marker left behind or any console error mentioning turnMarker.
 - [ ] T12 (v0.7.1). Shared turn of Cleric and Rogue with nothing selected. Expected: Player1 sees a blue circle around both tokens (the Cleric's too, if in sight), the GM as well. On the goblins' turn with Goblin 2 hidden (GM-hidden) or behind the wall out of the Rogue's sight: Player1 sees no circle for it, the GM sees circles for both goblins. Moving any active token redraws its circle.
 
-## 4b. Action economy (piece 6, v0.11.0)
+## 4b. Action economy (piece 6, v0.11.0; run on v0.11.0: Y3, Y5, Y8 pass, Y1 no icons (Foundry 14.369 ships PIXI 7.4.3), Y2/Y4/Y6 let extra swings through as "possible off-hand"; both fixed in v0.11.1, rerun Y1, Y2, Y4, Y6, Y7)
 
 Setup: the Fighter (Player1) level 5 with *Extra Attack* and *Action Surge*, a Longsword and a Dagger (light); the Cleric (Player1) with Sacred Flame, Healing Word (bonus) and Cure Wounds; a 2v2 against the goblins, PCs' shared turn. Setting *Action economy* on *Players stopped, GM warned*.
 
 - [ ] Y1. Icons: on the PCs' turn, above the Fighter and the Cleric a filled green dot and a filled orange triangle (Player1 and GM alike); none above the goblins. They follow a moving token.
-- [ ] Y2. Fighter: Longsword, Longsword: both roll; the dot goes hollow after the second. A third Longsword: "Fighter has no action left this turn", no card, no roll. Sacred Flame on the Cleric after one Longsword by the Fighter is not the case here: instead, Fighter casts nothing, so test the order: a new turn, Fighter attacks once, then uses a potion (action): refused.
+- [ ] Y2. Fighter: Longsword, Longsword: both roll; the dot goes hollow after the second (right after the attack roll, before the damage). A third Longsword: "Fighter has no action left this turn", no card, no roll, no target picker circle (the refusal comes first), and the combatant flag `bg3-flow.economy` stays `{attacks 2, action false, bonus false, extra 0}` (never a negative `extra`). A new turn, Fighter attacks once, then uses a potion (action): refused.
 - [ ] Y3. Off-hand: new turn, Longsword once, then Dagger with attack mode *Offhand* in the roll dialog (or the sheet's two-weapon setup): it rolls and the triangle goes hollow, the dot stays filled; one more Longsword still rolls (the second attack of the action).
 - [ ] Y4. Action Surge: new turn, Longsword, Longsword, Action Surge (its card), Longsword, Longsword: all four roll; a fifth is refused.
 - [ ] Y5. Cleric: Sacred Flame, then Cure Wounds: refused ("no action left"); Healing Word (bonus) rolls; a second Healing Word refused. Reaction: Shield on the goblins' turn when hit: offered and usable as before (never counted).
-- [ ] Y6. GM: the GM uses a goblin's Scimitar three times by hand on the goblins' turn (autopilot off for it): the third rolls with the warning "Goblin 1 has no action left this turn (GM: going ahead)". With the autopilot on, the goblins' turn plays with no warning.
+- [ ] Y6. GM: the GM uses a goblin's Scimitar four times by hand on the goblins' turn (autopilot off for it): the first rolls, the second rolls as the off-hand swing (a Scimitar is light: the triangle goes hollow), the third rolls with the warning "Goblin 1 has no action left this turn (GM: going ahead)" and so does the fourth; the flag stays `{attacks 1, bonus true, extra 0}`. With the autopilot on, the goblins' turn plays with no warning.
 - [ ] Y7. Setting *Icons only*: Y2's third Longsword rolls, the icons still go hollow. *Off*: no icons, nothing refused. Back to *Players stopped*.
 - [ ] Y8. Opportunity attack: on the goblins' turn a goblin leaves the Fighter's reach, Gambit's prompt, the Fighter swings: it rolls and the Fighter's icons on its next turn are both filled.
 
@@ -116,7 +116,7 @@ Setup: give the Cleric the spell **Shield** (reaction) and the Rogue the feature
 - [ ] R3. Player1 tries Shield twice in the same round. Expected: Midi warns the reaction is already used (enforce reactions).
 - [ ] R4. On the goblins' shared turn, with Goblin 1 as Foundry's current combatant, the GM attacks with Goblin 2 twice in a row. Expected: no "Reaction Used, proceed anyway?" dialog and no "Reaction used" effect on Goblin 2; both attacks are plain attacks. Then, on the Cleric and Rogue's turn, attack with Goblin 1: Midi treats it as an opportunity attack as before.
 
-## 5b. Target picker (v0.10.0)
+## 5b. Target picker (v0.10.0; K1-K6 green on v0.11.0; K7 added in v0.11.1)
 
 Setup: the Cleric (Player1) with Sacred Flame (60 ft, one creature, save) and Cure Wounds (touch, one creature, heal); the Fighter with a Longsword; Goblin 1 at 40 ft from the Cleric, Goblin 2 at 90 ft; the Rogue adjacent to the Cleric and wounded. Nothing targeted (clear with T if needed).
 
@@ -126,6 +126,7 @@ Setup: the Cleric (Player1) with Sacred Flame (60 ft, one creature, save) and Cu
 - [ ] K4. Target Goblin 1 with T first, then Sacred Flame: no circle, no notice, the card at once (as before the picker).
 - [ ] K5. The Fighter's Longsword with nothing targeted: a 5 ft circle; clicking an adjacent goblin attacks it; a goblin 10 ft away is refused.
 - [ ] K6. Unaffected flows: Fireball (template, no circle), Shield as a reaction (no circle), the autopilot's goblins on their turn (no circle on the GM), Gambit's opportunity attack prompt (no circle). With the setting off, K1 behaves as before the picker (Midi's "no target" handling).
+- [ ] K7. Yourself (v0.11.1): the Cleric uses Cure Wounds with nothing targeted and clicks its own token: healed; a Potion of Healing the same way: drunk. The Fighter's Longsword with nothing targeted and a click on the Fighter itself: ignored, still waiting (an attack never targets its wielder).
 
 ## 6. Encounters and stealth (feature 3)
 
@@ -306,7 +307,7 @@ Y1 ...
 Y8 ...
 K1 ...
 ...
-K6 ...
+K7 ...
 X0 ...
 ...
 X14 ...

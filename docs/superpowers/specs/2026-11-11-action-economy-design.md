@@ -19,7 +19,14 @@ Date: 2026-11-11. Requested after the v0.10.0 target picker: "it is not limiting
 - Cost of a use: from `activity.activation.type` and, after the roll, `workflow.attackMode`: `attack` (action-type attack activity), `action` (any other action-type activity), `bonus`, `free`. Before the roll the attack mode is unknown: an attack is allowed if either an attack of the action or the bonus action is free.
 - Check in `midi-qol.preTargetingV2` (false aborts the use, nothing spent); spend in `midi-qol.RollComplete` (not aborted). Only for combatants in the acting group (`activeIds`): an off-turn use is a reaction or an opportunity attack, Midi's business. Uses that bring their own targets (the autopilot's `midiOptions.targetUuids`) and combatants on the autopilot are skipped.
 - Reset on `combatTurnChange` for the new acting group and on `combatStart`, by the lead GM.
-- Icons: a PIXI layer like the reach circle, redrawn on the same hooks plus `updateCombatant` (the flag) and `refreshToken` position changes.
+- Icons: a PIXI layer like the reach circle, redrawn on the same hooks plus `updateCombatant` (the flag) and `refreshToken` position changes. Drawn with the PIXI 7 API too: Foundry 14.369 ships PIXI 7.4.3 (v0.11.1).
+
+## Amendments (v0.11.1, after the v0.11.0 web run)
+
+- The pre-roll "it may be the off-hand swing" allowance applies only to a weapon whose `attackModes` offer *offhand* (light weapons); a Longsword with the action gone is refused. Such a swing, once rolled in any mode with the action gone, costs the bonus action.
+- `spend` never goes negative: what cannot be paid (the GM going ahead) leaves the state spent as it is.
+- Attacks are paid at `midi-qol.AttackRollComplete` (mode from `workflow.attackMode` or dnd5e's `attackRoll.options.attackMode`), once per workflow; the rest at `RollComplete`.
+- The economy check is registered before the target picker, so a refusal comes before any pick.
 
 ## Out of scope
 
