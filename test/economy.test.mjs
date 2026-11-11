@@ -18,7 +18,7 @@ globalThis.game = {
 };
 globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: { wait: async () => null } } }, utils: { escapeHTML: (s) => s } };
 
-const { allowanceOf, costOf, canSpend, spend, FRESH, onPreTargetingEconomy, onRollCompleteEconomy, resetEconomy, drawEconomy } = await import("../scripts/economy.js");
+const { allowanceOf, costOf, canSpend, spend, FRESH, onPreTargetingEconomy, onRollCompleteEconomy, onPostUseEconomy, resetEconomy, drawEconomy } = await import("../scripts/economy.js");
 
 const actor = ({ items = [], fighter = 0, player = true } = {}) => ({ hasPlayerOwner: player, items: items.map((name) => ({ name })), classes: fighter ? { fighter: { system: { levels: fighter } } } : {} });
 function combatant(id, disposition, a = actor()) {
@@ -95,8 +95,9 @@ test("onPreTargetingEconomy: a player whose action is spent is stopped (false, a
   assert.deepEqual(calls.warn, ['BG3FLOW.Economy.NoAction:{"name":"pc"}']);
   assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("action") }, usage: {} }), false); // a Longsword has no off-hand mode: refused
   assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("action", "attack", "Dagger", light) }, usage: {} }), undefined); // a Dagger may be the off-hand swing: the bonus action is free
-  pc.flags["bg3-flow"].economy = { attacks: 0, action: true, bonus: true, extra: 0 };
+  pc.flags["bg3-flow"].economy = { attacks: 0, action: true, bonus: true, extra: 0 }; reset();
   assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("action", "attack", "Dagger", light) }, usage: {} }), false);
+  assert.deepEqual(calls.warn, ['BG3FLOW.Economy.NoBonus:{"name":"pc"}']); // the Dagger could only have been the off-hand swing
   assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("bonus", "heal") }, usage: {} }), false);
   assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("reaction", "utility") }, usage: {} }), undefined); // free
   game.user.isGM = true; reset();
@@ -136,6 +137,20 @@ test("onRollCompleteEconomy: a finished use on the actor's turn is spent into th
   assert.deepEqual(pc.flags["bg3-flow"].economy, { attacks: 1, action: false, bonus: true, extra: 0 });
   await onRollCompleteEconomy({ actor: pc.actor, activity: act("special", "utility", "Action Surge") });
   assert.deepEqual(pc.flags["bg3-flow"].economy, { attacks: 1, action: false, bonus: true, extra: 1 });
+  pc.flags["bg3-flow"].economy = undefined;
+  const flame = { actor: pc.actor, activity: act("action", "save", "Sacred Flame") };
+  await onPostUseEconomy(flame.activity, { workflow: flame }); // dnd5e.postUseActivity: the card is up, the action is paid now
+  assert.deepEqual(pc.flags["bg3-flow"].economy, { attacks: 0, action: true, bonus: false, extra: 0 });
+  await onRollCompleteEconomy(flame); // seconds later: paid already
+  assert.deepEqual(pc.flags["bg3-flow"].economy, { attacks: 0, action: true, bonus: false, extra: 0 });
+  pc.flags["bg3-flow"].economy = undefined;
+  const sword = { actor: pc.actor, activity: act("action") };
+  await onPostUseEconomy(sword.activity, { workflow: sword }); // an attack waits for its roll (the mode)
+  await onPostUseEconomy(act("action", "save"), {}); // no Midi workflow: not ours
+  assert.equal(pc.flags["bg3-flow"].economy, undefined);
+  await onRollCompleteEconomy({ ...sword, attackMode: "oneHanded" });
+  assert.deepEqual(pc.flags["bg3-flow"].economy, { attacks: 1, action: false, bonus: false, extra: 0 });
+  pc.flags["bg3-flow"].economy = { attacks: 1, action: false, bonus: true, extra: 1 };
   cb.turn = 1;
   await onRollCompleteEconomy({ actor: pc.actor, activity: act("action") }); // an opportunity attack: not its turn
   assert.deepEqual(pc.flags["bg3-flow"].economy, { attacks: 1, action: false, bonus: true, extra: 1 });
@@ -176,6 +191,7 @@ test("drawEconomy: above every active token the user can see, a filled green dot
   globalThis.canvas = { ready: true, scene: { id: "scene" }, dimensions: { size: 100, distance: 5 }, tokens: { placeables: [tok(pc, 150, 150), tok(gob, 450, 150)] }, interface: { addChild: (g) => added.push(g) } };
   drawEconomy();
   assert.deepEqual(drawn.filter((d) => d[0] !== "fill" && d[0] !== "stroke"), [["dot", 138, 90], ["tri", 157, 97]]); // the PC only: the goblin is not in the acting group
+  assert.ok(added[0].zIndex > 200, "above the TokenLayer (zIndex 200) on canvas.interface");
   assert.deepEqual(drawn.filter((d) => d[0] === "fill").length, 0); // both spent: outlines only
   drawn.length = 0;
   pc.flags["bg3-flow"].economy = undefined;

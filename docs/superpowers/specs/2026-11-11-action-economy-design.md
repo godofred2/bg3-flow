@@ -27,6 +27,7 @@ Date: 2026-11-11. Requested after the v0.10.0 target picker: "it is not limiting
 - `spend` never goes negative: what cannot be paid (the GM going ahead) leaves the state spent as it is.
 - Attacks are paid at `midi-qol.AttackRollComplete` (mode from `workflow.attackMode` or dnd5e's `attackRoll.options.attackMode`), once per workflow; the rest at `RollComplete`.
 - The economy check is registered before the target picker, so a refusal comes before any pick.
+- v0.11.2: the icon layer has zIndex 300 (canvas.interface sorts by zIndex; the TokenLayer is 200); non-attack uses are paid at `dnd5e.postUseActivity` (the card), whose `usageConfig.workflow` is Midi's workflow; a light weapon refused with the bonus action spent says "no bonus action left".
 
 ## Out of scope
 

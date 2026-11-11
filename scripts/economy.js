@@ -72,6 +72,7 @@ export async function onPreTargetingEconomy({ workflow, usage }) {
   let check = canSpend(state, cost, allowance);
   if (!check.ok && cost === "attack" && offersOffhand(workflow) && canSpend(state, "bonus", allowance).ok) check = { ok: true }; // a light weapon: it may be the off-hand swing
   if (check.ok) return;
+  if (cost === "attack" && offersOffhand(workflow) && state.bonus) check = { ok: false, kind: "bonus" }; // it could only have been the off-hand swing
   const name = c.token?.name ?? c.name;
   if (game.user.isGM) { ui.notifications.warn(L("Economy.GmNote", { name, kind: check.kind })); return; }
   ui.notifications.warn(L(check.kind === "bonus" ? "Economy.NoBonus" : "Economy.NoAction", { name }));
@@ -79,8 +80,8 @@ export async function onPreTargetingEconomy({ workflow, usage }) {
 }
 
 /**
- * midi-qol.AttackRollComplete (the mode is known as soon as the attack is rolled) and midi-qol.RollComplete: a use on the actor's turn
- * is paid once into the combatant's flag. A light weapon swung with the action gone is the off-hand swing and costs the bonus action,
+ * dnd5e.postUseActivity (non-attacks, at the card), midi-qol.AttackRollComplete (attacks: the mode is known once rolled) and
+ * midi-qol.RollComplete (whatever is left): a use on the actor's turn is paid once into the combatant's flag. A light weapon swung with the action gone is the off-hand swing and costs the bonus action,
  * whatever mode was picked. Action Surge grants an extra action.
  */
 export async function onRollCompleteEconomy(workflow) {
@@ -94,6 +95,12 @@ export async function onRollCompleteEconomy(workflow) {
   if (cost === "attack" && !canSpend(state, cost, allowance).ok && offersOffhand(workflow) && !state.bonus) cost = "bonus";
   if (cost !== "free") state = spend(state, cost, allowance);
   if (state !== stateOf(c)) await c.setFlag(MODULE_ID, "economy", state);
+}
+
+/** dnd5e.postUseActivity: a non-attack use is paid as soon as its card is up (an attack waits for its roll: the mode decides). */
+export async function onPostUseEconomy(activity, usage) {
+  if (!usage?.workflow || costOf(activity) === "attack") return;
+  return onRollCompleteEconomy(usage.workflow);
 }
 
 /** combatTurnChange: the new acting group starts fresh; combatStart (no `current`): everyone does. Lead GM only. */
@@ -132,13 +139,15 @@ export function drawEconomy() {
     shape(() => v8 ? g.circle(cx - 12 * s, y, 7 * s) : g.drawCircle(cx - 12 * s, y, 7 * s), 0x3ec15c, action);
     shape(() => v8 ? g.poly(tri) : g.drawPolygon(tri), 0xff8c1a, bonus);
   }
+  g.zIndex = 300; // canvas.interface sorts by zIndex: above the TokenLayer (200) and turn markers
   canvas.interface.addChild(g);
   layer = g;
 }
 
 export function registerEconomy() {
   Hooks.on("midi-qol.preTargetingV2", safe(onPreTargetingEconomy)); // safe() passes the return on: a `false` reaches Midi
-  Hooks.on("midi-qol.AttackRollComplete", safe(onRollCompleteEconomy)); // paid as soon as the mode is known, not seconds later at RollComplete
+  Hooks.on("dnd5e.postUseActivity", safe(onPostUseEconomy)); // non-attacks paid at the card
+  Hooks.on("midi-qol.AttackRollComplete", safe(onRollCompleteEconomy)); // attacks paid as soon as the mode is known, not seconds later at RollComplete
   Hooks.on("midi-qol.RollComplete", safe(onRollCompleteEconomy));
   Hooks.on("combatTurnChange", safe(resetEconomy));
   Hooks.on("combatStart", safe((combat) => resetEconomy(combat)));
