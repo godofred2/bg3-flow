@@ -18,7 +18,7 @@ function averageDamage(activity) {
 }
 
 /** Reach or range in scene units: a weapon's own reach/range unless the activity overrides it. */
-function rangeOf(activity) {
+export function rangeOf(activity) {
   const item = activity.item;
   if (item?.type === "weapon" && !activity.range?.override) return item.system.range?.reach ?? item.system.range?.value ?? 5;
   const units = activity.range?.units;

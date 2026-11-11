@@ -60,6 +60,8 @@ For area spells that let the caster spare allies (Spirit Guardians is the classi
 - **Enemies only** (default, also what you get by closing the dialog): allies are never hit, at cast time or in later rounds.
 - **Everyone**: nothing spared.
 
+**Target picker.** A single-target spell or attack (Sacred Flame, Cure Wounds, a sword) used with nothing targeted does not fire into the void: an orange circle shows its range from the edge of your space, a notice says how many targets it takes, and you click the creatures you want (a target out of range is refused with its distance). Then the dice roll and the effect lands on them, as in BG3. Esc or a right click cancels the use before anything is spent. Targets you had already marked are used as they are; areas keep their template; self spells and automations that bring their own targets (the autopilot, Gambit's reactions) are untouched. Setting *Target picker*.
+
 The answer is written into the Midi region behaviour created by that cast (its disposition filter), so the region's own entry and turn triggers respect it from the first second. The cast's own targets are filtered the same way. Midi's own target confirmation dialog is skipped for these spells.
 
 **Setup, once per spell:** open the activity that places the area, Targeting section, tick **Override Target**, then tick **Allow choosing targets**. Leave the target type blank. Spells without that checkbox, such as Fireball, hit everyone inside with no prompt.
@@ -155,7 +157,7 @@ Not counted yet: resistances and vulnerabilities, opportunity attacks from enemi
 
 ## Settings
 
-- **Full automation**, **BG3 turn flow**, **Encounters and stealth**: feature toggles.
+- **Full automation**, **BG3 turn flow**, **Encounters and stealth**: feature toggles. **Target picker**: feature 1.
 - **Lock GM movement too**, **Dash item names**: feature 2.
 - **Default encounter radius**, **Obscured darkness threshold**: feature 3.
 - **Monster autopilot**, **Pause before each monster action**, **Pass the turn automatically**, **Intelligence threshold**: piece 4.

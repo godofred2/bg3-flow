@@ -21,7 +21,7 @@ Este módulo hace que nuestros combates en Foundry se parezcan a Baldur's Gate 3
 
 ## 3. Atacar: sin diálogos, dados a la vista
 
-- Haz clic en un arma o conjuro con un objetivo marcado: el ataque tira, se comprueba el impacto, el daño tira y se aplica. Sin ventanas preguntando cómo tirar. Todos ven los dados.
+- Haz clic en un arma o conjuro. Si no tenías objetivo marcado, un **círculo naranja** enseña su alcance y un aviso te pide hacer clic en la criatura que quieras (Esc cancela). Después el ataque tira, se comprueba el impacto, el daño tira y se aplica. Sin ventanas preguntando cómo tirar. Todos ven los dados.
 - Las salvaciones también tiran solas, en público.
 - Las **reacciones** van como en BG3: cuando alguien te impacta y tienes Escudo, o te hace daño y tienes Esquiva asombrosa, un aviso te pregunta si la usas, enseñando la tirada de ataque. Tienes **30 segundos**; sin respuesta, no hay reacción. Contrahechizo pregunta cuando un enemigo lanza un conjuro.
 - Los **conjuros de área** que permiten perdonar a tus amigos (Guardianes espirituales y similares) te hacen una pregunta antes de que aparezca el área: **solo enemigos** o **todos**. Bola de fuego no pregunta: pega a todo lo que hay dentro.

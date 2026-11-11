@@ -69,6 +69,10 @@
       "preparedSpells": {
         "Name": "New spells arrive prepared",
         "Hint": "A spell of the prepared kind added to a character is marked prepared on creation (imported automations tend to leave it unprepared). Other preparation modes and NPCs are untouched."
+      },
+      "targetPicker": {
+        "Name": "Target picker",
+        "Hint": "A single-target spell or attack used with nothing targeted shows its range and takes its targets from your clicks, like BG3. Esc or a right click cancels the use."
       }
     },
     "Preset": {
@@ -77,6 +81,11 @@
       "Title": "BG3 automation preset",
       "Confirm": "<p>This overwrites Midi QOL's workflow settings so attacks, damage and saves resolve with no prompts, all dice public, templates auto-target everyone inside, and reaction prompts (Shield, Uncanny Dodge, opportunity attacks) are on with a 30 second timeout. It also turns off dnd5e's own initiative grouping.</p><p>You can tweak any setting afterwards. Apply?</p>",
       "Done": "BG3 automation preset applied."
+    },
+    "Picker": {
+      "Pick": "{name}: click a target within {range} ({count} needed). Esc or right click cancels.",
+      "Anywhere": "any distance",
+      "OutOfRange": "{name} is {distance} {units} away; {range} {units} is the limit."
     },
     "Targets": {
       "Title": "Who does it affect?",
