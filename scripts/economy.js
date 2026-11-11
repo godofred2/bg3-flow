@@ -73,9 +73,9 @@ export async function onPreTargetingEconomy({ workflow, usage }) {
   if (!check.ok && cost === "attack" && offersOffhand(workflow) && canSpend(state, "bonus", allowance).ok) check = { ok: true }; // a light weapon: it may be the off-hand swing
   if (check.ok) return;
   if (cost === "attack" && offersOffhand(workflow) && state.bonus) check = { ok: false, kind: "bonus" }; // it could only have been the off-hand swing
-  const name = c.token?.name ?? c.name;
-  if (game.user.isGM) { ui.notifications.warn(L("Economy.GmNote", { name, kind: check.kind })); return; }
-  ui.notifications.warn(L(check.kind === "bonus" ? "Economy.NoBonus" : "Economy.NoAction", { name }));
+  const text = L(check.kind === "bonus" ? "Economy.NoBonus" : "Economy.NoAction", { name: c.token?.name ?? c.name });
+  if (game.user.isGM) { ui.notifications.warn(`${text} ${L("Economy.GmNote")}`); return; }
+  ui.notifications.warn(text);
   return false;
 }
 

@@ -102,7 +102,11 @@ test("onPreTargetingEconomy: a player whose action is spent is stopped (false, a
   assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("reaction", "utility") }, usage: {} }), undefined); // free
   game.user.isGM = true; reset();
   assert.equal(await onPreTargetingEconomy({ workflow, usage: {} }), undefined); // the GM goes on, warned
-  assert.deepEqual(calls.warn, ['BG3FLOW.Economy.GmNote:{"name":"pc","kind":"action"}']);
+  assert.deepEqual(calls.warn, ['BG3FLOW.Economy.NoAction:{"name":"pc"} BG3FLOW.Economy.GmNote']); // the player's text plus the GM suffix
+  pc.flags["bg3-flow"].economy = { attacks: 2, action: false, bonus: true, extra: 0 }; reset();
+  assert.equal(await onPreTargetingEconomy({ workflow: { actor: pc.actor, activity: act("action", "attack", "Scimitar", light) }, usage: {} }), undefined);
+  assert.deepEqual(calls.warn, ['BG3FLOW.Economy.NoBonus:{"name":"pc"} BG3FLOW.Economy.GmNote']);
+  pc.flags["bg3-flow"].economy = { attacks: 0, action: true, bonus: false, extra: 0 }; reset();
   game.user.isGM = false;
   cb.turn = 1; // the goblins' turn: the PC's use is a reaction or an opportunity attack, Midi's business
   assert.equal(await onPreTargetingEconomy({ workflow, usage: {} }), undefined);

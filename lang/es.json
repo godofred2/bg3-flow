@@ -92,7 +92,7 @@
     "Economy": {
       "NoAction": "A {name} no le queda acción este turno.",
       "NoBonus": "A {name} no le queda acción adicional este turno.",
-      "GmNote": "A {name} no le queda {kind} este turno (DM: adelante)."
+      "GmNote": "(DM: adelante.)"
     },
     "Picker": {
       "Pick": "{name}: haz clic en un objetivo a {range} o menos ({count} en total). Esc o clic derecho cancela.",

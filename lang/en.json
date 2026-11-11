@@ -92,7 +92,7 @@
     "Economy": {
       "NoAction": "{name} has no action left this turn.",
       "NoBonus": "{name} has no bonus action left this turn.",
-      "GmNote": "{name} has no {kind} left this turn (GM: going ahead)."
+      "GmNote": "(GM: going ahead.)"
     },
     "Picker": {
       "Pick": "{name}: click a target within {range} ({count} needed). Esc or right click cancels.",
