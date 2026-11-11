@@ -94,7 +94,7 @@ Setup: combat with Cleric, Rogue (Player1), Goblin 1, Goblin 2, Villager. Set in
 - [ ] T13 (v0.8.1; the defeated sub-step fixed in v0.8.3). Core setting *Turn Marker* enabled (Combat Tracker settings). Shared turn of Cleric and Rogue: both tokens show the animated turn marker under them (the same image, both spinning), the GM and Player1 alike. Next turn to the goblins: the marker leaves both PCs and appears under Goblin 1 and Goblin 2. Mark Goblin 2 defeated: its marker goes. Previous turn back to the PCs: markers move back. Disable the marker on the Rogue's token (token config, Turn Marker mode "Disabled"): only the Cleric shows it. Report any marker left behind or any console error mentioning turnMarker.
 - [ ] T12 (v0.7.1). Shared turn of Cleric and Rogue with nothing selected. Expected: Player1 sees a blue circle around both tokens (the Cleric's too, if in sight), the GM as well. On the goblins' turn with Goblin 2 hidden (GM-hidden) or behind the wall out of the Rogue's sight: Player1 sees no circle for it, the GM sees circles for both goblins. Moving any active token redraws its circle.
 
-## 4b. Action economy (piece 6, v0.11.0; run on v0.11.0: Y3, Y5, Y8 pass, Y1 no icons (Foundry 14.369 ships PIXI 7.4.3), Y2/Y4/Y6 let extra swings through as "possible off-hand"; both fixed in v0.11.1; v0.11.1 run: all pass except the icons drawn under the tokens (zIndex) and non-attacks paid late; v0.11.2: icon layer zIndex 300, non-attacks paid at the card, "no bonus action" text for a light weapon; v0.11.2 run: all green, the GM note said "no bonus left" raw; v0.11.3: the GM gets the player's text plus "(GM: going ahead.)")
+## 4b. Action economy (piece 6, v0.11.0; run on v0.11.0: Y3, Y5, Y8 pass, Y1 no icons (Foundry 14.369 ships PIXI 7.4.3), Y2/Y4/Y6 let extra swings through as "possible off-hand"; both fixed in v0.11.1; v0.11.1 run: all pass except the icons drawn under the tokens (zIndex) and non-attacks paid late; v0.11.2: icon layer zIndex 300, non-attacks paid at the card, "no bonus action" text for a light weapon; v0.11.2 run: all green, the GM note said "no bonus left" raw; v0.11.3: the GM gets the player's text plus "(GM: going ahead.)"; round closed: Y1-Y8 green on v0.11.2, the v0.11.3 string change is covered by the unit test)
 
 Setup: the Fighter (Player1) level 5 with *Extra Attack* and *Action Surge*, a Longsword and a Dagger (light); the Cleric (Player1) with Sacred Flame, Healing Word (bonus) and Cure Wounds; a 2v2 against the goblins, PCs' shared turn. Setting *Action economy* on *Players stopped, GM warned*.
 
@@ -116,7 +116,7 @@ Setup: give the Cleric the spell **Shield** (reaction) and the Rogue the feature
 - [ ] R3. Player1 tries Shield twice in the same round. Expected: Midi warns the reaction is already used (enforce reactions).
 - [ ] R4. On the goblins' shared turn, with Goblin 1 as Foundry's current combatant, the GM attacks with Goblin 2 twice in a row. Expected: no "Reaction Used, proceed anyway?" dialog and no "Reaction used" effect on Goblin 2; both attacks are plain attacks. Then, on the Cleric and Rogue's turn, attack with Goblin 1: Midi treats it as an opportunity attack as before.
 
-## 5b. Target picker (v0.10.0; K1-K6 green on v0.11.0; K7 added in v0.11.1)
+## 5b. Target picker (v0.10.0; K1-K6 green on v0.11.0; K7 added in v0.11.1 and green on v0.11.2; round closed)
 
 Setup: the Cleric (Player1) with Sacred Flame (60 ft, one creature, save) and Cure Wounds (touch, one creature, heal); the Fighter with a Longsword; Goblin 1 at 40 ft from the Cleric, Goblin 2 at 90 ft; the Rogue adjacent to the Cleric and wounded. Nothing targeted (clear with T if needed).
 
@@ -321,3 +321,14 @@ Other console errors during the run:
 Anything surprising:
 <free text>
 ```
+
+## 9. Eldemar rollout (v0.11.3)
+
+Everything above is green on bg3-flow-test. To bring the live world Eldemar to the same state, in this order, with a backup of the world folder first:
+
+1. Modules: bg3-flow v0.11.3 from the manifest, Midi QOL 14.6.8, DAE, Chris's Premades 2.1.7, Coven's Automation Toolkit 0.1.7, Gambit's Premades 3.0.5, Plutonium and Plutonium Addon: Automation 0.9.1, Monk's turn marker optional. Same versions as the test world: a newer Midi or dnd5e is untested.
+2. bg3-flow: press **Apply BG3 automation preset** (settings) and confirm. Then the module's settings: Full automation on, BG3 turn flow on, Encounters and stealth on (default radius 30, darkness threshold as on the test world), Target picker on, Action economy *Players stopped, GM warned*, Monster autopilot on with *Pause before each monster action* off and *Pass the turn automatically* on, Intelligence threshold default, Monsters flee on (threshold 25, region name "escape"), Lair actions on, Enlarge: Strength twice on, New spells arrive prepared on, Lock GM movement too as the DM prefers.
+3. The 7f recipe, verbatim: Midi `consumeResource` and `gmConsumeResource` "both"; CAT *Hide Troubleshooter Warnings* true and sources Gambit's 5, CPR 10, Midi QOL 20; dnd5e *Allow Transformation* and *Allow Summoning* true; DAE both expiry actions delete; core permission *Create New Tokens* for Player and Trusted; Gambit's Opportunity Attack, Counterspell and Sentinel on, then reload; Plutonium `import.dragDropMode` 2, `importSpell.prepareSpellItems` 1, `importSpell.prepareActorSpells` 1, split melee/ranged attacks on; the addon's CPR integration on.
+4. Per item after import: Enlarge/Reduce gets CPR through CAT's Item Medkit; Uncanny Dodge from Midi's sample compendium; Spiritual Weapon answers its style questions once. Existing characters: spells already on the sheet stay as they are (the house rule only touches new ones), so check *prepared* on the reaction spells (Shield, Hellish Rebuke, Counterspell) once.
+5. Smoke test with the DM only, no players: one goblin and one PC, a combat by hand: icons above the PC, a Longsword from the sheet with nothing targeted shows the 5 ft circle, the goblin's autopilot turn plays, the turn passes. Then an opportunity attack prompt from Gambit's when the goblin walks away. Delete the combat.
+6. Known and accepted: the world comes up paused and the autopilot plays regardless; a GM teleport next to a PC starts an encounter; Midi counts move-only walls as cover; Gambit's "Sentinel - Movement" effect lingers; missing animation packs give red Sequencer errors on some spells (cosmetic).
