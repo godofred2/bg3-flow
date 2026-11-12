@@ -1,12 +1,16 @@
-// Target picker: a single-target spell or attack used with nothing targeted shows its range and takes its targets from clicks, like BG3.
+// Target picker: a single-target spell or attack shows its range and takes its targets from clicks at every use, like BG3.
 import { MODULE_ID, log, safe } from "./main.js";
 import { rangeOf } from "./ai/board.js";
+import { actingCombatant } from "./economy.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 
-/** What the picker must collect for this use ({ count, range, self } in scene units; `self`: the caster may click itself), or null when nothing is to be picked. */
-export function needsPick({ activity, usage, targeted }) {
-  if (game.settings.get(MODULE_ID, "targetPicker") === false || targeted > 0 || usage?.midiOptions?.targetUuids?.length) return null;
+/** What the picker must collect for this use ({ count, range, self } in scene units; `self`: the caster may click itself), or null when nothing is to be picked.
+ *  Targets left marked from the last use are picked again (a heal, then an attack: both went to the ally), except off the actor's turn or for a
+ *  reaction, where the targets were set by whoever prompted it (Gambit's opportunity attack, a Counterspell prompt). */
+export function needsPick({ activity, usage, targeted, onTurn = true }) {
+  if (game.settings.get(MODULE_ID, "targetPicker") === false || usage?.midiOptions?.targetUuids?.length) return null;
+  if (targeted > 0 && (!onTurn || activity?.activation?.type === "reaction")) return null;
   if (!activity || activity.target?.template?.type) return null; // an area: the template picks
   const affects = activity.target?.affects?.type ?? "", units = activity.range?.units;
   if (affects === "self" || units === "self") return null;
@@ -15,22 +19,25 @@ export function needsPick({ activity, usage, targeted }) {
   return { count, range: ["any", "spec"].includes(units) ? Infinity : rangeOf(activity), self: activity.type !== "attack" && affects !== "enemy" };
 }
 
-/** midi-qol.preTargetingV2: with nothing targeted, pick before Midi reads the targets; a cancelled pick aborts the use (nothing spent). */
+/** midi-qol.preTargetingV2: pick before Midi reads the targets; a cancelled pick aborts the use (nothing spent). */
 export async function onPreTargetingPick({ workflow, usage }, { pick = pickTargets } = {}) {
-  const need = needsPick({ activity: workflow?.activity, usage, targeted: game.user.targets?.size ?? 0 });
+  const onTurn = !game.combat?.started || !!actingCombatant(workflow?.actor);
+  const need = needsPick({ activity: workflow?.activity, usage, targeted: game.user.targets?.size ?? 0, onTurn });
   if (!need || !workflow?.token) return;
   const picked = await pick({ token: workflow.token, range: need.range, count: need.count, self: need.self, name: workflow.item?.name ?? workflow.activity.name });
   if (!picked?.length) { log("target picker: cancelled"); return false; }
   log(`target picker: ${picked.map((t) => t.name).join(", ")}`);
 }
 
-/** Range circle round the caster, a prompt, and clicks on creatures until `count` are targeted. Esc or a right click cancels (null). */
+/** Range circle round the caster, a prompt, and clicks on creatures until `count` are targeted; Enter settles for fewer. Esc or a right click cancels (null). */
 export function pickTargets({ token, range, count, name, self = false }) {
   return new Promise((resolve) => {
     const picked = [], view = canvas.app?.view ?? canvas.app?.canvas;
+    if (game.user.targets?.size) canvas.tokens.setTargets?.([]); // the last use's targets: this use picks its own
     const g = drawRange(token, range);
     const units = canvas.scene?.grid?.units || "ft";
-    const note = ui.notifications.info(L("Picker.Pick", { name, count, range: Number.isFinite(range) ? `${range} ${units}` : L("Picker.Anywhere") }), { permanent: true });
+    const text = L("Picker.Pick", { name, count, range: Number.isFinite(range) ? `${range} ${units}` : L("Picker.Anywhere") });
+    const note = ui.notifications.info(count > 1 ? `${text} ${L("Picker.Fewer")}` : text, { permanent: true });
     const finish = (result) => {
       view?.removeEventListener("pointerdown", onDown, true);
       window.removeEventListener("keydown", onKey, true);
@@ -48,7 +55,10 @@ export function pickTargets({ token, range, count, name, self = false }) {
       picked.push(t);
       if (picked.length >= count) finish(picked);
     };
-    const onKey = (ev) => { if (ev.key === "Escape") { ev.stopPropagation(); ev.preventDefault(); finish(null); } };
+    const onKey = (ev) => {
+      if (ev.key === "Escape") { ev.stopPropagation(); ev.preventDefault(); finish(null); }
+      else if (ev.key === "Enter" && picked.length) { ev.stopPropagation(); ev.preventDefault(); finish(picked); } // Scorching Ray, all rays at one goblin
+    };
     view?.addEventListener("pointerdown", onDown, true);
     window.addEventListener("keydown", onKey, true);
   });

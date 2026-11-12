@@ -116,7 +116,7 @@ Setup: give the Cleric the spell **Shield** (reaction) and the Rogue the feature
 - [ ] R3. Player1 tries Shield twice in the same round. Expected: Midi warns the reaction is already used (enforce reactions).
 - [ ] R4. On the goblins' shared turn, with Goblin 1 as Foundry's current combatant, the GM attacks with Goblin 2 twice in a row. Expected: no "Reaction Used, proceed anyway?" dialog and no "Reaction used" effect on Goblin 2; both attacks are plain attacks. Then, on the Cleric and Rogue's turn, attack with Goblin 1: Midi treats it as an opportunity attack as before.
 
-## 5b. Target picker (v0.10.0; K1-K6 green on v0.11.0; K7 added in v0.11.1 and green on v0.11.2; round closed)
+## 5b. Target picker (v0.10.0; K1-K6 green on v0.11.0; K7 added in v0.11.1 and green on v0.11.2; round closed; v0.12.0 picks at every use, K4 reversed: see 5c)
 
 Setup: the Cleric (Player1) with Sacred Flame (60 ft, one creature, save) and Cure Wounds (touch, one creature, heal); the Fighter with a Longsword; Goblin 1 at 40 ft from the Cleric, Goblin 2 at 90 ft; the Rogue adjacent to the Cleric and wounded. Nothing targeted (clear with T if needed).
 
@@ -127,6 +127,18 @@ Setup: the Cleric (Player1) with Sacred Flame (60 ft, one creature, save) and Cu
 - [ ] K5. The Fighter's Longsword with nothing targeted: a 5 ft circle; clicking an adjacent goblin attacks it; a goblin 10 ft away is refused.
 - [ ] K6. Unaffected flows: Fireball (template, no circle), Shield as a reaction (no circle), the autopilot's goblins on their turn (no circle on the GM), Gambit's opportunity attack prompt (no circle). With the setting off, K1 behaves as before the picker (Midi's "no target" handling).
 - [ ] K7. Yourself (v0.11.1): the Cleric uses Cure Wounds with nothing targeted and clicks its own token: healed; a Potion of Healing the same way: drunk. The Fighter's Longsword with nothing targeted and a click on the Fighter itself: ignored, still waiting (an attack never targets its wielder).
+
+## 5c. Picker at every use and spell level (v0.12.0)
+
+Setup as 5b, plus: the Cleric has 2nd-level slots left; the Rogue adjacent to the Cleric and wounded; Goblin 1 at 5 ft from the Cleric; a spell with several targets on anyone (Scorching Ray, or Magic Missile if its activity targets 3 creatures). bg3-flow settings *Target picker* and *Ask the spell level* on.
+
+- [ ] K8. Cure Wounds on the Rogue (picker click), then Sacred Flame straight away with the Rogue still marked: the circle appears again, the Rogue's target marker goes as it opens, clicking Goblin 1 sends the save card to Goblin 1, not the Rogue. Report the two `[bg3-flow] target picker:` lines.
+- [ ] K9. Target Goblin 1 with T first, then Sacred Flame: the circle appears anyway (K4 reversed since v0.12.0), the marker is dropped, a click on Goblin 1 goes on as before.
+- [ ] K10. Off-turn targets stand: Gambit's opportunity attack prompt when the goblin walks away from the Fighter: no circle, the attack lands on the goblin; Shield as a reaction: no circle; the autopilot's goblins: no circle on the GM.
+- [ ] K11. Several targets: the notice ends with "Enter confirms fewer."; one click on Goblin 1, then Enter: the use goes on with Goblin 1 alone. Enter with nothing picked yet: nothing happens, still waiting.
+- [ ] S1. Spell level: the Cleric casts Cure Wounds on its turn: after the picker click, dnd5e's usage dialog opens with the spell slot selector; 2nd level chosen: 2d8 rolled, a 2nd-level slot spent. Report whether the dialog came before or after the circle, and the console for errors.
+- [ ] S2. No choice, no dialog: Sacred Flame (cantrip) never opens it; with every slot above 1st spent, Cure Wounds casts at once at 1st level; Shield as a reaction with 2nd-level slots left: no dialog (the 7f recipe wants this).
+- [ ] S3. Setting *Ask the spell level* off: S1 casts at 1st level with no dialog, as on v0.11.3.
 
 ## 6. Encounters and stealth (feature 3)
 
@@ -267,7 +279,7 @@ What "bg3-flow first" means concretely: the Midi preset bg3-flow applies from it
 - [ ] P11. Reaction chain within the cap (v0.9.6): the Priest casts Guiding Bolt at the Fighter with the Cleric's Counterspell (Gambit's) and the Fighter's Shield both offered and answered late (10 s each): the use completes, no "Midi did not finish the use" whisper, the turn passes.
 Report: pass/fail per step, the recipe, and what could not be made to work as-is.
 
-Recipe from the v0.9.5 run (bg3-flow-test is configured this way): bg3-flow preset applied; Midi `consumeResource` and `gmConsumeResource` "both" (otherwise reaction spells open a cast-level dialog); CAT *Hide Troubleshooter Warnings* true and sources Gambit's 5, CPR 10, Midi QOL 20; dnd5e *Allow Transformation* and *Allow Summoning* true; DAE both expiry actions delete; core permission *Create New Tokens* for Player and Trusted (Spiritual Weapon); Gambit's Opportunity Attack, Counterspell and Sentinel on (reload after changing); Plutonium `import.dragDropMode` 2, `importSpell.prepareSpellItems` 1, `importSpell.prepareActorSpells` 1, split melee/ranged on; the addon's CPR integration on. Per item after import: Enlarge/Reduce gets CPR through CAT's Item Medkit; Uncanny Dodge is Midi's sample item; Spiritual Weapon answers its style questions once.
+Recipe from the v0.9.5 run (bg3-flow-test is configured this way): bg3-flow preset applied; Midi `consumeResource` and `gmConsumeResource` "both" (otherwise reaction spells open a cast-level dialog; since v0.12.0 the house rule *Ask the spell level* brings the slot dialog back for a leveled spell cast with a higher slot available); CAT *Hide Troubleshooter Warnings* true and sources Gambit's 5, CPR 10, Midi QOL 20; dnd5e *Allow Transformation* and *Allow Summoning* true; DAE both expiry actions delete; core permission *Create New Tokens* for Player and Trusted (Spiritual Weapon); Gambit's Opportunity Attack, Counterspell and Sentinel on (reload after changing); Plutonium `import.dragDropMode` 2, `importSpell.prepareSpellItems` 1, `importSpell.prepareActorSpells` 1, split melee/ranged on; the addon's CPR integration on. Per item after import: Enlarge/Reduce gets CPR through CAT's Item Medkit; Uncanny Dodge is Midi's sample item; Spiritual Weapon answers its style questions once.
 
 ## 8. Report template
 
@@ -308,6 +320,12 @@ Y8 ...
 K1 ...
 ...
 K7 ...
+K8 ...
+...
+K11 ...
+S1 ...
+S2 ...
+S3 ...
 X0 ...
 ...
 X14 ...
@@ -327,7 +345,7 @@ Anything surprising:
 Everything above is green on bg3-flow-test. To bring the live world Eldemar to the same state, in this order, with a backup of the world folder first:
 
 1. Modules: bg3-flow v0.11.3 from the manifest, Midi QOL 14.6.8, DAE, Chris's Premades 2.1.7, Coven's Automation Toolkit 0.1.7, Gambit's Premades 3.0.5, Plutonium and Plutonium Addon: Automation 0.9.1, Monk's turn marker optional. Same versions as the test world: a newer Midi or dnd5e is untested.
-2. bg3-flow: press **Apply BG3 automation preset** (settings) and confirm. Then the module's settings: Full automation on, BG3 turn flow on, Encounters and stealth on (default radius 30, darkness threshold as on the test world), Target picker on, Action economy *Players stopped, GM warned*, Monster autopilot on with *Pause before each monster action* off and *Pass the turn automatically* on, Intelligence threshold default, Monsters flee on (threshold 25, region name "escape"), Lair actions on, Enlarge: Strength twice on, New spells arrive prepared on, Lock GM movement too as the DM prefers.
+2. bg3-flow: press **Apply BG3 automation preset** (settings) and confirm. Then the module's settings: Full automation on, BG3 turn flow on, Encounters and stealth on (default radius 30, darkness threshold as on the test world), Target picker on, Action economy *Players stopped, GM warned*, Monster autopilot on with *Pause before each monster action* off and *Pass the turn automatically* on, Intelligence threshold default, Monsters flee on (threshold 25, region name "escape"), Lair actions on, Enlarge: Strength twice on, New spells arrive prepared on, Ask the spell level on (v0.12.0), Lock GM movement too as the DM prefers.
 3. The 7f recipe, verbatim: Midi `consumeResource` and `gmConsumeResource` "both"; CAT *Hide Troubleshooter Warnings* true and sources Gambit's 5, CPR 10, Midi QOL 20; dnd5e *Allow Transformation* and *Allow Summoning* true; DAE both expiry actions delete; core permission *Create New Tokens* for Player and Trusted; Gambit's Opportunity Attack, Counterspell and Sentinel on, then reload; Plutonium `import.dragDropMode` 2, `importSpell.prepareSpellItems` 1, `importSpell.prepareActorSpells` 1, split melee/ranged attacks on; the addon's CPR integration on.
 4. Per item after import: Enlarge/Reduce gets CPR through CAT's Item Medkit; Uncanny Dodge from Midi's sample compendium; Spiritual Weapon answers its style questions once. Existing characters: spells already on the sheet stay as they are (the house rule only touches new ones), so check *prepared* on the reaction spells (Shield, Hellish Rebuke, Counterspell) once.
 5. Smoke test with the DM only, no players: one goblin and one PC, a combat by hand: icons above the PC, a Longsword from the sheet with nothing targeted shows the 5 ft circle, the goblin's autopilot turn plays, the turn passes. Then an opportunity attack prompt from Gambit's when the goblin walks away. Delete the combat.

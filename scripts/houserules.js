@@ -35,6 +35,16 @@ export function prepareOnCreate(item) {
   return true;
 }
 
+/** Midi set to consume resources by itself (the table's recipe, so a reaction spell skips the cast dialog) casts every spell at its base
+ *  level. A leveled spell cast with a higher slot still available gets dnd5e's usage dialog back, where the slot is chosen. Cantrips,
+ *  reactions, scrolls (fixed level), uses that asked for no dialog (the autopilot, a prompt) and actors without a higher slot do not. */
+export function wantsSlotDialog(activity, usage) {
+  if (game.settings.get(MODULE_ID, "askSpellLevel") === false || usage?.midiOptions?.configureDialog === false) return false;
+  const item = activity?.item, level = item?.system?.level ?? 0;
+  if (item?.type !== "spell" || !(level > 0) || !usage?.spell?.slot || usage.scaling === false || activity.activation?.type === "reaction") return false;
+  return Object.values(activity.actor?.system?.spells ?? {}).some((s) => s?.value > 0 && s?.level > level);
+}
+
 export function registerHouseRules() {
   Hooks.on("preCreateActiveEffect", safeSync((effect) => {
     if (game.settings.get(MODULE_ID, "enlargeStrength") === false) return;
@@ -43,5 +53,6 @@ export function registerHouseRules() {
     if (changes) effect.updateSource({ "system.changes": changes });
   }));
   Hooks.on("preCreateItem", safeSync((item) => { prepareOnCreate(item); }));
+  Hooks.on("dnd5e.preUseActivity", safeSync((activity, usage, dialog) => { if (wantsSlotDialog(activity, usage)) dialog.configure = true; })); // after Midi's checkAutoConsume, before dnd5e opens or skips the dialog
   log("house rules on");
 }

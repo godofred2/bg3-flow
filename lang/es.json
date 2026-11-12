@@ -70,9 +70,13 @@
         "Name": "Los conjuros nuevos llegan preparados",
         "Hint": "Un conjuro de tipo preparado añadido a un personaje se marca como preparado al crearse (las automatizaciones importadas suelen dejarlo sin preparar). Otros modos de preparación y los PNJ no se tocan."
       },
+      "askSpellLevel": {
+        "Name": "Preguntar el nivel del conjuro",
+        "Hint": "Un conjuro con nivel lanzado con un espacio superior disponible abre el diálogo de espacio de conjuro, aunque Midi consuma los recursos por su cuenta. Los trucos y las reacciones nunca preguntan."
+      },
       "targetPicker": {
         "Name": "Selector de objetivo",
-        "Hint": "Un conjuro o ataque de objetivo único usado sin nada marcado muestra su alcance y toma los objetivos de tus clics, como en BG3. Esc o clic derecho cancela el uso."
+        "Hint": "Cada conjuro o ataque de objetivo único muestra su alcance y toma los objetivos de tus clics, como en BG3; los objetivos que quedaron del uso anterior se descartan. Esc o clic derecho cancela el uso."
       },
       "actionEconomy": {
         "Name": "Economía de acciones",
@@ -96,6 +100,7 @@
     },
     "Picker": {
       "Pick": "{name}: haz clic en un objetivo a {range} o menos ({count} en total). Esc o clic derecho cancela.",
+      "Fewer": "Intro confirma con menos.",
       "Anywhere": "cualquier distancia",
       "OutOfRange": "{name} está a {distance} {units}; el límite es {range} {units}."
     },

@@ -70,9 +70,13 @@
         "Name": "New spells arrive prepared",
         "Hint": "A spell of the prepared kind added to a character is marked prepared on creation (imported automations tend to leave it unprepared). Other preparation modes and NPCs are untouched."
       },
+      "askSpellLevel": {
+        "Name": "Ask the spell level",
+        "Hint": "A leveled spell cast with a higher slot still available opens the slot dialog, even with Midi consuming resources by itself. Cantrips and reactions never ask."
+      },
       "targetPicker": {
         "Name": "Target picker",
-        "Hint": "A single-target spell or attack used with nothing targeted shows its range and takes its targets from your clicks, like BG3. Esc or a right click cancels the use."
+        "Hint": "Every single-target spell or attack shows its range and takes its targets from your clicks, like BG3; targets left from the last use are dropped. Esc or a right click cancels the use."
       },
       "actionEconomy": {
         "Name": "Action economy",
@@ -96,6 +100,7 @@
     },
     "Picker": {
       "Pick": "{name}: click a target within {range} ({count} needed). Esc or right click cancels.",
+      "Fewer": "Enter confirms fewer.",
       "Anywhere": "any distance",
       "OutOfRange": "{name} is {distance} {units} away; {range} {units} is the limit."
     },

@@ -52,7 +52,7 @@ const offersOffhand = (workflow) => ((workflow?.item ?? workflow?.activity?.item
 const modeOf = (workflow) => workflow?.attackMode ?? workflow?.attackRoll?.options?.attackMode;
 
 /** The combatant acting now for this actor, or null when it is not its group's turn (a reaction, an opportunity attack). */
-function actingCombatant(actor) {
+export function actingCombatant(actor) {
   const combat = game.combat;
   if (!combat?.started || !actor) return null;
   const c = combat.combatants.find((c) => c.actor === actor);
