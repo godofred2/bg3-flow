@@ -22,7 +22,7 @@ This module makes our Foundry combats feel like Baldur's Gate 3. You do not need
 
 ## 3. Attacking: no dialogs, dice on screen
 
-- Click a weapon or spell. An **orange circle** shows its range and a notice asks you to click the creature you want, every time, even if something was still marked from your last action (Esc cancels; with several targets, Enter confirms fewer). A spell you could cast with a higher slot asks which one. Then the attack rolls, the hit is checked, the damage rolls and applies. No pop-ups asking you how to roll. Everyone sees the dice.
+- Click a weapon or spell. An **orange circle** shows its range and a notice asks you to click the creature you want, every time, even if something was still marked from your last action (Esc cancels; with several targets, Enter confirms fewer). A spell you could cast with a higher slot asks which one, and if the higher level buys more targets (Hold Person) the circle comes back for the extra ones. Attacking from Hiding rolls with advantage. Then the attack rolls, the hit is checked, the damage rolls and applies. No pop-ups asking you how to roll. Everyone sees the dice.
 - Saving throws roll by themselves too, in public.
 - **Reactions** work like BG3: when someone hits you and you have Shield, or damages you and you have Uncanny Dodge, a prompt asks whether to use it, showing the attack roll. You have **30 seconds**; no answer means no reaction. Counterspell asks when an enemy casts.
 - **Area spells** that let you spare your friends (Spirit Guardians and the like) ask you one question before the area appears: **Enemies only** or **Everyone**. Fireball does not ask; it hits everyone inside.

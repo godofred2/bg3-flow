@@ -52,14 +52,17 @@ export const MIDI_PRESET = Object.freeze({
   showReactionAttackRoll: "all",
   enforceReactions: "all",
   recordAOO: "all",
-  autoItemEffects: "applyRemove" // a reaction's effect (Shield +5 AC, Uncanny Dodge half damage) applies itself
+  autoItemEffects: "applyRemove", // a reaction's effect (Shield +5 AC, Uncanny Dodge half damage) applies itself
+  optionalRules: Object.freeze({ hiddenAdvantage: "effect" }) // the Hiding status (bg3-flow's Hide) gives the attack advantage; Midi's default only asks whether the target can see the attacker
 });
 
-/** Copy of `current` with `preset` keys overriding. Keys Midi does not know (absent from `current`) are skipped. */
+const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
+/** Copy of `current` with `preset` keys overriding. Keys Midi does not know (absent from `current`) are skipped; a nested object (optionalRules) merges into Midi's. */
 export function mergePreset(current, preset) {
   const out = { ...current };
   for (const [k, v] of Object.entries(preset)) {
-    if (k in current) out[k] = Array.isArray(v) ? [...v] : v;
+    if (!(k in current)) continue;
+    out[k] = Array.isArray(v) ? [...v] : isObj(v) && isObj(current[k]) ? { ...current[k], ...v } : v;
   }
   return out;
 }

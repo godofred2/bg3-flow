@@ -101,6 +101,7 @@
     "Picker": {
       "Pick": "{name}: haz clic en un objetivo a {range} o menos ({count} en total). Esc o clic derecho cancela.",
       "Fewer": "Intro confirma con menos.",
+      "More": "{name} a nivel superior: haz clic en {count} más a {range} o menos. Esc se queda con los que hay.",
       "Anywhere": "cualquier distancia",
       "OutOfRange": "{name} está a {distance} {units}; el límite es {range} {units}."
     },

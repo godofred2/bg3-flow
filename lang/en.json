@@ -101,6 +101,7 @@
     "Picker": {
       "Pick": "{name}: click a target within {range} ({count} needed). Esc or right click cancels.",
       "Fewer": "Enter confirms fewer.",
+      "More": "{name} at a higher level: click {count} more within {range}. Esc keeps the targets you have.",
       "Anywhere": "any distance",
       "OutOfRange": "{name} is {distance} {units} away; {range} {units} is the limit."
     },
