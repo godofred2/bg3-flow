@@ -60,6 +60,21 @@ test("onPreTargetingPick: runs the picker for the caster with the activity's ran
   game.user.targets = new Set();
 });
 
+test("onPreTargetingPick: the picked tokens replace Midi's snapshot of the targets taken at the start of the use (workflowOptions.preSelectedTargetUuids on the usage and on the workflow), else Midi re-marks the old ones", async () => {
+  const t = { id: "t1", name: "Goblin 1", document: { uuid: "Scene.s.Token.t1" } };
+  const pick = async () => [t];
+  const stale = ["Scene.s.Token.rogue"];
+  const usage = { midiOptions: { workflowOptions: { preSelectedTargetUuids: [...stale] } } };
+  const workflow = { activity: act(), token: { id: "caster" }, actor: {}, workflowOptions: { preSelectedTargetUuids: [...stale] }, preSelectedTargets: new Set([{ id: "rogue" }]) };
+  assert.equal(await onPreTargetingPick({ workflow, usage }, { pick }), undefined);
+  assert.deepEqual(usage.midiOptions.workflowOptions.preSelectedTargetUuids, ["Scene.s.Token.t1"]);
+  assert.deepEqual(workflow.workflowOptions.preSelectedTargetUuids, ["Scene.s.Token.t1"]);
+  assert.deepEqual([...workflow.preSelectedTargets], [t]);
+  const bare = {}; // a use that brought no midiOptions at all
+  assert.equal(await onPreTargetingPick({ workflow: { activity: act(), token: { id: "caster" }, actor: {} }, usage: bare }, { pick }), undefined);
+  assert.deepEqual(bare.midiOptions.workflowOptions.preSelectedTargetUuids, ["Scene.s.Token.t1"]);
+});
+
 test("pickTargets: a click on the caster's own token counts when the activity can affect it (a touch heal, a potion), never for an attack", async () => {
   const view = { fn: null, addEventListener(type, fn) { this.fn = fn; }, removeEventListener() {} };
   globalThis.window = { addEventListener() {}, removeEventListener() {} };

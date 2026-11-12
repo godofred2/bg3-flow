@@ -26,6 +26,12 @@ export async function onPreTargetingPick({ workflow, usage }, { pick = pickTarge
   if (!need || !workflow?.token) return;
   const picked = await pick({ token: workflow.token, range: need.range, count: need.count, self: need.self, name: workflow.item?.name ?? workflow.activity.name });
   if (!picked?.length) { log("target picker: cancelled"); return false; }
+  // Midi copied the user's targets at the start of the use (workflowOptions.preSelectedTargetUuids) and setupTargets prefers that
+  // copy to the marks on screen: the pick replaces it on the usage (what setupTargets reads) and on the workflow (sculpt spells).
+  const uuids = picked.map((t) => t.document?.uuid).filter(Boolean);
+  if (usage) ((usage.midiOptions ??= {}).workflowOptions ??= {}).preSelectedTargetUuids = uuids;
+  if (workflow.workflowOptions) workflow.workflowOptions.preSelectedTargetUuids = uuids;
+  workflow.preSelectedTargets = new Set(picked);
   log(`target picker: ${picked.map((t) => t.name).join(", ")}`);
 }
 

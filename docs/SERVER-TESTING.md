@@ -128,11 +128,11 @@ Setup: the Cleric (Player1) with Sacred Flame (60 ft, one creature, save) and Cu
 - [ ] K6. Unaffected flows: Fireball (template, no circle), Shield as a reaction (no circle), the autopilot's goblins on their turn (no circle on the GM), Gambit's opportunity attack prompt (no circle). With the setting off, K1 behaves as before the picker (Midi's "no target" handling).
 - [ ] K7. Yourself (v0.11.1): the Cleric uses Cure Wounds with nothing targeted and clicks its own token: healed; a Potion of Healing the same way: drunk. The Fighter's Longsword with nothing targeted and a click on the Fighter itself: ignored, still waiting (an attack never targets its wielder).
 
-## 5c. Picker at every use and spell level (v0.12.0)
+## 5c. Picker at every use and spell level (v0.12.0; run on v0.12.0: K9-K11, S1-S3 pass, K8 fails: Midi's snapshot of the targets taken at the start of the use (`workflowOptions.preSelectedTargetUuids`, read by `setupTargets`) won the pick; v0.12.1 replaces the snapshot with the picked tokens; rerun K8 and K9)
 
 Setup as 5b, plus: the Cleric has 2nd-level slots left; the Rogue adjacent to the Cleric and wounded; Goblin 1 at 5 ft from the Cleric; a spell with several targets on anyone (Scorching Ray, or Magic Missile if its activity targets 3 creatures). bg3-flow settings *Target picker* and *Ask the spell level* on.
 
-- [ ] K8. Cure Wounds on the Rogue (picker click), then Sacred Flame straight away with the Rogue still marked: the circle appears again, the Rogue's target marker goes as it opens, clicking Goblin 1 sends the save card to Goblin 1, not the Rogue. Report the two `[bg3-flow] target picker:` lines.
+- [ ] K8. Cure Wounds on the Rogue (picker click), then Sacred Flame straight away with the Rogue still marked: the circle appears again, the Rogue's target marker goes as it opens, clicking Goblin 1 sends the save card to Goblin 1, not the Rogue, and Goblin 1 (not the Rogue) is the one marked afterwards. Report the two `[bg3-flow] target picker:` lines. Then the check: T on Goblin 1, Sacred Flame, click Goblin 2 in the circle: Goblin 2 rolls the save.
 - [ ] K9. Target Goblin 1 with T first, then Sacred Flame: the circle appears anyway (K4 reversed since v0.12.0), the marker is dropped, a click on Goblin 1 goes on as before.
 - [ ] K10. Off-turn targets stand: Gambit's opportunity attack prompt when the goblin walks away from the Fighter: no circle, the attack lands on the goblin; Shield as a reaction: no circle; the autopilot's goblins: no circle on the GM.
 - [ ] K11. Several targets: the notice ends with "Enter confirms fewer."; one click on Goblin 1, then Enter: the use goes on with Goblin 1 alone. Enter with nothing picked yet: nothing happens, still waiting.
