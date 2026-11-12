@@ -146,6 +146,9 @@
       "Decision": "<b>{name}</b>: {reason}",
       "Error": "Piloto detenido para <b>{name}</b>: {error}",
       "Escaped": "<b>{name}</b> ha escapado.",
+      "Command": "<b>{name}</b> obedece la orden \"{word}\".",
+      "UnknownCommand": "<b>{name}</b>: orden \"{word}\" no reconocida (acércate, suelta, huye, arrodíllate, alto): juega con normalidad.",
+      "Controlled": "<b>{name}</b> está encantado o dominado: lo lleva el DM este turno.",
       "TunnelFighter": { "Title": "{name}: ¿atacar a {target} con Tunnel Fighter?", "Attack": "Atacar", "Pass": "Pasar", "Waiting": "Esperando la reacción de Tunnel Fighter de {name}" }
     }
   }

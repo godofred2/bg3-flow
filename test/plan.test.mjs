@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { averageOf, hitChance, failChance, expectedValue, parseMultiattack, pickTarget, planTurn, shouldFlee, planFlee, oaCost, splitAtTunnelFighter } = await import("../scripts/ai/plan.js");
+const { averageOf, hitChance, failChance, expectedValue, parseMultiattack, pickTarget, planTurn, shouldFlee, planFlee, oaCost, splitAtTunnelFighter, commandKind, planCommand } = await import("../scripts/ai/plan.js");
 
 test("averageOf: dice average plus flat, unknown tokens count as 0", () => {
   assert.equal(averageOf("2d6 + 3"), 10);
@@ -353,4 +353,36 @@ test("lair slot: a condition is worth the damage it denies, aimed at the most da
   p = planTurn(lairBoard({ activities: [pool, roots], enemies: [threat(pc("rogue", 100, { ac: 13 }), 20)], me: { lairNames: ["Acid Pool", "Grasping Roots"] } }), { slot: "lair" });
   assert.equal(p.reason, "lair: Acid Pool vs rogue (expected 7.7); also: Grasping Roots 7.0"); // 0.7 x 0.5 x 20 = 7.0 loses to 7.65
   assert.equal(planTurn(b, { slot: "action" }).reason, "approach fighter"); // the action slot never values a condition
+});
+
+// Command (Gambit's 2014 automation stores the spoken word on the target's effect): the autopilot obeys on the monster's turn.
+test("commandKind: the five SRD words, English or Spanish, any case; anything else is the DM's", () => {
+  assert.equal(commandKind("Drop"), "drop");
+  assert.equal(commandKind(" suelta "), "drop");
+  assert.equal(commandKind("Approach"), "approach");
+  assert.equal(commandKind("Acércate"), "approach");
+  assert.equal(commandKind("FLEE"), "flee");
+  assert.equal(commandKind("huye"), "flee");
+  assert.equal(commandKind("Grovel"), "grovel");
+  assert.equal(commandKind("arrodíllate"), "grovel");
+  assert.equal(commandKind("Halt"), "halt");
+  assert.equal(commandKind("alto"), "halt");
+  assert.equal(commandKind("dance"), null);
+  assert.equal(commandKind(""), null);
+});
+
+test("planCommand: drop and halt do nothing; grovel falls prone; approach walks toward the caster (the nearest visible enemy without one) without acting; flee Dashes away; every one of them takes no action", () => {
+  const rogue = { ...pc("rogue", 25), actorUuid: "Actor.rogue" }, cleric = { ...pc("cleric", 40), actorUuid: "Actor.cleric" };
+  const b = board({ enemies: [rogue, cleric], activities: [scimitar], paths: { rogue: [sq(100, 5, 20), sq(200, 10, 15)], cleric: [sq(100, 5, 35), sq(300, 15, 25), sq(500, 25, 15)] } });
+  assert.deepEqual(planCommand(b, "drop"), { move: null, actions: [], reason: "command: drop (ends its turn)", command: "drop" });
+  assert.deepEqual(planCommand(b, "halt"), { move: null, actions: [], reason: "command: halt", command: "halt" });
+  assert.deepEqual(planCommand(b, "grovel"), { move: null, actions: [], reason: "command: grovel (prone, ends its turn)", command: "grovel", prone: true });
+  const ap = planCommand(b, "approach", "Actor.cleric.Item.cmd");
+  assert.deepEqual([at(ap.move), ap.actions, ap.command, ap.reason], [{ x: 500, y: 0, elevation: 0 }, [], "approach", "command: approach cleric"]);
+  assert.deepEqual(at(planCommand(b, "approach").move), { x: 200, y: 0, elevation: 0 }); // no caster known: the nearest visible enemy
+  const fb = { ...b, me: { ...b.me, dash: false, speed: 30 }, escape: null, away: [{ ...sq(300, 30, 0), distances: { rogue: 60 } }], flee: { enabled: true, threshold: 25 } };
+  const fl = planCommand(fb, "flee");
+  assert.deepEqual([at(fl.move), fl.actions, fl.dash, fl.command], [{ x: 300, y: 0, elevation: 0 }, [], true, "flee"]);
+  assert.match(fl.reason, /^command: flee/);
+  assert.equal(planCommand(b, "dance"), null);
 });

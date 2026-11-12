@@ -237,6 +237,33 @@ export function planFlee(board) {
   return best ? { move: moveTo(best), actions: [], reason: `flee: Dash away from enemies ${hp}`, dash: true, escape: null } : none;
 }
 
+const COMMANDS = {
+  approach: /^(approach|ac[eé]rcate|acercarse|aprox[ií]mate)$/i, drop: /^(drop|suelta|soltar)$/i, flee: /^(flee|huye|huir)$/i,
+  grovel: /^(grovel|arrod[ií]llate|arrodillarse|p[oó]strate)$/i, halt: /^(halt|alto|detente|quieto)$/i
+};
+/** The SRD Command words (Gambit's 2014 automation stores the typed word), English or Spanish; null for anything else (the DM's call). */
+export function commandKind(word) {
+  const w = String(word ?? "").trim();
+  return Object.keys(COMMANDS).find((k) => COMMANDS[k].test(w)) ?? null;
+}
+
+/** The turn of a commanded monster: no action, whatever the word. Approach walks toward the caster (`origin`: the Command item's uuid)
+ *  or, without one in sight, the nearest visible enemy; flee Dashes away (planFlee); grovel also falls prone. Null for an unknown kind. */
+export function planCommand(board, kind, origin = "") {
+  const none = (reason, extra = {}) => ({ move: null, actions: [], reason, command: kind, ...extra });
+  if (kind === "drop") return none("command: drop (ends its turn)");
+  if (kind === "halt") return none("command: halt");
+  if (kind === "grovel") return none("command: grovel (prone, ends its turn)", { prone: true });
+  if (kind === "flee") { const f = planFlee(board); return { ...f, reason: `command: ${f.reason}`, command: kind }; }
+  if (kind !== "approach") return null;
+  const casterUuid = String(origin).split(".Item.")[0];
+  const visible = board.enemies.filter((e) => e.visible && e.hp > 0).sort((a, b) => a.distance - b.distance);
+  const target = visible.find((e) => e.actorUuid && e.actorUuid === casterUuid) ?? visible[0];
+  if (!target) return none("command: approach (no one in sight)");
+  const last = [...(board.paths[target.id] ?? [])].reverse().find((s) => s.cost <= board.me.budget && !s.occupied && !board.reserved.has(key(s)));
+  return { move: last ? moveTo(last) : null, actions: [], reason: `command: approach ${target.name}`, command: kind };
+}
+
 /** The turn: flee when the rule fires (and somewhere to go), else the option with the highest expected value (single activities and
  *  the Multiattack sequence), else approach. With `slot: "bonus"`: the best bonus-action activity from where the monster stands, or nothing. */
 export function planTurn(board, { slot = "action" } = {}) {

@@ -52,7 +52,7 @@ function deps({ plans, bonus = {}, enemies = () => [enemy("rogue")], allies = ()
 }
 function reset() { order = []; moves = []; uses = []; places = []; calls.chat = []; settings.pauseBeforeAttack = false; settings.autoNextTurn = true; settings.enableTurns = true; settings.autoRecharge = "no"; settings.lairActions = true; game.user.isGM = true; }
 
-const { isAuto, runTurn, runLair, onCombatTurnChange, onRenderCombatTracker, pauseDialog, registerAutopilot, arrive, useActivity, rollRecharge, sentinelWatch, awaitOaRegions } = await import("../scripts/ai/run.js");
+const { isAuto, runTurn, runLair, onCombatTurnChange, onRenderCombatTracker, pauseDialog, registerAutopilot, arrive, useActivity, rollRecharge, sentinelWatch, awaitOaRegions, commandOf, onPreDeleteEffect, controlledBy } = await import("../scripts/ai/run.js");
 
 test("isAuto: on unless the flag says false or a player owns the actor", () => {
   assert.equal(isAuto(combatant("g")), true);
@@ -199,7 +199,7 @@ test("lang files carry every Autopilot and settings key the module uses", async 
   const en = JSON.parse(readFileSync(new URL("../lang/en.json", import.meta.url))).BG3FLOW;
   const es = JSON.parse(readFileSync(new URL("../lang/es.json", import.meta.url))).BG3FLOW;
   for (const k of ["enableAutopilot", "pauseBeforeAttack", "autoNextTurn", "intelligenceThreshold", "fleeEnabled", "fleeThreshold", "escapeRegionName"]) { assert.ok(en.Settings[k]?.Name && en.Settings[k]?.Hint, k); assert.ok(es.Settings[k]?.Name && es.Settings[k]?.Hint, k); }
-  for (const k of ["Toggle", "Decision", "Error", "Escaped"]) { assert.ok(en.Autopilot[k], k); assert.ok(es.Autopilot[k], k); }
+  for (const k of ["Toggle", "Decision", "Error", "Escaped", "Command", "UnknownCommand", "Controlled"]) { assert.ok(en.Autopilot[k], k); assert.ok(es.Autopilot[k], k); }
 });
 
 test("runTurn: the next turn's monsters are played when the autopilot itself passes the turn", async () => {
@@ -820,4 +820,84 @@ test("runTurn waits for Gambit's opportunity attack regions before the first mov
   const c2 = makeCombat([g1, combatant("pc", { disposition: 1, playerOwner: true })], 0); c2.round = 2;
   await runTurn(c2, d);
   assert.ok(!order.includes("grace"));
+});
+
+// Command: Gambit's effect carries flags.gambits-premades.commandWord and expires at the target's turn start (DAE), which may land
+// before the autopilot reads it; the word is kept from preDeleteActiveEffect for that turn.
+const commandEffect = (word, origin = "Actor.pc.Item.cmd") => ({ id: "fx1", name: "Command", origin, flags: { "gambits-premades": { command: true, commandWord: word } } });
+test("commandOf: the live effect's word, else the word kept when the effect expired this round; nothing otherwise", () => {
+  const g = combatant("g1"); const combat = makeCombat([g]);
+  assert.equal(commandOf(g, combat), null);
+  g.actor.effects = [commandEffect("Drop")];
+  assert.deepEqual(commandOf(g, combat), { word: "Drop", kind: "drop", origin: "Actor.pc.Item.cmd" });
+  g.actor.effects = [];
+  onPreDeleteEffect({ ...commandEffect("Huye"), parent: g.actor });
+  assert.deepEqual(commandOf(g, combat), { word: "Huye", kind: "flee", origin: "Actor.pc.Item.cmd" });
+  combat.round = 2;
+  assert.equal(commandOf(g, combat), null); // a stale word from another round is not obeyed
+  onPreDeleteEffect({ name: "Bless", flags: {}, parent: g.actor }); // not a command
+  assert.equal(commandOf(g, combat), null);
+});
+
+test("runTurn: a commanded monster obeys instead of its plan: Drop and Halt take no action and no bonus action, Grovel falls prone, the table is told, the turn passes; the kept word is used once", async () => {
+  reset();
+  const g1 = combatant("g1"), g2 = combatant("g2"), g3 = combatant("g3"), pc = combatant("pc", { disposition: 1, playerOwner: true });
+  const statuses = []; g3.actor.toggleStatusEffect = async (s, o) => statuses.push([s, o.active]);
+  g1.actor.effects = [commandEffect("Drop")]; g2.actor.effects = [commandEffect("Halt")]; g3.actor.effects = [commandEffect("Grovel")];
+  const combat = makeCombat([g1, g2, g3, pc]);
+  await runTurn(combat, deps({ plans: { g1: attackPlan(), g2: attackPlan(), g3: attackPlan() }, bonus: { g1: { move: null, actions: [{ activityId: "hw", targetIds: ["g2"] }], reason: "heal" } } }));
+  assert.deepEqual(uses, []);
+  assert.deepEqual(moves, []);
+  assert.deepEqual(statuses, [["prone", true]]);
+  const told = calls.chat.filter((m) => !m.whisper).map((m) => m.content);
+  assert.deepEqual(told, ['BG3FLOW.Autopilot.Command:{"name":"g1","word":"Drop"}', 'BG3FLOW.Autopilot.Command:{"name":"g2","word":"Halt"}', 'BG3FLOW.Autopilot.Command:{"name":"g3","word":"Grovel"}']);
+  assert.equal(combat.nextTurns, 1);
+  reset(); g1.actor.effects = []; g2.actor.effects = []; g3.actor.effects = [];
+  onPreDeleteEffect({ ...commandEffect("Drop"), parent: g1.actor }); // expired at turn start, before the read
+  const again = makeCombat([g1, pc]);
+  await runTurn(again, deps({ plans: { g1: attackPlan() } }));
+  assert.deepEqual(uses, []);
+  reset();
+  await runTurn(makeCombat([g1, pc]), deps({ plans: { g1: attackPlan() } })); // the word was spent: back to normal
+  assert.equal(uses.length, 1);
+});
+
+test("runTurn: Approach walks toward the caster and does not act; an unknown word is whispered and the monster plays as usual", async () => {
+  reset();
+  const g1 = combatant("g1"), pc = combatant("pc", { disposition: 1, playerOwner: true });
+  g1.actor.effects = [commandEffect("Approach", "Actor.cleric.Item.cmd")];
+  const cleric = { ...enemy("cleric"), actorUuid: "Actor.cleric", distance: 40 };
+  const d = deps({ plans: { g1: attackPlan() }, enemies: () => [enemy("rogue"), cleric] });
+  const snap = d.snap; d.snap = async (...a) => ({ ...(await snap(...a)), paths: { cleric: [{ x: 300, y: 0, elevation: 0, cost: 15, distance: 25, occupied: false, waypoints: [{ x: 300, y: 0, elevation: 0 }] }] } });
+  await runTurn(makeCombat([g1, pc]), d);
+  assert.deepEqual(moves.map((m) => [m[0], m[1].at(-1).x]), [["g1", 300]]);
+  assert.deepEqual(uses, []);
+  reset();
+  g1.actor.effects = [commandEffect("Dance")];
+  await runTurn(makeCombat([g1, pc]), deps({ plans: { g1: attackPlan() } }));
+  assert.equal(uses.length, 1);
+  assert.ok(calls.chat.some((m) => m.whisper && m.content === 'BG3FLOW.Autopilot.UnknownCommand:{"name":"g1","word":"Dance"}'));
+});
+
+test("controlledBy / isAuto: a charmed or dominated monster (the status, or an effect named Dominate/Charm, English or Spanish) is the DM's: left out of the autopilot, whispered once, the turn not passed", async () => {
+  reset();
+  assert.equal(controlledBy({ statuses: new Set(["charmed"]) }), true);
+  assert.equal(controlledBy({ effects: [{ name: "Dominate Person" }] }), true);
+  assert.equal(controlledBy({ effects: [{ name: "Hechizar persona" }] }), true);
+  assert.equal(controlledBy({ effects: [{ name: "Bless" }], statuses: new Set(["prone"]) }), false);
+  const g1 = combatant("g1"), g2 = combatant("g2"), pc = combatant("pc", { disposition: 1, playerOwner: true });
+  g2.actor.effects = [{ name: "Dominate Monster" }];
+  assert.equal(isAuto(g2), false);
+  const combat = makeCombat([g1, g2, pc]);
+  await runTurn(combat, deps({ plans: { g1: attackPlan(), g2: attackPlan() } }));
+  assert.deepEqual(uses.map((u) => u[1]), ["T.rogue"]); // g1 only
+  assert.ok(calls.chat.some((m) => m.whisper && m.content === 'BG3FLOW.Autopilot.Controlled:{"name":"g2"}'));
+  assert.equal(combat.nextTurns, 0);
+});
+
+test("registerAutopilot keeps the command word from preDeleteActiveEffect", () => {
+  const before = new Set(calls.hooks);
+  registerAutopilot();
+  assert.ok(calls.hooks.includes("preDeleteActiveEffect"));
+  void before;
 });

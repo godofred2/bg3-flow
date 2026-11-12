@@ -146,6 +146,9 @@
       "Decision": "<b>{name}</b>: {reason}",
       "Error": "Autopilot stopped for <b>{name}</b>: {error}",
       "Escaped": "<b>{name}</b> has escaped.",
+      "Command": "<b>{name}</b> obeys the command \"{word}\".",
+      "UnknownCommand": "<b>{name}</b>: command \"{word}\" not understood (approach, drop, flee, grovel, halt): playing as usual.",
+      "Controlled": "<b>{name}</b> is charmed or dominated: the DM plays it this turn.",
       "TunnelFighter": { "Title": "{name}: attack {target} with Tunnel Fighter?", "Attack": "Attack", "Pass": "Pass", "Waiting": "Waiting for {name}'s Tunnel Fighter reaction" }
     }
   }

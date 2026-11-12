@@ -2,17 +2,38 @@
 import { MODULE_ID, log, safe, safeSync } from "../main.js";
 import { activeIds, lairTurn } from "../turns.js";
 import { snapshot, lairOf } from "./board.js";
-import { planTurn, pickTarget, splitAtTunnelFighter } from "./plan.js";
+import { planTurn, pickTarget, splitAtTunnelFighter, commandKind, planCommand } from "./plan.js";
 import { promptTunnelFighter, tunnelFighterAttack, activeOwner, awaitOrGm } from "../prompts.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 const leadGm = () => !!game.users.activeGM?.isSelf;
 const whisper = (content) => ChatMessage.create({ content, whisper: [game.user.id] });
 
-/** On when the combatant flag says true; off when it says false, when a player owns the actor or, by default, when the monster has
- *  legendary actions (the DM plays those by hand: user decision; the robot button overrides). */
+const CONTROL = /dominat|domina|charm|encant|hechiz/i;
+/** Charmed or dominated (the status, or an effect so named, English or Spanish): the DM plays it, not the module. */
+export const controlledBy = (actor) => !!actor && (actor.statuses?.has?.("charmed") || [...(actor.appliedEffects ?? actor.effects ?? [])].some((e) => CONTROL.test(String(e?.name ?? ""))));
+
+const GP = "gambits-premades";
+const kept = new Map(); // combatant id -> { word, origin, round }: a Command whose effect DAE expired at turn start, before the autopilot read it
+/** The Command the monster is under this turn: the live Gambit's effect (flags.gambits-premades.commandWord), else the word kept at its expiry this round. */
+export function commandOf(c, combat) {
+  const live = [...(c.actor?.effects ?? [])].find((e) => e.flags?.[GP]?.commandWord);
+  const k = live ? { word: live.flags[GP].commandWord, origin: live.origin ?? "" } : kept.get(c.id);
+  if (!k || (!live && k.round !== combat?.round)) return null;
+  return { word: k.word, kind: commandKind(k.word), origin: k.origin ?? "" };
+}
+/** preDeleteActiveEffect: keep a Command's word for this turn (Gambit's effect expires at the target's turn start, on this same client). */
+export function onPreDeleteEffect(effect) {
+  const word = effect?.flags?.[GP]?.commandWord, combat = game.combat;
+  if (!word || !combat?.started) return;
+  const c = combat.combatants.find((x) => x.actor === effect.parent);
+  if (c) kept.set(c.id, { word, origin: effect.origin ?? "", round: combat.round });
+}
+
+/** On when the combatant flag says true; off when it says false, when a player owns the actor, when it is charmed or dominated, or, by
+ *  default, when the monster has legendary actions (the DM plays those by hand: user decision; the robot button overrides). */
 export const isAuto = (c) => {
-  if (c.actor?.hasPlayerOwner) return false; // a player's creature is never the module's, whatever the flag says
+  if (c.actor?.hasPlayerOwner || controlledBy(c.actor)) return false; // a player's creature, or one under someone's spell, is never the module's
   const flag = c.getFlag(MODULE_ID, "autopilot");
   if (flag === true || flag === false) return flag;
   return !((c.actor?.system?.resources?.legact?.max ?? 0) > 0);
@@ -219,6 +240,7 @@ export async function runTurn(combat, deps = {}) {
   const failed = async (c, err) => { console.error(`[${MODULE_ID}]`, err); clean = false; await whisper(L("Autopilot.Error", { name: c.token.name, error: err?.message ?? String(err) })); };
   running = true;
   try {
+    for (const c of active) if (!c.actor?.hasPlayerOwner && controlledBy(c.actor)) await whisper(L("Autopilot.Controlled", { name: c.token?.name ?? c.name }));
     for (const c of members) { try { await rollRecharge(c); } catch (err) { await failed(c, err); } }
     // Piece 2 clears the movement history and the Dash flag on the same hook without awaiting: do both ourselves before reading the board.
     await Promise.all(members.map(async (c) => { await c.token.clearMovementHistory?.(); if (c.getFlag(MODULE_ID, "dash")) await c.unsetFlag(MODULE_ID, "dash"); }));
@@ -231,7 +253,13 @@ export async function runTurn(combat, deps = {}) {
         boards[c.id] = board;
         log(brief(board)); // what the planner saw: the first thing to read when a monster does something odd
         if (board.me.hp <= 0) continue; // down before its turn: nothing to play
-        const p = plan(board);
+        const cmd = commandOf(c, combat);
+        if (cmd) {
+          kept.delete(c.id); // one turn's worth
+          if (cmd.kind) await ChatMessage.create({ content: L("Autopilot.Command", { name: c.token.name, word: cmd.word }) });
+          else await whisper(L("Autopilot.UnknownCommand", { name: c.token.name, word: cmd.word }));
+        }
+        const p = cmd?.kind ? planCommand(board, cmd.kind, cmd.origin) : plan(board);
         if (p.move) reserved.add(`${p.move.x},${p.move.y}`);
         await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason })); // the decision (toll and alternatives included) is said before it runs
         plans.push([c, p]);
@@ -291,6 +319,7 @@ export async function runTurn(combat, deps = {}) {
       try {
         let board = await snap(combat, c, reserved);
         if (board.me.hp <= 0) continue; // dropped on the way (an opportunity attack): no action
+        if (first.command) { if (first.prone) await c.actor?.toggleStatusEffect?.("prone", { active: true }); continue; } // the command was its turn: no action, no bonus action
         let fled = !!first.dash;
         if (!first.move) { // it stayed put while the others moved: the board changed under it (an ally walked off), so it may still walk now
           const again = plan(board);
@@ -393,6 +422,7 @@ export function onRenderCombatTracker(app, html) {
 }
 
 export function registerAutopilot() {
+  Hooks.on("preDeleteActiveEffect", safeSync(onPreDeleteEffect));
   Hooks.on("combatTurnChange", safe((combat, prior, current) => onCombatTurnChange(combat, prior, current)));
   Hooks.on("renderCombatTracker", safeSync(onRenderCombatTracker));
   ui.combat?.render();
