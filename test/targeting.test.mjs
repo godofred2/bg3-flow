@@ -122,7 +122,9 @@ test("extraTargets: a use scaled to a higher level whose target count grew asks 
   assert.equal(extraTargets({ activity: act({ count: "2", scaling: 1 }), targeted: 2 }), 0); // both already picked
   assert.equal(extraTargets({ activity: act({ count: "1", scaling: 2, item: { type: "spell", description: "<p>At Higher Levels. you can target one additional humanoid for each slot level above 2nd.</p>" } }), targeted: 1 }), 2); // SRD text, no @scaling in the data
   assert.equal(extraTargets({ activity: act({ count: "3", scaling: 1, item: { type: "spell", description: "<p>A niveles superiores: una criatura adicional por cada nivel por encima de 1.</p>" } }), targeted: 3 }), 1); // Bane at 2nd
+  assert.equal(extraTargets({ activity: act({ count: "3", scaling: 1, item: { type: "spell", description: "<p>At Higher Levels. one additional creature for each slot level above 1st.</p>" } }), targeted: 2 }), 2); // Bane on two with Enter, then 2nd level: the level's own target and the one declined
   assert.equal(extraTargets({ activity: act({ count: "1", scaling: 2, item: { type: "spell", description: "<p>At Higher Levels. the damage increases by 1d8.</p>" } }), targeted: 1 }), 0); // more damage, same target
+  assert.equal(extraTargets({ activity: { ...act({ count: "2", scaling: 1, item: { type: "spell", description: "<p>one additional creature for each slot level above 2nd.</p>" } }), _source: { target: { affects: { count: "1 + @scaling" } } } }, targeted: 1 }), 1); // data that scales (2024 wording too): not counted twice
   assert.equal(extraTargets({ activity: act({ count: "2", scaling: 1, template: "sphere" }), targeted: 0 }), 0); // an area: the template picks
   settings.targetPicker = false;
   assert.equal(extraTargets({ activity: act({ count: "2", scaling: 1 }), targeted: 1 }), 0);

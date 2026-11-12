@@ -40,10 +40,10 @@ test("MIDI_PRESET has the spec values", () => {
   assert.equal(MIDI_PRESET.enforceReactions, "all");
   assert.equal(MIDI_PRESET.recordAOO, "all");
   assert.equal(MIDI_PRESET.autoItemEffects, "applyRemove"); // Shield's +5 AC and Uncanny Dodge's half damage apply themselves
-  assert.deepEqual(MIDI_PRESET.optionalRules, { hiddenAdvantage: "effect" }); // the Hiding status (bg3-flow's Hide button) gives the attack advantage; the default rule only looks at vision
+  assert.equal(MIDI_PRESET.optionalRules, undefined); // Midi 14.6.8's hidden-advantage rule has no value that reads the Hiding status: the Hide button puts Midi's advantage flag on the effect instead
 });
 test("mergePreset merges a nested preset object into Midi's (optionalRules), keeping the other rules", () => {
-  const merged = mergePreset({ optionalRules: { hiddenAdvantage: "none", invisAdvantage: "RAW2024" }, autoTarget: "none" }, MIDI_PRESET);
+  const merged = mergePreset({ optionalRules: { hiddenAdvantage: "none", invisAdvantage: "RAW2024" }, autoTarget: "none" }, { optionalRules: { hiddenAdvantage: "effect" } });
   assert.deepEqual(merged.optionalRules, { hiddenAdvantage: "effect", invisAdvantage: "RAW2024" });
   assert.deepEqual(presetUnknownKeys({ optionalRules: {} }, { optionalRules: { hiddenAdvantage: "effect" } }), []);
 });

@@ -54,13 +54,17 @@ export function onSceneControls(controls) {
 
 // ---- Hide ----
 
-/** Token HUD Hide: roll or type Stealth, store it, show dnd5e's hiding status. Pressing it while hidden reveals. */
+const ADVANTAGE = { key: "flags.midi-qol.advantage.attack.all", mode: 5, value: "1" }; // Midi's flag: the hidden attacker rolls with advantage (Sneak Attack asks for it)
+
+/** Token HUD Hide: roll or type Stealth, store it, show dnd5e's hiding status with Midi's attack-advantage flag on its effect (Midi
+ *  14.6.8's hidden-advantage rule only reads vision, and the goblins' tokens have none). Pressing it while hidden reveals. */
 export async function hideToken(doc, roll = rollOrType) {
   if (stealthOf(doc)?.hidden) return revealToken(doc);
   const value = await roll({ actor: doc.actor, skill: "ste" });
   if (value === null || value === undefined) return;
   await doc.setFlag(MODULE_ID, "stealth", { value, hidden: true });
-  await doc.actor?.toggleStatusEffect("hiding", { active: true });
+  const effect = await doc.actor?.toggleStatusEffect("hiding", { active: true });
+  if (effect?.update && !effect.changes?.some((c) => c.key === ADVANTAGE.key)) await effect.update({ changes: [...(effect.changes ?? []), { ...ADVANTAGE }] });
 }
 
 export async function revealToken(doc) {

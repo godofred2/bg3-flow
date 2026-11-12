@@ -52,8 +52,8 @@ export const MIDI_PRESET = Object.freeze({
   showReactionAttackRoll: "all",
   enforceReactions: "all",
   recordAOO: "all",
-  autoItemEffects: "applyRemove", // a reaction's effect (Shield +5 AC, Uncanny Dodge half damage) applies itself
-  optionalRules: Object.freeze({ hiddenAdvantage: "effect" }) // the Hiding status (bg3-flow's Hide) gives the attack advantage; Midi's default only asks whether the target can see the attacker
+  autoItemEffects: "applyRemove" // a reaction's effect (Shield +5 AC, Uncanny Dodge half damage) applies itself
+  // No optionalRules.hiddenAdvantage: Midi 14.6.8 offers none/perObserver/perObserverPassive/perceptive, all vision-based; Hide puts Midi's advantage flag on the effect instead.
 });
 
 const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);

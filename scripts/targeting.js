@@ -28,9 +28,9 @@ export function extraTargets({ activity, targeted }) {
   if (!(scaling > 0)) return 0;
   const need = needsPick({ activity, targeted: 0 });
   if (!need) return 0;
-  let extra = need.count - targeted;
-  if (extra <= 0 && MORE.test(activity.item?.system?.description?.value ?? "")) extra = scaling;
-  return Math.max(0, extra);
+  const scalesInData = /@scaling/.test(String(activity._source?.target?.affects?.count ?? "")); // the clone's count is resolved; its source keeps the formula
+  const total = need.count + (!scalesInData && MORE.test(activity.item?.system?.description?.value ?? "") ? scaling : 0);
+  return Math.max(0, total - targeted); // whatever Enter declined before, the level's own targets are offered
 }
 
 /** The picked tokens replace Midi's snapshot of the targets taken at the start of the use (workflowOptions.preSelectedTargetUuids, which

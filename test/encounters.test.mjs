@@ -32,7 +32,7 @@ function tokenDoc(id, { flags = {}, owner = true, hp = 10, passive = 10, darkvis
   doc.actor = {
     id: `act-${id}`, type, hasPlayerOwner: playerOwner,
     system: { attributes: { hp: { value: hp }, senses: { ranges: { darkvision } } }, skills: { prc: { passive } } },
-    toggleStatusEffect: async (s, o) => calls.status.push([id, s, o.active]),
+    toggleStatusEffect: async (s, o) => { calls.status.push([id, s, o.active]); return o.active ? { changes: [], update: async (u) => (calls.effect ??= []).push([id, u]) } : false; },
     getActiveTokens: () => [doc],
     rollSkill: roll
   };
@@ -67,12 +67,13 @@ test("onSceneControls adds a GM-only button tool under tokens", () => {
   game.user.isGM = true;
 });
 
-test("hideToken stores the Stealth value and turns the hiding status on; again clears it", async () => {
+test("hideToken stores the Stealth value and turns the hiding status on, with Midi's attack-advantage flag on the effect (Midi 14.6.8 has no hidden-advantage rule that reads the status); again clears it", async () => {
   const r = tokenDoc("r");
-  calls.flags = []; calls.status = [];
+  calls.flags = []; calls.status = []; calls.effect = [];
   await hideToken(r, async () => 13);
   assert.deepEqual(r.getFlag("bg3-flow", "stealth"), { value: 13, hidden: true });
   assert.deepEqual(calls.status, [["r", "hiding", true]]);
+  assert.deepEqual(calls.effect, [["r", { changes: [{ key: "flags.midi-qol.advantage.attack.all", mode: 5, value: "1" }] }]]);
   calls.flags = []; calls.status = [];
   await hideToken(r, async () => 99);
   assert.equal(r.getFlag("bg3-flow", "stealth"), undefined);
