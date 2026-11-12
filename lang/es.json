@@ -120,6 +120,8 @@
       "NoMovement": "No queda movimiento: {spent} de {limit} pies ya usados.",
       "Shared": "<strong>Turno compartido:</strong> {names}",
       "Waiting": "Tu turno ha terminado. Esperando a: {names}.",
+      "Dominated": "{name} está dominado: lo lleva el DM.",
+      "Confused": "{name} está confuso (d10 {roll}): este turno no lo juegas tú.",
       "EndButton": "Terminar turno"
     },
     "Encounter": {
@@ -149,6 +151,16 @@
       "Command": "<b>{name}</b> obedece la orden \"{word}\".",
       "UnknownCommand": "<b>{name}</b>: orden \"{word}\" no reconocida (acércate, suelta, huye, arrodíllate, alto): juega con normalidad.",
       "Controlled": "<b>{name}</b> está encantado o dominado: lo lleva el DM este turno.",
+      "Confusion": {
+        "Roll": "{name}: Confusión",
+        "Direction": "{name}: dirección",
+        "Stumble": "<b>{name}</b> está confuso (d10 {roll}): se tambalea hacia el {dir} con todo su movimiento y no actúa.",
+        "Nothing": "<b>{name}</b> está confuso (d10 {roll}): no hace nada este turno.",
+        "Attack": "<b>{name}</b> está confuso (d10 {roll}): debe hacer un ataque cuerpo a cuerpo a <b>{target}</b>.",
+        "NoOne": "<b>{name}</b> está confuso (d10 {roll}): no hay nadie a su alcance, no hace nada.",
+        "Normal": "<b>{name}</b> está confuso (d10 {roll}): actúa con normalidad este turno."
+      },
+      "Dir": { "N": "norte", "NE": "noreste", "E": "este", "SE": "sureste", "S": "sur", "SW": "suroeste", "W": "oeste", "NW": "noroeste" },
       "TunnelFighter": { "Title": "{name}: ¿atacar a {target} con Tunnel Fighter?", "Attack": "Atacar", "Pass": "Pasar", "Waiting": "Esperando la reacción de Tunnel Fighter de {name}" }
     }
   }

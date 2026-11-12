@@ -199,7 +199,8 @@ test("lang files carry every Autopilot and settings key the module uses", async 
   const en = JSON.parse(readFileSync(new URL("../lang/en.json", import.meta.url))).BG3FLOW;
   const es = JSON.parse(readFileSync(new URL("../lang/es.json", import.meta.url))).BG3FLOW;
   for (const k of ["enableAutopilot", "pauseBeforeAttack", "autoNextTurn", "intelligenceThreshold", "fleeEnabled", "fleeThreshold", "escapeRegionName"]) { assert.ok(en.Settings[k]?.Name && en.Settings[k]?.Hint, k); assert.ok(es.Settings[k]?.Name && es.Settings[k]?.Hint, k); }
-  for (const k of ["Toggle", "Decision", "Error", "Escaped", "Command", "UnknownCommand", "Controlled"]) { assert.ok(en.Autopilot[k], k); assert.ok(es.Autopilot[k], k); }
+  for (const k of ["Toggle", "Decision", "Error", "Escaped", "Command", "UnknownCommand", "Controlled", "Confusion", "Dir"]) { assert.ok(en.Autopilot[k], k); assert.ok(es.Autopilot[k], k); }
+  for (const k of ["Stumble", "Nothing", "Attack", "NoOne", "Normal"]) { assert.ok(en.Autopilot.Confusion[k], k); assert.ok(es.Autopilot.Confusion[k], k); }
 });
 
 test("runTurn: the next turn's monsters are played when the autopilot itself passes the turn", async () => {
@@ -900,4 +901,47 @@ test("registerAutopilot keeps the command word from preDeleteActiveEffect", () =
   registerAutopilot();
   assert.ok(calls.hooks.includes("preDeleteActiveEffect"));
   void before;
+});
+
+// Confusion: the d10 at the creature's turn start (the lead GM rolls, monsters and player characters alike); for 7-8 the creature within reach is drawn.
+const confusedEffect = { name: "Confusion" };
+const tokenAt = (c, x, y = 0, hp = 10) => { c.token.x = x; c.token.y = y; c.token.width = 1; c.token.actor = { system: { attributes: { hp: { value: hp } } } }; return c.token; };
+test("runTurn rolls the Confusion d10 once per round for every confused member, tells the table, and the monster obeys: 1 stumbles, 3 nothing, 7 attacks the creature drawn within reach (an ally too), 9 plays as usual", async () => {
+  reset();
+  const g1 = combatant("g1"), g2 = combatant("g2"), pc = combatant("pc", { disposition: 1, playerOwner: true });
+  g1.actor.effects = [confusedEffect];
+  canvas.scene.tokens.contents = [tokenAt(g1, 0), tokenAt(g2, 100), tokenAt(pc, 500)]; // g2 adjacent, the pc far
+  const run = async (d10, d8 = 3) => { delete g1.flags["bg3-flow"].confusion; const combat = makeCombat([g1, g2, pc]); await runTurn(combat, { ...deps({ plans: { g1: attackPlan(), g2: emptyPlan }, allies: () => [{ id: "tok-g2", uuid: "T.g2", name: "g2", hp: 10, maxHp: 10, cx: 150, cy: 50 }] }), d10: async () => d10, d8: async () => d8, rand: () => 0 }); return combat; };
+  await run(1);
+  assert.deepEqual(moves.map((m) => [m[0], m[1].at(-1).x]), [["g1", 600]]); // east, 30 ft
+  assert.deepEqual(uses, []);
+  assert.deepEqual(g1.getFlag("bg3-flow", "confusion"), { round: 1, roll: 1, dir: 3, target: null });
+  assert.ok(calls.chat.some((m) => !m.whisper && m.content === 'BG3FLOW.Autopilot.Confusion.Stumble:{"name":"g1","roll":1,"dir":"BG3FLOW.Autopilot.Dir.E"}'));
+  reset(); await run(3);
+  assert.deepEqual([moves, uses], [[], []]);
+  reset(); await run(7);
+  assert.deepEqual(uses, [["sc", "T.g2"]]); // the creature drawn within reach: its own ally
+  assert.deepEqual(moves, []);
+  reset(); await run(9);
+  assert.deepEqual(uses, [["sc", "T.rogue"]]); // as usual
+  reset(); const again = makeCombat([g1, g2, pc]); g1.flags["bg3-flow"].confusion = { round: 1, roll: 3, dir: 1, target: null };
+  await runTurn(again, { ...deps({ plans: { g1: attackPlan(), g2: emptyPlan } }), d10: async () => { throw new Error("rolled twice"); } });
+  assert.deepEqual(uses, []); // the round's roll stands
+  canvas.scene.tokens.contents = [];
+});
+
+test("a confused player character: the GM's client rolls for it at its turn start, tells the table, moves it on a 1 and flags the roll for the player's vetoes", async () => {
+  reset();
+  const pc = combatant("pc", { disposition: 1, playerOwner: true }), g1 = combatant("g1");
+  pc.actor.effects = [confusedEffect]; pc.actor.system = { attributes: { movement: { walk: 25 } } };
+  canvas.scene.tokens.contents = [tokenAt(pc, 0), tokenAt(g1, 100)];
+  await runTurn(makeCombat([pc, g1]), { ...deps({ plans: {} }), d10: async () => 1, d8: async () => 5, rand: () => 0 }); // the PC's turn: no autopilot member
+  assert.deepEqual(moves.map((m) => [m[0], m[1].at(-1).x, m[1].at(-1).y]), [["pc", 0, 500]]); // south, 25 ft
+  assert.deepEqual(pc.getFlag("bg3-flow", "confusion"), { round: 1, roll: 1, dir: 5, target: null });
+  reset(); delete pc.flags["bg3-flow"].confusion;
+  await runTurn(makeCombat([pc, g1]), { ...deps({ plans: {} }), d10: async () => 8, d8: async () => 1, rand: () => 0 });
+  assert.deepEqual(pc.getFlag("bg3-flow", "confusion"), { round: 1, roll: 8, dir: 0, target: "tok-g1" }); // the direction is only rolled on a 1
+  assert.ok(calls.chat.some((m) => !m.whisper && m.content === 'BG3FLOW.Autopilot.Confusion.Attack:{"name":"pc","roll":8,"target":"g1"}'));
+  assert.deepEqual(moves, []);
+  canvas.scene.tokens.contents = [];
 });

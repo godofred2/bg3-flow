@@ -204,3 +204,15 @@ test("withinRadius is inclusive", () => {
   assert.equal(withinRadius(60, 60), true);
   assert.equal(withinRadius(60.1, 60), false);
 });
+
+import { isDominated, isConfused } from "../scripts/rules.js";
+test("isDominated / isConfused read the actor's effect names, English or Spanish; Charmed alone is not domination", () => {
+  assert.equal(isDominated({ effects: [{ name: "Dominate Person" }] }), true);
+  assert.equal(isDominated({ appliedEffects: [{ name: "Dominar monstruo" }] }), true);
+  assert.equal(isDominated({ effects: [{ name: "Charm Person" }], statuses: new Set(["charmed"]) }), false);
+  assert.equal(isConfused({ effects: [{ name: "Confusion" }] }), true);
+  assert.equal(isConfused({ effects: [{ name: "Confusión" }] }), true);
+  assert.equal(isConfused({ effects: [{ name: "Locura" }] }), true);
+  assert.equal(isConfused({ effects: [{ name: "Bless" }] }), false);
+  assert.equal(isConfused(null), false);
+});

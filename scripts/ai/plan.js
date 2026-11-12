@@ -264,6 +264,25 @@ export function planCommand(board, kind, origin = "") {
   return { move: last ? moveTo(last) : null, actions: [], reason: `command: approach ${target.name}`, command: kind };
 }
 
+/** The eight directions of Confusion's d8, clockwise from north (y grows downward on the canvas). */
+export const DIRS = [{ k: "N", dx: 0, dy: -1 }, { k: "NE", dx: 1, dy: -1 }, { k: "E", dx: 1, dy: 0 }, { k: "SE", dx: 1, dy: 1 }, { k: "S", dx: 0, dy: 1 }, { k: "SW", dx: -1, dy: 1 }, { k: "W", dx: -1, dy: 0 }, { k: "NW", dx: -1, dy: -1 }];
+/** Confusion's d10, rolled at the turn's start (run.js): 1 a full move in the d8 direction and no action, 2-6 nothing, 7-8 a melee attack
+ *  on the creature drawn within reach (`target`: a token id, ally or enemy; nothing without one or without a melee attack), 9-10 null: the usual plan. */
+export function planConfusion(board, { roll, dir = 1, target = null }) {
+  if (roll >= 9) return null;
+  const none = (reason) => ({ move: null, actions: [], reason, confused: true });
+  if (roll === 1) {
+    const d = DIRS[(dir - 1 + 8) % 8], px = (board.me.speed ?? 30) / board.grid.ft * board.grid.px;
+    const s = { x: board.me.x + d.dx * px, y: board.me.y + d.dy * px, elevation: board.me.elevation ?? 0 };
+    return { move: { ...s, waypoints: [s] }, actions: [], reason: `confused (${roll}): stumbles ${d.k}`, confused: true };
+  }
+  if (roll <= 6) return none(`confused (${roll}): does nothing`);
+  const melee = board.activities.find((a) => a.kind === "attack" && a.slot === "action" && !a.ranged && (a.range ?? 5) <= 10);
+  const t = target && [...board.enemies, ...(board.allies ?? [])].find((x) => x.id === target && x.hp > 0);
+  if (!melee || !t) return none(`confused (${roll}): no one in reach`);
+  return { move: null, actions: [{ activityId: melee.id, targetIds: [t.id] }], reason: `confused (${roll}): ${melee.name} on ${t.name}`, confused: true };
+}
+
 /** The turn: flee when the rule fires (and somewhere to go), else the option with the highest expected value (single activities and
  *  the Multiattack sequence), else approach. With `slot: "bonus"`: the best bonus-action activity from where the monster stands, or nothing. */
 export function planTurn(board, { slot = "action" } = {}) {

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { averageOf, hitChance, failChance, expectedValue, parseMultiattack, pickTarget, planTurn, shouldFlee, planFlee, oaCost, splitAtTunnelFighter, commandKind, planCommand } = await import("../scripts/ai/plan.js");
+const { averageOf, hitChance, failChance, expectedValue, parseMultiattack, pickTarget, planTurn, shouldFlee, planFlee, oaCost, splitAtTunnelFighter, commandKind, planCommand, planConfusion } = await import("../scripts/ai/plan.js");
 
 test("averageOf: dice average plus flat, unknown tokens count as 0", () => {
   assert.equal(averageOf("2d6 + 3"), 10);
@@ -385,4 +385,19 @@ test("planCommand: drop and halt do nothing; grovel falls prone; approach walks 
   assert.deepEqual([at(fl.move), fl.actions, fl.dash, fl.command], [{ x: 300, y: 0, elevation: 0 }, [], true, "flee"]);
   assert.match(fl.reason, /^command: flee/);
   assert.equal(planCommand(b, "dance"), null);
+});
+
+test("planConfusion (the Confusion d10): 1 stumbles a full move in the rolled direction with no action, 2-6 nothing, 7-8 a melee attack on the creature drawn within reach (nothing without one or without a melee attack), 9-10 the usual plan (null)", () => {
+  const rogue = pc("rogue", 5), ally = { id: "g2", uuid: "T.g2", name: "g2", hp: 7, maxHp: 7, cx: 150, cy: 50 };
+  const b = { ...board({ enemies: [rogue], activities: [scimitar, bow] }), allies: [ally], grid: { px: 100, ft: 5 } };
+  b.me.speed = 30;
+  const st = planConfusion(b, { roll: 1, dir: 3 }); // east
+  assert.deepEqual([at(st.move), st.actions, st.confused], [{ x: 600, y: 0, elevation: 0 }, [], true]);
+  assert.deepEqual(at(planConfusion(b, { roll: 1, dir: 8 }).move), { x: -600, y: -600, elevation: 0 }); // north-west
+  assert.deepEqual(planConfusion(b, { roll: 4 }), { move: null, actions: [], reason: "confused (4): does nothing", confused: true });
+  assert.deepEqual(planConfusion(b, { roll: 7, target: "g2" }).actions, [{ activityId: "sc", targetIds: ["g2"] }]); // its own ally
+  assert.deepEqual(planConfusion(b, { roll: 8, target: "rogue" }).actions, [{ activityId: "sc", targetIds: ["rogue"] }]);
+  assert.deepEqual(planConfusion(b, { roll: 8, target: null }).actions, []);
+  assert.deepEqual(planConfusion({ ...b, activities: [bow] }, { roll: 7, target: "rogue" }).actions, []); // no melee attack
+  assert.equal(planConfusion(b, { roll: 9 }), null);
 });

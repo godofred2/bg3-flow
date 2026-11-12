@@ -2,7 +2,8 @@
 import { MODULE_ID, log, safe, safeSync } from "../main.js";
 import { activeIds, lairTurn } from "../turns.js";
 import { snapshot, lairOf } from "./board.js";
-import { planTurn, pickTarget, splitAtTunnelFighter, commandKind, planCommand } from "./plan.js";
+import { planTurn, pickTarget, splitAtTunnelFighter, commandKind, planCommand, planConfusion, DIRS } from "./plan.js";
+import { isConfused } from "../rules.js";
 import { promptTunnelFighter, tunnelFighterAttack, activeOwner, awaitOrGm } from "../prompts.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
@@ -28,6 +29,40 @@ export function onPreDeleteEffect(effect) {
   if (!word || !combat?.started) return;
   const c = combat.combatants.find((x) => x.actor === effect.parent);
   if (c) kept.set(c.id, { word, origin: effect.origin ?? "", round: combat.round });
+}
+
+const rollDie = (n) => async (token, flavor) => { const r = await new Roll(`1d${n}`).evaluate(); await r.toMessage({ speaker: ChatMessage.getSpeaker?.({ token }) ?? {}, flavor }); return r.total; };
+const hpOfToken = (t) => t.actor?.system?.attributes?.hp?.value ?? 1;
+/** Grid distance between two tokens' edges, in scene units (Chebyshev, sizes allowed for). */
+const reachFt = (a, b) => {
+  const s = canvas.dimensions?.size ?? 100, d = canvas.dimensions?.distance ?? 5, w = (t) => Math.max(1, Math.round(t.width ?? 1));
+  const cx = (t) => (t.x ?? 0) + w(t) * s / 2, cy = (t) => (t.y ?? 0) + w(t) * s / 2;
+  return (Math.max(Math.abs(cx(a) - cx(b)), Math.abs(cy(a) - cy(b))) - (w(a) + w(b)) / 2 * s + s) / s * d;
+};
+const withinReach = (tok) => (canvas.scene?.tokens?.contents ?? []).filter((t) => t !== tok && t.id !== tok.id && !t.hidden && hpOfToken(t) > 0 && reachFt(tok, t) <= 5);
+/** The round's Confusion roll kept on the combatant, or null. */
+const confusionOf = (c, combat) => { const f = c.getFlag(MODULE_ID, "confusion"); return f && f.round === combat.round ? f : null; };
+
+/** Confusion's d10 at the creature's turn start, monsters and player characters alike (this client, the lead GM): 1 a full move in a random
+ *  direction (a player character is walked here, its owner vetoed this turn), 2-6 nothing, 7-8 a melee attack on the creature drawn within
+ *  reach, 9-10 as usual. Once per round, kept on the combatant for the monster's plan and the player's vetoes, said to the table. */
+export async function rollConfusion(combat, active, { d10 = rollDie(10), d8 = rollDie(8), rand = Math.random } = {}) {
+  for (const c of active) {
+    if (!c.token || !isConfused(c.actor) || confusionOf(c, combat)) continue;
+    const name = c.token.name ?? c.name;
+    const roll = await d10(c.token, L("Autopilot.Confusion.Roll", { name }));
+    const dir = roll === 1 ? await d8(c.token, L("Autopilot.Confusion.Direction", { name })) : 0;
+    const near = roll >= 7 && roll <= 8 ? withinReach(c.token) : [];
+    const target = near.length ? near[Math.floor(rand() * near.length)] : null;
+    await c.setFlag(MODULE_ID, "confusion", { round: combat.round, roll, dir, target: target?.id ?? null });
+    const key = roll === 1 ? "Stumble" : roll <= 6 ? "Nothing" : roll <= 8 ? (target ? "Attack" : "NoOne") : "Normal";
+    const d = DIRS[(dir - 1 + 8) % 8];
+    await ChatMessage.create({ content: L(`Autopilot.Confusion.${key}`, { name, roll, ...(roll === 1 ? { dir: L(`Autopilot.Dir.${d.k}`) } : {}), ...(target ? { target: target.name } : {}) }) });
+    if (roll === 1 && !isAuto(c)) { // a player character: walked by this client
+      const s = canvas.dimensions?.size ?? 100, ft = canvas.dimensions?.distance ?? 5, px = (c.actor?.system?.attributes?.movement?.walk ?? 30) / ft * s;
+      await c.token.move([{ x: (c.token.x ?? 0) + d.dx * px, y: (c.token.y ?? 0) + d.dy * px, elevation: c.token.elevation ?? 0, action: "walk" }], { autoRotate: true, showRuler: false, bg3Autopilot: true });
+    }
+  }
 }
 
 /** On when the combatant flag says true; off when it says false, when a player owns the actor, when it is charmed or dominated, or, by
@@ -189,10 +224,10 @@ const actWith = ({ combat, reserved, stale, snap, pick, use, pause }) => async (
       const activity = board.activities.find((x) => x.id === a.activityId);
       if (!activity) continue;
       const allies = board.allies ?? [];
-      const live = (t) => t && (allies.includes(t) ? activity.kind !== "heal" || t.hp < t.maxHp : t.hp > 0 && t.visible);
-      const pool = activity.kind === "heal" ? allies : activity.area ? [...board.enemies, ...allies] : board.enemies; // an area hits covered allies too
+      const live = (t) => t && (allies.includes(t) ? (activity.kind !== "heal" || t.hp < t.maxHp) && (!p.confused || t.hp > 0) : t.hp > 0 && t.visible);
+      const pool = activity.kind === "heal" ? allies : (activity.area || p.confused) ? [...board.enemies, ...allies] : board.enemies; // an area hits covered allies too; Confusion's blow lands on anyone
       let targets = (a.targetIds ?? []).map((id) => pool.find((t) => t.id === id)).filter(live);
-      if (!targets.length) { const t = pick(board, activity, board.me)?.enemy; targets = t ? [t] : []; } // re-pick: the planned target died or vanished
+      if (!targets.length && !p.confused) { const t = pick(board, activity, board.me)?.enemy; targets = t ? [t] : []; } // re-pick: the planned target died or vanished
       if (!targets.length) continue;
       if (game.settings.get(MODULE_ID, "pauseBeforeAttack")) {
         const choice = await pause({ name: c.token.name, reason: `${activity.name} vs ${targets.map((t) => t.name).join(", ")}` });
@@ -229,9 +264,10 @@ export async function awaitOaRegions({ poll = 250, max = 3000 } = {}) {
 /** Play the active group's automatic members: all moves at once, then actions in initiative order. */
 export async function runTurn(combat, deps = {}) {
   const { snap = snapshot, plan = planTurn, pick = pickTarget, use = useActivity, pause = pauseDialog, poll = 100,
-    split = splitAtTunnelFighter, ask = promptTunnelFighter, gmAttack = tunnelFighterAttack, owner = activeOwner, wait = awaitOrGm, grace = awaitOaRegions } = deps;
+    split = splitAtTunnelFighter, ask = promptTunnelFighter, gmAttack = tunnelFighterAttack, owner = activeOwner, wait = awaitOrGm, grace = awaitOaRegions, d10, d8, rand } = deps;
   const ids = game.settings.get(MODULE_ID, "enableTurns") === false ? new Set([combat.combatant?.id]) : activeIds(combat); // groups only exist with piece 2
   const active = combat.turns.filter((c) => ids.has(c.id) && !c.isDefeated);
+  try { await rollConfusion(combat, active, { d10, d8, rand }); } catch (err) { console.error(`[${MODULE_ID}]`, err); } // player characters included: their owners are vetoed by the flag
   const members = active.filter((c) => isAuto(c) && c.token && c.token.parent?.id === canvas.scene?.id);
   if (!members.length) return;
   const mark = { id: combat.id, round: combat.round, turn: combat.turn };
@@ -259,7 +295,8 @@ export async function runTurn(combat, deps = {}) {
           if (cmd.kind) await ChatMessage.create({ content: L("Autopilot.Command", { name: c.token.name, word: cmd.word }) });
           else await whisper(L("Autopilot.UnknownCommand", { name: c.token.name, word: cmd.word }));
         }
-        const p = cmd?.kind ? planCommand(board, cmd.kind, cmd.origin) : plan(board);
+        const conf = confusionOf(c, combat);
+        const p = cmd?.kind ? planCommand(board, cmd.kind, cmd.origin) : (conf && planConfusion(board, conf)) || plan(board);
         if (p.move) reserved.add(`${p.move.x},${p.move.y}`);
         await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason })); // the decision (toll and alternatives included) is said before it runs
         plans.push([c, p]);
@@ -321,7 +358,7 @@ export async function runTurn(combat, deps = {}) {
         if (board.me.hp <= 0) continue; // dropped on the way (an opportunity attack): no action
         if (first.command) { if (first.prone) await c.actor?.toggleStatusEffect?.("prone", { active: true }); continue; } // the command was its turn: no action, no bonus action
         let fled = !!first.dash;
-        if (!first.move) { // it stayed put while the others moved: the board changed under it (an ally walked off), so it may still walk now
+        if (!first.move && !first.confused) { // it stayed put while the others moved: the board changed under it (an ally walked off), so it may still walk now
           const again = plan(board);
           if (again.move) {
             await whisper(L("Autopilot.Decision", { name: c.token.name, reason: again.reason }));
@@ -332,9 +369,10 @@ export async function runTurn(combat, deps = {}) {
           }
         }
         const still = { ...board, me: { ...board.me, budget: 0 } }; // act from where it stands: a move that fell short never fires out of reach
-        const done = fled ? true : await act(c, still, plan(still), first); // the flight (already whispered) was the action: nothing else this turn but the bonus action
+        const done = fled ? true : await act(c, still, first.confused ? first : plan(still), first); // the flight (already whispered) was the action: nothing else this turn but the bonus action
         if (done === null) return;
         if (done === false) { clean = false; continue; }
+        if (first.confused) continue; // the d10 was its turn: no bonus action
         const after = await snap(combat, c, reserved);
         if (after.me.hp <= 0) continue;
         const bonusBoard = { ...after, me: { ...after.me, budget: 0 } };

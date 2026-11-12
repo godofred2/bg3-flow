@@ -416,3 +416,27 @@ test("registerTurns hooks the HUD button and the GM's updateCombatant listener",
   try { registerTurns(); } finally { Hooks.on = on; }
   assert.ok(hooks.renderTokenHUD && hooks.updateCombatant && hooks.combatTurn);
 });
+
+test("a dominated player character is the DM's: its owner's moves and uses are refused with the reason, the GM's go through; a confused one is refused on a Confusion roll of 1-8 for moves and 1-6 for uses, this round only", async () => {
+  const dom = combatant("dom", 1, { actor: { id: "act-dom", effects: [{ name: "Dominate Person" }], system: { attributes: { movement: { speeds: { walk: 30 } } } } } });
+  const conf = combatant("conf", 1);
+  dom.token.name = "tok-dom"; conf.token.name = "tok-conf";
+  game.combat = combat([dom, conf, g1], 0); game.user.isGM = false; calls.warn = [];
+  assert.equal(onPreMoveToken(tokenDoc(dom), move()), false);
+  assert.deepEqual(calls.warn, ['BG3FLOW.Turns.Dominated:{"name":"tok-dom"}']);
+  const usage = { midiOptions: {} };
+  assert.equal(await onPreTargetingTurns({ workflow: { actor: dom.actor }, usage }), false);
+  game.user.isGM = true; calls.warn = [];
+  assert.equal(onPreMoveToken(tokenDoc(dom), move()), undefined);
+  assert.equal(await onPreTargetingTurns({ workflow: { actor: dom.actor }, usage }), undefined);
+  game.user.isGM = false;
+  conf.flags["bg3-flow"].confusion = { round: 1, roll: 7, dir: 1, target: null }; calls.warn = [];
+  assert.equal(onPreMoveToken(tokenDoc(conf), move()), false); // 7: an attack, no walking
+  assert.equal(await onPreTargetingTurns({ workflow: { actor: conf.actor }, usage: { midiOptions: {} } }), undefined); // the attack is allowed
+  conf.flags["bg3-flow"].confusion = { round: 1, roll: 4, dir: 1, target: null };
+  assert.equal(await onPreTargetingTurns({ workflow: { actor: conf.actor }, usage: { midiOptions: {} } }), false);
+  assert.deepEqual(calls.warn, ['BG3FLOW.Turns.Confused:{"name":"tok-conf","roll":7}', 'BG3FLOW.Turns.Confused:{"name":"tok-conf","roll":4}']);
+  conf.flags["bg3-flow"].confusion = { round: 0, roll: 4, dir: 1, target: null }; // last round's roll
+  assert.equal(onPreMoveToken(tokenDoc(conf), move()), undefined);
+  game.combat = null;
+});

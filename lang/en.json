@@ -120,6 +120,8 @@
       "NoMovement": "Not enough movement: {spent} of {limit} ft already used.",
       "Shared": "<strong>Shared turn:</strong> {names}",
       "Waiting": "Your turn is over. Waiting for: {names}.",
+      "Dominated": "{name} is dominated: the DM plays it.",
+      "Confused": "{name} is confused (d10 {roll}): this turn is not yours to play.",
       "EndButton": "End turn"
     },
     "Encounter": {
@@ -149,6 +151,16 @@
       "Command": "<b>{name}</b> obeys the command \"{word}\".",
       "UnknownCommand": "<b>{name}</b>: command \"{word}\" not understood (approach, drop, flee, grovel, halt): playing as usual.",
       "Controlled": "<b>{name}</b> is charmed or dominated: the DM plays it this turn.",
+      "Confusion": {
+        "Roll": "{name}: Confusion",
+        "Direction": "{name}: direction",
+        "Stumble": "<b>{name}</b> is confused (d10 {roll}): stumbles {dir} with all its movement and takes no action.",
+        "Nothing": "<b>{name}</b> is confused (d10 {roll}): does nothing this turn.",
+        "Attack": "<b>{name}</b> is confused (d10 {roll}): must make a melee attack on <b>{target}</b>.",
+        "NoOne": "<b>{name}</b> is confused (d10 {roll}): no one within reach, it does nothing.",
+        "Normal": "<b>{name}</b> is confused (d10 {roll}): acts normally this turn."
+      },
+      "Dir": { "N": "north", "NE": "north-east", "E": "east", "SE": "south-east", "S": "south", "SW": "south-west", "W": "west", "NW": "north-west" },
       "TunnelFighter": { "Title": "{name}: attack {target} with Tunnel Fighter?", "Attack": "Attack", "Pass": "Pass", "Waiting": "Waiting for {name}'s Tunnel Fighter reaction" }
     }
   }

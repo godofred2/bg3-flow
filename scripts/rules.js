@@ -198,3 +198,10 @@ export function encounterGroups(tokens) {
 }
 
 export const withinRadius = (distance, radius) => distance <= radius;
+
+const DOMINATE = /dominat|domina/i, CONFUSION = /confus|locura|madness|insan/i;
+const effectNames = (actor) => [...(actor?.appliedEffects ?? actor?.effects ?? [])].map((e) => String(e?.name ?? ""));
+/** Under Dominate Person/Monster/Beast (an effect so named, English or Spanish): someone else plays it. Charmed alone is not that. */
+export const isDominated = (actor) => effectNames(actor).some((n) => DOMINATE.test(n));
+/** Under Confusion (or a madness effect so named): the spell's d10 decides its turn. */
+export const isConfused = (actor) => effectNames(actor).some((n) => CONFUSION.test(n));

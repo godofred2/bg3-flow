@@ -1,7 +1,7 @@
 // Feature 2: BG3 turn flow. Consecutive same-side combatants share a turn; movement is locked off-turn
 // and budgeted on-turn. Groups are derived from combat.turns on every call, never stored.
 import { MODULE_ID, log, safe, safeSync } from "./main.js";
-import { groupBySide, groupOf, jumpTurn, isGroupStart, speedLimit, canMove } from "./rules.js";
+import { groupBySide, groupOf, jumpTurn, isGroupStart, speedLimit, canMove, isDominated } from "./rules.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 
@@ -11,6 +11,8 @@ const groupsOf = (combat) => groupBySide(turnsOf(combat));
 const combatantFor = (combat, tokenId, sceneId) =>
   combat?.started ? combat.combatants.find((c) => c.tokenId === tokenId && c.sceneId === sceneId) ?? null : null;
 const isDash = (combatant) => !!combatant.getFlag(MODULE_ID, "dash");
+/** This round's Confusion roll on the combatant (run.js rolls it at the turn's start), or null. */
+const confusionRoll = (c) => { const f = c?.getFlag(MODULE_ID, "confusion"); return f && f.round === game.combat?.round ? f.roll : null; };
 // ponytail: Foundry 14 runs preMoveToken twice on a player client for one vetoed move(); drop the echo.
 let lastWarn = { msg: "", at: 0 };
 function warn(msg) {
@@ -123,6 +125,11 @@ export function onPreMoveToken(doc, movement) {
   const action = waypoints.at(-1)?.action ?? doc.movementAction ?? "walk"; // the last waypoint carries this move's action
   if (CONFIG.Token.movement.actions[action]?.teleport) return;
   if (game.user.isGM && !game.settings.get(MODULE_ID, "lockGmMovement")) return;
+  if (!game.user.isGM) { // a dominated character is the DM's; a confused one walks only on a 9-10 (a 1 is walked by the GM's client)
+    const name = combatant.token?.name ?? doc.name, roll = confusionRoll(combatant);
+    if (isDominated(doc.actor)) { warn(L("Turns.Dominated", { name })); return false; }
+    if (roll && roll <= 8) { warn(L("Turns.Confused", { name, roll })); return false; }
+  }
   if (!activeIds(combat).has(combatant.id)) { warn(L("Turns.NotYourTurn")); return false; }
   const limit = limitFor(doc, combatant, action);
   const spent = movement.history?.cost ?? 0;
@@ -137,9 +144,14 @@ export function onPreMoveToken(doc, movement) {
  */
 export async function onPreTargetingTurns({ workflow, usage }) {
   const combat = game.combat;
-  if (!combat?.started || !usage?.midiOptions) return;
+  if (!combat?.started) return;
   const combatant = combat.combatants.find((c) => c.actor === workflow?.actor);
-  if (!combatant || !activeIds(combat).has(combatant.id)) return;
+  if (!game.user.isGM) { // a dominated character is the DM's; a confused one acts only on a 7-10 (7-8: the melee attack the table was told of)
+    const name = combatant?.token?.name ?? workflow?.actor?.name, roll = confusionRoll(combatant);
+    if (isDominated(workflow?.actor)) { ui.notifications.warn(L("Turns.Dominated", { name })); return false; }
+    if (roll && roll <= 6) { ui.notifications.warn(L("Turns.Confused", { name, roll })); return false; }
+  }
+  if (!usage?.midiOptions || !combatant || !activeIds(combat).has(combatant.id)) return;
   usage.midiOptions.proceedChecks = { ...usage.midiOptions.proceedChecks, checkAoO: false };
 }
 
