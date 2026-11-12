@@ -10,6 +10,10 @@
         "Name": "BG3 turn flow",
         "Hint": "Consecutive allies share one turn; movement locked off-turn and budgeted on-turn."
       },
+      "sharedTurnEnd": {
+        "Name": "Shared turn ends when every player is done",
+        "Hint": "A player's End turn (the tracker, or the flag button in the token HUD) ends only their own part; the group's turn moves on when every connected player of the group has ended, or when the GM presses next."
+      },
       "enableEncounters": {
         "Name": "Encounters and stealth",
         "Hint": "Preset enemy groups that start combat when they spot or hurt a player."
@@ -114,7 +118,9 @@
     "Turns": {
       "NotYourTurn": "Not your turn.",
       "NoMovement": "Not enough movement: {spent} of {limit} ft already used.",
-      "Shared": "<strong>Shared turn:</strong> {names}"
+      "Shared": "<strong>Shared turn:</strong> {names}",
+      "Waiting": "Your turn is over. Waiting for: {names}.",
+      "EndButton": "End turn"
     },
     "Encounter": {
       "Mark": "Mark as encounter",

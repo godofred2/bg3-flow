@@ -38,8 +38,56 @@ function limitFor(doc, combatant, action) {
   });
 }
 
-/** combatTurn (initiating client): move the pointer past the whole group, or back to a group's first member. */
+const waitsForAll = () => game.settings.get(MODULE_ID, "sharedTurnEnd") !== false;
+const nameOf = (c) => c.token?.name ?? c.name;
+
+/** Members of the active group the shared turn still waits for: alive, not flagged done, owned by a connected player (NPC allies and absent players are not waited for). */
+export function waitingFor(combat) {
+  return [...activeIds(combat)].map((id) => combat.combatants.find((c) => c.id === id))
+    .filter((c) => c && !c.getFlag(MODULE_ID, "done") && (c.players ?? []).some((u) => u.active && !u.isGM));
+}
+
+/** End turn (the tracker or the HUD button): the user's members are done; a player is told who is left, the GM moves on at once.
+ *  A player's last "done" reaches the lead GM through updateCombatant. Returns the members still waited for. */
+export async function endTurn(combat, { nextTurn = () => combat.nextTurn() } = {}) {
+  const own = (c) => game.user.isGM || c.isOwner; // the GM owns every token
+  const waiting = waitingFor(combat), mine = waiting.filter(own), others = waiting.filter((c) => !own(c));
+  for (const c of mine) await c.setFlag(MODULE_ID, "done", true);
+  if (others.length) ui.notifications.info(L("Turns.Waiting", { names: others.map(nameOf).join(", ") }));
+  else if (game.user.isGM) await nextTurn();
+  return others;
+}
+
+let advancing = false;
+/** updateCombatant (lead GM): the last player's "done" moves the pointer past the group. */
+export async function onUpdateCombatant(combatant, changes, _options, _userId, { nextTurn } = {}) {
+  if (!game.users.activeGM?.isSelf || !waitsForAll() || changes?.flags?.[MODULE_ID]?.done !== true) return;
+  const combat = combatant.parent ?? game.combat;
+  if (!combat?.started || advancing || !activeIds(combat).has(combatant.id) || waitingFor(combat).length) return;
+  advancing = true;
+  try { await (nextTurn ?? (() => combat.nextTurn()))(); } finally { advancing = false; }
+}
+
+/** renderTokenHUD: a chequered flag on the left column for an owned member of the shared turn that has not ended yet. */
+export function onRenderTokenHUD(app, html) {
+  const root = html?.querySelector ? html : html?.[0];
+  const doc = app.object?.document ?? app.document, col = root?.querySelector(".col.left");
+  const combat = game.combat, c = combatantFor(combat, doc?.id, doc?.parent?.id);
+  if (!doc?.isOwner || !col || !c || !waitsForAll() || !activeIds(combat).has(c.id) || c.getFlag(MODULE_ID, "done")) return;
+  col.insertAdjacentHTML("beforeend", `<button type="button" class="control-icon bg3-end-turn" data-tooltip="${L("Turns.EndButton")}"><i class="fa-solid fa-flag-checkered"></i></button>`);
+  col.querySelector(".bg3-end-turn")?.addEventListener("click", safe(() => endTurn(combat)));
+}
+
+/** combatTurn (initiating client): move the pointer past the whole group, or back to a group's first member. A player's End turn while
+ *  another connected player of the group has not ended only ends their own part: the pointer, the round and the world time hold. */
 export function onCombatTurn(combat, updateData, updateOptions) {
+  if ((updateOptions?.direction ?? 1) > 0 && !game.user.isGM && waitsForAll() && waitingFor(combat).some((c) => !c.isOwner)) {
+    endTurn(combat); // flags and the notice; nothing to await inside a sync hook
+    updateData.turn = combat.turn;
+    updateData.round = combat.round;
+    if (updateOptions?.worldTime) updateOptions.worldTime.delta = 0;
+    return;
+  }
   const jump = jumpTurn({ turns: turnsOf(combat), groups: groupsOf(combat), turn: combat.turn, direction: updateOptions?.direction ?? 1, skipDefeated: skipDefeated(combat) });
   if (!jump) return;
   updateData.turn = jump.turn;
@@ -60,6 +108,7 @@ export async function onCombatTurnChange(combat, prior, current) {
   for (const c of members) {
     await c.token?.clearMovementHistory?.();
     if (isDash(c)) await c.unsetFlag(MODULE_ID, "dash");
+    if (c.getFlag(MODULE_ID, "done")) await c.unsetFlag(MODULE_ID, "done");
   }
   const shown = members.filter((c) => !c.token?.hidden); // a GM-hidden token gives nothing away in the public line
   if (shown.length) await ChatMessage.create({ content: L("Turns.Shared", { names: shown.map((c) => c.token?.name ?? c.name).join(", ") }) });
@@ -180,6 +229,8 @@ export function registerTurns() {
   for (const h of ["combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady", "createActiveEffect", "deleteActiveEffect"]) Hooks.on(h, safe(refreshTurnMarkers)); // the effects: a dead status (Midi's at 0 hp) defeats without touching the combatant
   Hooks.on("combatTurn", safeSync(onCombatTurn));
   Hooks.on("combatTurnChange", safe(onCombatTurnChange));
+  Hooks.on("updateCombatant", safe(onUpdateCombatant));
+  Hooks.on("renderTokenHUD", safeSync(onRenderTokenHUD));
   Hooks.on("preMoveToken", safeSync(onPreMoveToken)); // sync: a Promise would never veto
   Hooks.on("dnd5e.postUseActivity", safe(onPostUseActivity));
   Hooks.on("midi-qol.preTargetingV2", safe(onPreTargetingTurns));

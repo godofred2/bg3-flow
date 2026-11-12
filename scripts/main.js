@@ -43,6 +43,7 @@ Hooks.once("init", () => {
   reg("enableTurns", Boolean, true);
   reg("enableEncounters", Boolean, true);
   reg("lockGmMovement", Boolean, false);
+  reg("sharedTurnEnd", Boolean, true);
   reg("defaultEncounterRadius", Number, 60);
   reg("obscuredDarkness", Number, 0.5);
   reg("dashNames", String, "Dash, Carrera, Correr");

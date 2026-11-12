@@ -6,6 +6,10 @@
         "Name": "Automatización completa",
         "Hint": "Pregunta aliados/enemigos en áreas que permiten elegir objetivos. Usa el botón del preset de esta sección para configurar Midi QOL."
       },
+      "sharedTurnEnd": {
+        "Name": "El turno compartido termina cuando todos los jugadores acaban",
+        "Hint": "El Terminar turno de un jugador (el rastreador o el botón de bandera del HUD del token) solo cierra su parte; el turno del grupo avanza cuando todos los jugadores conectados del grupo han terminado, o cuando el DM pulsa siguiente."
+      },
       "enableTurns": {
         "Name": "Turnos estilo BG3",
         "Hint": "Los aliados consecutivos comparten un turno; movimiento bloqueado fuera del turno y limitado durante él."
@@ -114,7 +118,9 @@
     "Turns": {
       "NotYourTurn": "No es tu turno.",
       "NoMovement": "No queda movimiento: {spent} de {limit} pies ya usados.",
-      "Shared": "<strong>Turno compartido:</strong> {names}"
+      "Shared": "<strong>Turno compartido:</strong> {names}",
+      "Waiting": "Tu turno ha terminado. Esperando a: {names}.",
+      "EndButton": "Terminar turno"
     },
     "Encounter": {
       "Mark": "Marcar como encuentro",

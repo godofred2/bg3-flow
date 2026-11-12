@@ -405,3 +405,25 @@ test("RollComplete copes with TokenDocuments in hitTargets", async () => {
   await onRollComplete({ token: { document: player("pc") }, hitTargets: new Set([enemy("g1")]) }, { tell: async (s, g) => told.push([s, g]) });
   assert.deepEqual(told, [["scene", "g"]]);
 });
+
+test("hideToken in combat on the actor's turn costs the action, or the bonus action with Cunning Action; a player out of it is refused before the Stealth dialog; revealing is free", async () => {
+  const r = tokenDoc("r3"), flags = { "bg3-flow": {} };
+  const c = { id: "c1", actor: r.actor, token: r, getFlag: (m, k) => flags[m]?.[k], setFlag: async (m, k, v) => { flags[m][k] = v; } };
+  settings.actionEconomy = "players"; settings.enableTurns = false; game.user.isGM = false;
+  game.combat = { started: true, combatants: [c], combatant: c };
+  let rolled = 0;
+  await hideToken(r, async () => { rolled++; return 12; });
+  assert.deepEqual(flags["bg3-flow"].economy, { attacks: 0, action: true, bonus: false, extra: 0 });
+  assert.deepEqual(r.getFlag("bg3-flow", "stealth"), { value: 12, hidden: true });
+  await hideToken(r); // pressed again: reveal, nothing asked, nothing paid
+  assert.equal(r.getFlag("bg3-flow", "stealth"), undefined);
+  await hideToken(r, async () => { rolled++; return 12; }); // the action is gone
+  assert.equal(rolled, 1); // refused before the dialog
+  assert.equal(r.getFlag("bg3-flow", "stealth"), undefined);
+  r.actor.items = [{ name: "Cunning Action" }];
+  await hideToken(r, async () => { rolled++; return 12; });
+  assert.equal(rolled, 2);
+  assert.equal(flags["bg3-flow"].economy.bonus, true);
+  assert.deepEqual(r.getFlag("bg3-flow", "stealth"), { value: 12, hidden: true });
+  game.combat = null; game.user.isGM = true; delete settings.actionEconomy; delete settings.enableTurns;
+});

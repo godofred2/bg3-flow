@@ -2,6 +2,7 @@
 import { MODULE_ID, log, safe, safeSync } from "./main.js";
 import { encounterGroups, obscurity, spotsBg3, withinRadius } from "./rules.js";
 import { rollOrType, promptInitiative, askGmToStart, activeOwner, awaitOrGm } from "./prompts.js";
+import { hideCost, affordAction, payAction } from "./economy.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 const encounterOf = (doc) => doc.getFlag(MODULE_ID, "encounter");
@@ -60,8 +61,11 @@ const ADVANTAGE = { key: "flags.midi-qol.advantage.attack.all", mode: 5, value: 
  *  14.6.8's hidden-advantage rule only reads vision, and the goblins' tokens have none). Pressing it while hidden reveals. */
 export async function hideToken(doc, roll = rollOrType) {
   if (stealthOf(doc)?.hidden) return revealToken(doc);
+  const cost = hideCost(doc.actor); // BG3: hiding is the action, the bonus action with Cunning Action; free out of combat and off turn
+  if (affordAction(doc.actor, cost) === false) return;
   const value = await roll({ actor: doc.actor, skill: "ste" });
   if (value === null || value === undefined) return;
+  await payAction(doc.actor, cost);
   await doc.setFlag(MODULE_ID, "stealth", { value, hidden: true });
   const effect = await doc.actor?.toggleStatusEffect("hiding", { active: true });
   if (effect?.update && !effect.changes?.some((c) => c.key === ADVANTAGE.key)) await effect.update({ changes: [...(effect.changes ?? []), { ...ADVANTAGE }] });

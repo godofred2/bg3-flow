@@ -43,7 +43,7 @@ const move = ({ action = "walk", cost = 10, pending = 0, spent = 0 } = {}) => ({
   passed: { cost, waypoints: [{ action }] }, pending: { cost: pending, waypoints: [] }, history: { cost: spent }
 });
 
-const { onCombatTurn, onCombatTurnChange, onPreMoveToken, onPostUseActivity, onPreTargetingTurns, drawReach, registerTurns, refreshTurnMarker, refreshTurnMarkers, activeIds, lairTurn } = await import("../scripts/turns.js");
+const { onCombatTurn, onCombatTurnChange, onPreMoveToken, onPostUseActivity, onPreTargetingTurns, drawReach, registerTurns, refreshTurnMarker, refreshTurnMarkers, activeIds, lairTurn, waitingFor, endTurn, onUpdateCombatant, onRenderTokenHUD } = await import("../scripts/turns.js");
 
 const cleric = combatant("c", 1), rogue = combatant("r", 1), g1 = combatant("g1", -1), g2 = combatant("g2", -1);
 
@@ -315,4 +315,104 @@ test("lairTurn: the lair acts before the first group whose leader is below 20 (a
   assert.equal(lairTurn(combat([init(cleric, 19), init(rogue, 18), init(g1, 15), init(g2, 12)], 0)), 0);
   assert.equal(lairTurn(combat([init(cleric, 25), init(rogue, 24), init(g1, 21), init(g2, 20)], 0)), 0); // nobody below 20: top of the round
   assert.equal(lairTurn(combat([init(g1, 21), init(cleric, 18), init(rogue, 17)], 0)), 1);
+});
+
+// The shared turn ends when every connected player of the group has ended (tracker or HUD button), or when the GM presses next.
+const infos = []; ui.notifications.info = (m) => infos.push(m);
+const pc = (id, { mine = false, active = true, done = false } = {}) => { const c = combatant(id, 1); c.token.name = c.tokenId; c.players = [{ active, isGM: false }]; c.isOwner = mine; if (done) c.flags["bg3-flow"].done = true; return c; };
+
+test("waitingFor: the active group's members that are alive, not done and owned by a connected player; NPC allies, offline players and the dead are not waited for", () => {
+  const a = pc("a", { mine: true }), b = pc("b"), off = pc("off", { active: false }), done = pc("done", { done: true }), npc = combatant("npc", 1), dead = pc("dead"); dead.isDefeated = true;
+  game.combat = combat([a, b, off, done, npc, dead, g1], 0);
+  assert.deepEqual(waitingFor(game.combat).map((c) => c.id), ["a", "b"]);
+  game.combat = combat([a, b, g1], 2); // the goblins' turn: nobody
+  assert.deepEqual(waitingFor(game.combat), []);
+  game.combat = null;
+});
+
+test("onCombatTurn from a player while another connected player of the group has not ended: their own members are flagged done, the pointer and the round hold, no world time passes, and they are told who is left; from the last player, the GM, or with the setting off it jumps past the group as before", async () => {
+  const a = pc("a", { mine: true }), b = pc("b");
+  game.combat = combat([a, b, g1], 0); calls.flags = []; infos.length = 0;
+  const update = { round: 1, turn: 1 }, options = { direction: 1, worldTime: { delta: 6 } };
+  onCombatTurn(game.combat, update, options);
+  await Promise.resolve();
+  assert.deepEqual(update, { round: 1, turn: 0 });
+  assert.equal(options.worldTime.delta, 0);
+  assert.deepEqual(calls.flags, [["a", "done", true]]);
+  assert.deepEqual(infos, ['BG3FLOW.Turns.Waiting:{"names":"tok-b"}']);
+  b.flags["bg3-flow"].done = true; // b ends through the HUD
+  const update2 = { round: 1, turn: 1 };
+  onCombatTurn(game.combat, update2, { direction: 1 });
+  assert.equal(update2.turn, 2); // past the group
+  const update3 = { round: 1, turn: 1 };
+  onCombatTurn(game.combat, update3, { direction: -1 }); // backwards is the GM's business, never held
+  assert.notEqual(update3.turn, 0);
+  delete b.flags["bg3-flow"].done; game.user.isGM = true;
+  const update4 = { round: 1, turn: 1 };
+  onCombatTurn(game.combat, update4, { direction: 1 });
+  assert.equal(update4.turn, 2); // the GM never waits
+  game.user.isGM = false; settings.sharedTurnEnd = false;
+  const update5 = { round: 1, turn: 1 };
+  onCombatTurn(game.combat, update5, { direction: 1 });
+  assert.equal(update5.turn, 2);
+  delete settings.sharedTurnEnd; game.combat = null;
+});
+
+test("endTurn: a player's HUD press flags their members done and names who is left; the GM's press moves on at once; onUpdateCombatant on the lead GM moves the pointer when the last player's done arrives, once, and not while someone is still waited for", async () => {
+  const a = pc("a", { mine: true }), b = pc("b");
+  const cb = combat([a, b, g1], 0); game.combat = cb; calls.flags = []; infos.length = 0;
+  let next = 0; const nextTurn = async () => { next++; };
+  assert.deepEqual((await endTurn(cb, { nextTurn })).map((c) => c.id), ["b"]);
+  assert.deepEqual(calls.flags, [["a", "done", true]]);
+  assert.equal(next, 0);
+  game.users.activeGM = { isSelf: true }; game.user.isGM = true;
+  await onUpdateCombatant(a, { flags: { "bg3-flow": { done: true } } }, {}, "u1", { nextTurn });
+  assert.equal(next, 0); // b still out there
+  b.flags["bg3-flow"].done = true;
+  await onUpdateCombatant(b, { flags: { "bg3-flow": { done: true } } }, {}, "u2", { nextTurn });
+  assert.equal(next, 1);
+  await onUpdateCombatant(b, { flags: { "bg3-flow": { dash: true } } }, {}, "u2", { nextTurn }); // another flag: nothing
+  assert.equal(next, 1);
+  game.users.activeGM = { isSelf: false };
+  await onUpdateCombatant(b, { flags: { "bg3-flow": { done: true } } }, {}, "u2", { nextTurn }); // not the lead GM
+  assert.equal(next, 1);
+  game.users.activeGM = { isSelf: true };
+  delete a.flags["bg3-flow"].done; delete b.flags["bg3-flow"].done;
+  await endTurn(cb, { nextTurn }); // the GM's own press: everyone done, straight on
+  assert.equal(next, 2);
+  game.user.isGM = false; game.users.activeGM = undefined; game.combat = null;
+});
+
+test("combatTurnChange at a group start clears the members' done flags, so the next shared turn waits again", async () => {
+  const a = pc("a", { done: true }), b = pc("b", { done: true });
+  game.users.activeGM = { isSelf: true };
+  const cb = combat([g1, a, b], 1); calls.flags = [];
+  await onCombatTurnChange(cb, { turn: 0 }, { turn: 1 });
+  assert.deepEqual(calls.flags.filter((f) => f[1] === "done"), [["a", "done", undefined], ["b", "done", undefined]]);
+  game.users.activeGM = undefined;
+});
+
+test("onRenderTokenHUD: an End turn button for an owned member of the shared turn that has not ended yet; none for a done member, an off-turn token, or with the setting off; a click ends their part", async () => {
+  const a = pc("a", { mine: true }), b = pc("b");
+  game.combat = combat([a, b, g1], 0); calls.flags = [];
+  const hud = () => { const col = { html: "", fn: null, insertAdjacentHTML(_, h) { this.html += h; }, querySelector() { return { addEventListener: (ev, fn) => { col.fn = fn; } }; } }; return { col, html: { querySelector: () => col } }; };
+  const app = (c) => ({ object: { document: { id: c.tokenId, parent: { id: "scene" }, isOwner: true } } });
+  let h = hud(); onRenderTokenHUD(app(a), h.html);
+  assert.match(h.col.html, /bg3-end-turn/);
+  await h.col.fn();
+  assert.deepEqual(calls.flags, [["a", "done", true]]);
+  h = hud(); onRenderTokenHUD(app(a), h.html); // done: no button
+  assert.equal(h.col.html, "");
+  h = hud(); onRenderTokenHUD(app(g1), h.html); // the goblin is not on turn
+  assert.equal(h.col.html, "");
+  delete a.flags["bg3-flow"].done; settings.sharedTurnEnd = false;
+  h = hud(); onRenderTokenHUD(app(a), h.html);
+  assert.equal(h.col.html, "");
+  delete settings.sharedTurnEnd; game.combat = null;
+});
+
+test("registerTurns hooks the HUD button and the GM's updateCombatant listener", () => {
+  const hooks = {}; const on = Hooks.on; Hooks.on = (n, fn) => { hooks[n] = fn; };
+  try { registerTurns(); } finally { Hooks.on = on; }
+  assert.ok(hooks.renderTokenHUD && hooks.updateCombatant && hooks.combatTurn);
 });

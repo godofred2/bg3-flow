@@ -4,7 +4,7 @@ import { MODULE_ID, log, safe, safeSync } from "./main.js";
 import { activeIds } from "./turns.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
-const EXTRA_ATTACK = /^(extra attack|ataque (extra|adicional))/i, ACTION_SURGE = /^(action surge|acci[oó]n impetuosa)/i;
+const EXTRA_ATTACK = /^(extra attack|ataque (extra|adicional))/i, ACTION_SURGE = /^(action surge|acci[oó]n impetuosa)/i, CUNNING = /^(cunning action|acci[oó]n astuta)/i;
 
 export const FRESH = Object.freeze({ attacks: 0, action: false, bonus: false, extra: 0 });
 const mode = () => game.settings.get(MODULE_ID, "actionEconomy") ?? "players";
@@ -73,10 +73,33 @@ export async function onPreTargetingEconomy({ workflow, usage }) {
   if (!check.ok && cost === "attack" && offersOffhand(workflow) && canSpend(state, "bonus", allowance).ok) check = { ok: true }; // a light weapon: it may be the off-hand swing
   if (check.ok) return;
   if (cost === "attack" && offersOffhand(workflow) && state.bonus) check = { ok: false, kind: "bonus" }; // it could only have been the off-hand swing
-  const text = L(check.kind === "bonus" ? "Economy.NoBonus" : "Economy.NoAction", { name: c.token?.name ?? c.name });
+  return refuse(c, check.kind);
+}
+
+/** The economy's refusal: a player gets the text and `false`; the GM gets it with the note and goes on. */
+function refuse(c, kind) {
+  const text = L(kind === "bonus" ? "Economy.NoBonus" : "Economy.NoAction", { name: c.token?.name ?? c.name });
   if (game.user.isGM) { ui.notifications.warn(`${text} ${L("Economy.GmNote")}`); return; }
   ui.notifications.warn(text);
   return false;
+}
+
+/** What hiding costs, as in BG3: the action, or the bonus action with Cunning Action. */
+export const hideCost = (actor) => [...(actor?.items ?? [])].some((i) => CUNNING.test(String(i.name ?? "").trim())) ? "bonus" : "action";
+const ledger = (actor) => { if (mode() === "off") return null; const c = actingCombatant(actor); return c ? { c, state: stateOf(c), allowance: allowanceOf(c.actor) } : null; };
+/** A use outside Midi (the Hide button) on the actor's turn: false when a player cannot pay (told why); the GM is warned and goes on; display mode never refuses. */
+export function affordAction(actor, cost) {
+  const l = ledger(actor);
+  if (!l || mode() !== "players") return true;
+  const check = canSpend(l.state, cost, l.allowance);
+  return check.ok || refuse(l.c, check.kind) !== false;
+}
+/** Pay such a use into the combatant's flag (nothing off turn, out of combat or with the economy off). */
+export async function payAction(actor, cost) {
+  const l = ledger(actor);
+  if (!l) return;
+  const next = spend(l.state, cost, l.allowance);
+  if (next !== l.state) await l.c.setFlag(MODULE_ID, "economy", next);
 }
 
 /**

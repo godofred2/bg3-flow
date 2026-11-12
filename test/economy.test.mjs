@@ -18,7 +18,7 @@ globalThis.game = {
 };
 globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: { wait: async () => null } } }, utils: { escapeHTML: (s) => s } };
 
-const { allowanceOf, costOf, canSpend, spend, FRESH, onPreTargetingEconomy, onRollCompleteEconomy, onPostUseEconomy, resetEconomy, drawEconomy } = await import("../scripts/economy.js");
+const { allowanceOf, costOf, canSpend, spend, FRESH, onPreTargetingEconomy, onRollCompleteEconomy, onPostUseEconomy, resetEconomy, drawEconomy, hideCost, affordAction, payAction } = await import("../scripts/economy.js");
 
 const actor = ({ items = [], fighter = 0, player = true } = {}) => ({ hasPlayerOwner: player, items: items.map((name) => ({ name })), classes: fighter ? { fighter: { system: { levels: fighter } } } : {} });
 function combatant(id, disposition, a = actor()) {
@@ -216,4 +216,39 @@ test("drawEconomy: on PIXI 7 (Foundry 14.369 ships 7.4.3) the icons are drawn wi
   drawEconomy();
   assert.deepEqual(drawn.filter((d) => d[0] !== "line"), [["fill", 0x3ec15c], ["dot", 138, 90], ["fill", 0xff8c1a], ["tri", 157, 97]]);
   game.combat = null; globalThis.canvas = null;
+});
+
+test("hideCost: the action, or the bonus action with Cunning Action (English or Spanish name)", () => {
+  assert.equal(hideCost(actor()), "action");
+  assert.equal(hideCost(actor({ items: ["Cunning Action"] })), "bonus");
+  assert.equal(hideCost(actor({ items: ["Acción Astuta"] })), "bonus");
+});
+
+test("affordAction/payAction: a use outside Midi (the Hide button) on the actor's turn: a player who cannot pay is refused with the economy's text, the GM warned and let through; paid into the flag; free off turn, in display mode and with the economy off", async () => {
+  const pc = combatant("pc", 1), cb = combat([pc], 0);
+  game.combat = cb; reset();
+  assert.equal(affordAction(pc.actor, "action"), true);
+  await payAction(pc.actor, "action");
+  assert.deepEqual(pc.getFlag("bg3-flow", "economy"), { ...FRESH, action: true });
+  assert.equal(affordAction(pc.actor, "action"), false);
+  assert.deepEqual(calls.warn, ['BG3FLOW.Economy.NoAction:{"name":"pc"}']);
+  assert.equal(affordAction(pc.actor, "bonus"), true); // Cunning Action: the bonus action is still there
+  game.user.isGM = true; reset();
+  assert.equal(affordAction(pc.actor, "action"), true);
+  assert.deepEqual(calls.warn, ['BG3FLOW.Economy.NoAction:{"name":"pc"} BG3FLOW.Economy.GmNote']);
+  game.user.isGM = false;
+  game.combat = combat([pc, combatant("gob", -1)], 1); reset();
+  assert.equal(affordAction(pc.actor, "action"), true); // the goblins' turn: a reaction-time Hide is not counted
+  await payAction(pc.actor, "bonus");
+  assert.equal(pc.getFlag("bg3-flow", "economy").bonus, false);
+  game.combat = cb; settings.actionEconomy = "display"; reset();
+  assert.equal(affordAction(pc.actor, "action"), true); // icons only: never refused
+  assert.deepEqual(calls.warn, []);
+  await payAction(pc.actor, "bonus");
+  assert.equal(pc.getFlag("bg3-flow", "economy").bonus, true); // but paid, so the icon empties
+  settings.actionEconomy = "off";
+  pc.flags["bg3-flow"].economy = { ...FRESH };
+  await payAction(pc.actor, "action");
+  assert.deepEqual(pc.getFlag("bg3-flow", "economy"), FRESH);
+  settings.actionEconomy = "players"; game.combat = null;
 });
