@@ -329,7 +329,9 @@ Result of the v0.16.1 run (G10-G12): G10, G11 pass. G12: the v0.16.0 short moves
 
 Result of the v0.16.2 run (G13-G15): G14, G15 pass. G13 fail with the party 40 ft east (10 ft west into the edge), pass with it 20 ft east (55 ft north): every square along the edge was the same 50 ft from the nearest PC and the stable sort kept the straight-away square. v0.16.3: the tie goes to the square farthest from everyone (the sum of the distances), then the longer run. Known: the board's console line prints the budget before the Dash flag (the planner doubles it itself).
 
-- [ ] G16 (v0.16.3). G13 as written (Goblin 1 two squares from the west edge, the party 40 ft east, open ground north and south): it runs up to 60 ft along the edge away from the party, not into it.
+- [x] G16 (v0.16.3). G13 as written (Goblin 1 two squares from the west edge, the party 40 ft east, open ground north and south): it runs up to 60 ft along the edge away from the party, not into it.
+
+Result of the v0.16.3 run: G16 pass (the goblin ran 55 ft north along the edge from (2,13) to (1,2) with the party 40 ft east; the same with it 20 ft east). 55 rather than 60: the route's next square costs past the budget (5e diagonals). Round 7g closed on v0.16.3: W1-W4, Y9, G1-G16 green; Eldemar loads v0.16.3 at its next launch.
 
 ## 8. Report template
 
