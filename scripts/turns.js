@@ -146,10 +146,11 @@ export async function onPreTargetingTurns({ workflow, usage }) {
   const combat = game.combat;
   if (!combat?.started) return;
   const combatant = combat.combatants.find((c) => c.actor === workflow?.actor);
-  if (!game.user.isGM) { // a dominated character is the DM's; a confused one acts only on a 7-10 (7-8: the melee attack the table was told of)
-    const name = combatant?.token?.name ?? workflow?.actor?.name, roll = confusionRoll(combatant);
+  if (!game.user.isGM) { // a dominated character is the DM's; a confused one acts only on a 7-10 (7-8: only the melee attack the table was told of)
+    const name = combatant?.token?.name ?? workflow?.actor?.name, roll = confusionRoll(combatant), a = workflow?.activity;
+    const melee = a?.type === "attack" && a?.attack?.type?.value === "melee";
     if (isDominated(workflow?.actor)) { ui.notifications.warn(L("Turns.Dominated", { name })); return false; }
-    if (roll && roll <= 6) { ui.notifications.warn(L("Turns.Confused", { name, roll })); return false; }
+    if (roll && (roll <= 6 || (roll <= 8 && !melee))) { ui.notifications.warn(L("Turns.Confused", { name, roll })); return false; }
   }
   if (!usage?.midiOptions || !combatant || !activeIds(combat).has(combatant.id)) return;
   usage.midiOptions.proceedChecks = { ...usage.midiOptions.proceedChecks, checkAoO: false };

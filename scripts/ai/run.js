@@ -59,7 +59,7 @@ export async function rollConfusion(combat, active, { d10 = rollDie(10), d8 = ro
     const d = DIRS[(dir - 1 + 8) % 8];
     await ChatMessage.create({ content: L(`Autopilot.Confusion.${key}`, { name, roll, ...(roll === 1 ? { dir: L(`Autopilot.Dir.${d.k}`) } : {}), ...(target ? { target: target.name } : {}) }) });
     if (roll === 1 && !isAuto(c)) { // a player character: walked by this client
-      const s = canvas.dimensions?.size ?? 100, ft = canvas.dimensions?.distance ?? 5, px = (c.actor?.system?.attributes?.movement?.walk ?? 30) / ft * s;
+      const mv = c.actor?.system?.attributes?.movement, s = canvas.dimensions?.size ?? 100, ft = canvas.dimensions?.distance ?? 5, px = (mv?.speeds?.walk ?? mv?.walk ?? 30) / ft * s;
       await c.token.move([{ x: (c.token.x ?? 0) + d.dx * px, y: (c.token.y ?? 0) + d.dy * px, elevation: c.token.elevation ?? 0, action: "walk" }], { autoRotate: true, showRuler: false, bg3Autopilot: true });
     }
   }
@@ -268,6 +268,7 @@ export async function runTurn(combat, deps = {}) {
   const ids = game.settings.get(MODULE_ID, "enableTurns") === false ? new Set([combat.combatant?.id]) : activeIds(combat); // groups only exist with piece 2
   const active = combat.turns.filter((c) => ids.has(c.id) && !c.isDefeated);
   try { await rollConfusion(combat, active, { d10, d8, rand }); } catch (err) { console.error(`[${MODULE_ID}]`, err); } // player characters included: their owners are vetoed by the flag
+  for (const c of active) if (!c.actor?.hasPlayerOwner && controlledBy(c.actor)) await whisper(L("Autopilot.Controlled", { name: c.token?.name ?? c.name }));
   const members = active.filter((c) => isAuto(c) && c.token && c.token.parent?.id === canvas.scene?.id);
   if (!members.length) return;
   const mark = { id: combat.id, round: combat.round, turn: combat.turn };
@@ -276,7 +277,6 @@ export async function runTurn(combat, deps = {}) {
   const failed = async (c, err) => { console.error(`[${MODULE_ID}]`, err); clean = false; await whisper(L("Autopilot.Error", { name: c.token.name, error: err?.message ?? String(err) })); };
   running = true;
   try {
-    for (const c of active) if (!c.actor?.hasPlayerOwner && controlledBy(c.actor)) await whisper(L("Autopilot.Controlled", { name: c.token?.name ?? c.name }));
     for (const c of members) { try { await rollRecharge(c); } catch (err) { await failed(c, err); } }
     // Piece 2 clears the movement history and the Dash flag on the same hook without awaiting: do both ourselves before reading the board.
     await Promise.all(members.map(async (c) => { await c.token.clearMovementHistory?.(); if (c.getFlag(MODULE_ID, "dash")) await c.unsetFlag(MODULE_ID, "dash"); }));

@@ -432,10 +432,13 @@ test("a dominated player character is the DM's: its owner's moves and uses are r
   game.user.isGM = false;
   conf.flags["bg3-flow"].confusion = { round: 1, roll: 7, dir: 1, target: null }; calls.warn = [];
   assert.equal(onPreMoveToken(tokenDoc(conf), move()), false); // 7: an attack, no walking
-  assert.equal(await onPreTargetingTurns({ workflow: { actor: conf.actor }, usage: { midiOptions: {} } }), undefined); // the attack is allowed
+  const melee = { type: "attack", attack: { type: { value: "melee" } } }, spell = { type: "save" }, bow = { type: "attack", attack: { type: { value: "ranged" } } };
+  assert.equal(await onPreTargetingTurns({ workflow: { actor: conf.actor, activity: melee }, usage: { midiOptions: {} } }), undefined); // the melee attack is allowed
+  assert.equal(await onPreTargetingTurns({ workflow: { actor: conf.actor, activity: spell }, usage: { midiOptions: {} } }), false); // a spell is not
+  assert.equal(await onPreTargetingTurns({ workflow: { actor: conf.actor, activity: bow }, usage: { midiOptions: {} } }), false); // nor a shot
   conf.flags["bg3-flow"].confusion = { round: 1, roll: 4, dir: 1, target: null };
-  assert.equal(await onPreTargetingTurns({ workflow: { actor: conf.actor }, usage: { midiOptions: {} } }), false);
-  assert.deepEqual(calls.warn, ['BG3FLOW.Turns.Confused:{"name":"tok-conf","roll":7}', 'BG3FLOW.Turns.Confused:{"name":"tok-conf","roll":4}']);
+  assert.equal(await onPreTargetingTurns({ workflow: { actor: conf.actor, activity: melee }, usage: { midiOptions: {} } }), false);
+  assert.deepEqual(calls.warn, ['BG3FLOW.Turns.Confused:{"name":"tok-conf","roll":7}', 'BG3FLOW.Turns.Confused:{"name":"tok-conf","roll":7}', 'BG3FLOW.Turns.Confused:{"name":"tok-conf","roll":7}', 'BG3FLOW.Turns.Confused:{"name":"tok-conf","roll":4}']);
   conf.flags["bg3-flow"].confusion = { round: 0, roll: 4, dir: 1, target: null }; // last round's roll
   assert.equal(onPreMoveToken(tokenDoc(conf), move()), undefined);
   game.combat = null;

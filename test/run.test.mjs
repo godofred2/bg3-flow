@@ -894,6 +894,12 @@ test("controlledBy / isAuto: a charmed or dominated monster (the status, or an e
   assert.deepEqual(uses.map((u) => u[1]), ["T.rogue"]); // g1 only
   assert.ok(calls.chat.some((m) => m.whisper && m.content === 'BG3FLOW.Autopilot.Controlled:{"name":"g2"}'));
   assert.equal(combat.nextTurns, 0);
+  reset(); // alone in its group: nobody on the autopilot, the whisper still comes and the turn still holds
+  const alone = makeCombat([g2, pc]);
+  await runTurn(alone, deps({ plans: { g2: attackPlan() } }));
+  assert.deepEqual(uses, []);
+  assert.ok(calls.chat.some((m) => m.whisper && m.content === 'BG3FLOW.Autopilot.Controlled:{"name":"g2"}'));
+  assert.equal(alone.nextTurns, 0);
 });
 
 test("registerAutopilot keeps the command word from preDeleteActiveEffect", () => {
@@ -933,7 +939,7 @@ test("runTurn rolls the Confusion d10 once per round for every confused member, 
 test("a confused player character: the GM's client rolls for it at its turn start, tells the table, moves it on a 1 and flags the roll for the player's vetoes", async () => {
   reset();
   const pc = combatant("pc", { disposition: 1, playerOwner: true }), g1 = combatant("g1");
-  pc.actor.effects = [confusedEffect]; pc.actor.system = { attributes: { movement: { walk: 25 } } };
+  pc.actor.effects = [confusedEffect]; pc.actor.system = { attributes: { movement: { speeds: { walk: 25 } } } };
   canvas.scene.tokens.contents = [tokenAt(pc, 0), tokenAt(g1, 100)];
   await runTurn(makeCombat([pc, g1]), { ...deps({ plans: {} }), d10: async () => 1, d8: async () => 5, rand: () => 0 }); // the PC's turn: no autopilot member
   assert.deepEqual(moves.map((m) => [m[0], m[1].at(-1).x, m[1].at(-1).y]), [["pc", 0, 500]]); // south, 25 ft
