@@ -375,7 +375,9 @@ Result of the v0.18.2 run (L10-L11, D8, O1): L10, D8, O1 pass. L11 partial: the 
 
 Result of the v0.18.3 run: L12 pass (the throw hits the goblin, the flame goes out, one card, no Midi warning) but the re-launched roll lost the Wisdom modifier ("1d20 + 3[Proficiency]"): updateSource on the clone reset its prepared data. v0.18.4 sets the target and range on the prepared properties instead, and logs the flame's lighting and throw.
 
-- [ ] L13 (v0.18.4). The thrown Produce Flame's attack roll is "1d20 + 2[Wisdom] + 3[Proficiency]" (the sheet's +5) against the goblin; console "[bg3-flow] produceFlame: Cleric lit (the flame in hand)" and "[bg3-flow] produceFlame: thrown at Goblin 1 by Cleric".
+- [x] L13 (v0.18.4). The thrown Produce Flame's attack roll is "1d20 + 2[Wisdom] + 3[Proficiency]" (the sheet's +5) against the goblin; console "[bg3-flow] produceFlame: Cleric lit (the flame in hand)" and "[bg3-flow] produceFlame: thrown at Goblin 1 by Cleric".
+
+Result of the v0.18.4 run: L13 pass ("1d20 + 2[Wisdom] + 3[Proficiency]" against the goblin, the flame out, one card). Rounds 7h (light spells), 7i (Command drop), 7j (Divine Smite, not ours) and O1 closed on v0.18.4; Eldemar loads v0.18.4 at its next launch.
 
 ## 7j. Divine Smite with the stack (not ours: CPR 2014 through CAT; check only)
 
