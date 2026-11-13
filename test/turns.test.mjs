@@ -43,7 +43,7 @@ const move = ({ action = "walk", cost = 10, pending = 0, spent = 0 } = {}) => ({
   passed: { cost, waypoints: [{ action }] }, pending: { cost: pending, waypoints: [] }, history: { cost: spent }
 });
 
-const { onCombatTurn, onCombatTurnChange, onPreMoveToken, onPostUseActivity, onPreTargetingTurns, drawReach, registerTurns, refreshTurnMarker, refreshTurnMarkers, activeIds, lairTurn, waitingFor, endTurn, onUpdateCombatant, onRenderTokenHUD } = await import("../scripts/turns.js");
+const { onCombatTurn, onCombatTurnChange, onPreMoveToken, onPreUpdateCombat, expireShared, onPostUseActivity, onPreTargetingTurns, drawReach, registerTurns, refreshTurnMarker, refreshTurnMarkers, activeIds, lairTurn, waitingFor, endTurn, onUpdateCombatant, onRenderTokenHUD } = await import("../scripts/turns.js");
 
 const cleric = combatant("c", 1), rogue = combatant("r", 1), g1 = combatant("g1", -1), g2 = combatant("g2", -1);
 
@@ -458,4 +458,55 @@ test("combatTurnChange at a group start expires DAE turn-start effects on the me
   await onCombatTurnChange(cb, { round: 1, turn: 0, combatantId: "h1" }, { round: 1, turn: 2, combatantId: "c1" });
   assert.deepEqual(gone.sort(), ["h2-end", "r1-start"]);
   game.user.isGM = false;
+});
+
+// Foundry 14 durations: dnd5e's pseudo expiries (targetStart/targetEnd, judged live against combat.combatant) and core's numeric ones
+// (duration.expiry turnStart/turnEnd with a value in rounds or time) only fire for the tracker's current combatant: the other members of a
+// shared turn get the same here, through DAE's expireEffect when DAE is there.
+test("expireShared with Foundry 14 durations: targetStart and numeric turnStart effects on the members DAE/core never see expire at the group start (not one applied this very turn, not the current combatant's, not source-side ones); targetEnd and numeric turnEnd on the group that ended", async () => {
+  game.user.isGM = true; game.users.activeGM = { isSelf: true };
+  const gone = [];
+  globalThis.DAE = { expireEffect: async (e) => gone.push(e.name) };
+  const cmb = {};
+  const fx = (name, duration, start = { round: 1, turn: 0, combat: cmb }, extra = {}) => ({ name, duration, start, flags: {}, delete: async () => gone.push(`${name}(deleted)`), ...extra });
+  const withFx = (id, disposition, effects) => combatant(id, disposition, { actor: { id: `act-${id}`, appliedEffects: effects, system: { attributes: { movement: { speeds: { walk: 30 } } } } } });
+  const c1 = withFx("c1", 1, [fx("c1-your-start", { expiry: "targetStart" })]); // the current combatant: core's and dnd5e's business
+  const r1 = withFx("r1", 1, [
+    fx("r1-your-start", { expiry: "targetStart" }),
+    fx("r1-fresh", { expiry: "targetStart" }, { round: 2, turn: 2, combat: cmb }), // applied during this very turn: lasts to the next one
+    fx("r1-one-round", { expiry: "turnStart", units: "rounds", value: 1 }),
+    fx("r1-two-rounds", { expiry: "turnStart", units: "rounds", value: 2 }),
+    fx("r1-minute-over", { expiry: "turnStart", units: "minutes", value: 1, remaining: 0 }),
+    fx("r1-minute-left", { expiry: "turnStart", units: "minutes", value: 10, remaining: 540 }),
+    fx("r1-your-end", { expiry: "targetEnd" }),
+    fx("r1-source", { expiry: "sourceStart" }), // the caster's turn, not ours to judge
+    fx("r1-legacy", { expiry: null }, { round: 1, turn: 0, combat: cmb }, { flags: { dae: { specialDuration: ["turnStart"] } } })
+  ]);
+  const h1 = withFx("h1", -1, [fx("h1-your-end", { expiry: "targetEnd" })]); // the prior group's first member: core's
+  const h2 = withFx("h2", -1, [fx("h2-your-end", { expiry: "targetEnd" }), fx("h2-one-round-end", { expiry: "turnEnd", units: "rounds", value: 1 }), fx("h2-your-start", { expiry: "targetStart" })]);
+  const cb = combat([h1, h2, c1, r1], 2); cb.round = 2;
+  calls.chat = [];
+  await onCombatTurnChange(cb, { round: 2, turn: 0, combatantId: "h1" }, { round: 2, turn: 2, combatantId: "c1" });
+  assert.deepEqual(gone.sort(), ["h2-one-round-end", "h2-your-end", "r1-legacy", "r1-minute-over", "r1-one-round", "r1-your-start"]);
+  delete globalThis.DAE;
+  const plain = [fx("x", { expiry: "targetStart" })];
+  await expireShared([withFx("x", 1, plain)], { kind: "turnStart", round: 2, turn: 2, skipId: "none" });
+  assert.deepEqual(gone.at(-1), "x(deleted)"); // without DAE: deleted (CONFIG.ActiveEffect.expiryAction unset)
+  game.user.isGM = false;
+});
+
+// Gambit's opportunity attack only fires for the mover that is combat.current: a shared-turn member is made that for its own move.
+test("a shared-turn member that is not the tracker's current combatant is written into combat.current for its move (Gambit's opportunity attack reads it); the current one and strangers are left alone; preUpdateCombat puts it back", () => {
+  game.user.isGM = true;
+  const cb = combat([g1, g2, cleric, rogue], 2); cb.current = { round: 1, turn: 2, combatantId: "c", tokenId: "tok-c" };
+  game.combat = cb;
+  onPreMoveToken(tokenDoc(rogue), move());
+  assert.deepEqual(cb.current, { round: 1, turn: 2, combatantId: "r", tokenId: "tok-r" });
+  onPreUpdateCombat(cb);
+  assert.deepEqual(cb.current, { round: 1, turn: 2, combatantId: "c", tokenId: "tok-c" });
+  onPreMoveToken(tokenDoc(cleric), move());
+  assert.deepEqual(cb.current, { round: 1, turn: 2, combatantId: "c", tokenId: "tok-c" });
+  onPreMoveToken(tokenDoc(g1), move()); // not its group's turn: refused anyway, current untouched
+  assert.deepEqual(cb.current, { round: 1, turn: 2, combatantId: "c", tokenId: "tok-c" });
+  game.combat = null; game.user.isGM = false;
 });

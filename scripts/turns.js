@@ -101,18 +101,43 @@ export function onCombatTurn(combat, updateData, updateOptions) {
   }
 }
 
-/** DAE expires its turn-start and turn-end special durations for combat.combatant only; a shared turn's other members never become it,
- *  so their effects (Gambit's Command, "until the start of your next turn" buffs) are expired here. ponytail: turnStart/turnEnd only; the
- *  source-turn variants (turnStartSource) are left to DAE. */
+/** Foundry 14 and dnd5e 6 judge turn expiries against the tracker's current combatant only: dnd5e's pseudo expiries (duration.expiry
+ *  targetStart/targetEnd, "until the start of your next turn") need combat.combatant to be the effect's actor, and core's numeric ones
+ *  (expiry turnStart/turnEnd with a value in rounds or time) fire at that combatant's turn edge. A shared turn's other members never
+ *  become it, so their effects (Gambit's Command, Midi's reaction marker, round-long buffs) are expired here at the group's start and end,
+ *  through DAE's expireEffect (its delete/suppress setting) when DAE is there. An effect applied during this very turn lasts to the next
+ *  one, as dnd5e has it. ponytail: the source-side expiries (sourceStart/sourceEnd) are left to core; "turns" units count as rounds. */
 export async function expireShared(members, { kind, round, turn, skipId }) {
+  const pseudo = kind === "turnStart" ? "targetStart" : "targetEnd";
+  const expire = (e) => globalThis.DAE?.expireEffect ? DAE.expireEffect(e, { "expiry-reason": `bg3-flow:${kind}` })
+    : CONFIG.ActiveEffect?.expiryAction === "update" ? e.update?.({ "duration.expired": true }) : e.delete?.();
   for (const c of members) {
     if (c.id === skipId) continue;
     for (const e of [...(c.actor?.appliedEffects ?? c.actor?.effects ?? [])]) {
-      if (!(e.flags?.dae?.specialDuration ?? []).includes(kind)) continue;
-      if (kind === "turnStart" && e.duration?.startRound === round && e.duration?.startTurn === turn) continue; // applied during this very turn: it lasts to the next one, as DAE has it
-      await e.delete?.();
+      const d = e.duration ?? {}, sr = e.start?.round ?? d.startRound, st = e.start?.turn ?? d.startTurn;
+      let due = false;
+      if (d.expiry === pseudo || (e.flags?.dae?.specialDuration ?? []).includes(kind)) due = !(sr === round && st === turn);
+      else if (d.expiry === kind && Number.isFinite(d.value)) due = ["rounds", "turns"].includes(d.units) ? round - (sr ?? round) >= d.value : (d.remaining ?? Infinity) <= 0;
+      if (due) await expire(e);
     }
   }
+}
+
+// Gambit's opportunity attack fires only for the mover that is combat.current (the tracker's pointer): a shared-turn member walking on
+// its group's turn would never draw one. For its own move, on the moving client, the member is written into combat.current; Foundry
+// recomputes `current` at the next combat update, and preUpdateCombat puts it back before the turn change reads it.
+let shimmed = null;
+function shimCurrent(combat, combatant, doc) {
+  if (!combat.current) return;
+  shimmed ??= { combat, current: { ...combat.current } };
+  combat.current.combatantId = combatant.id;
+  combat.current.tokenId = combatant.tokenId ?? doc.id;
+}
+/** preUpdateCombat / preDeleteCombat (initiating client): the real pointer back before Foundry compares it. */
+export function onPreUpdateCombat(combat) {
+  if (!shimmed || shimmed.combat !== combat) return;
+  Object.assign(combat.current, shimmed.current);
+  shimmed = null;
 }
 
 /** combatTurnChange (GM only acts): at a group's first member, reset members' movement and Dash, run DAE's turn expiries for the members
@@ -123,7 +148,7 @@ export async function onCombatTurnChange(combat, prior, current) {
   if (!isGroupStart(groups, turns, current.turn, skipDefeated(combat))) return;
   const membersOf = (turn) => (turns[turn] ? groupOf(groups, turns[turn].id)?.ids ?? [] : []).map((id) => combat.combatants.find((c) => c.id === id)).filter(Boolean);
   const members = membersOf(current.turn);
-  if (typeof prior?.turn === "number" && prior.turn !== current.turn) await expireShared(membersOf(prior.turn), { kind: "turnEnd", skipId: prior.combatantId ?? turns[prior.turn]?.id });
+  if (typeof prior?.turn === "number" && prior.turn !== current.turn) await expireShared(membersOf(prior.turn), { kind: "turnEnd", round: prior.round ?? combat.round, turn: prior.turn, skipId: prior.combatantId ?? turns[prior.turn]?.id });
   await expireShared(members, { kind: "turnStart", round: combat.round, turn: current.turn, skipId: current.combatantId ?? combat.combatant?.id });
   for (const c of members) {
     await c.token?.clearMovementHistory?.();
@@ -142,6 +167,7 @@ export function onPreMoveToken(doc, movement) {
   const waypoints = [...(movement.passed?.waypoints ?? []), ...(movement.pending?.waypoints ?? [])];
   const action = waypoints.at(-1)?.action ?? doc.movementAction ?? "walk"; // the last waypoint carries this move's action
   if (CONFIG.Token.movement.actions[action]?.teleport) return;
+  if (activeIds(combat).has(combatant.id) && combat.combatant?.id !== combatant.id) shimCurrent(combat, combatant, doc); // Gambit's opportunity attack sees this member as the mover on turn
   if (game.user.isGM && !game.settings.get(MODULE_ID, "lockGmMovement")) return;
   if (!game.user.isGM) { // a dominated character is the DM's; a confused one walks only on a 9-10 (a 1 is walked by the GM's client)
     const name = combatant.token?.name ?? doc.name, roll = confusionRoll(combatant);
@@ -260,6 +286,7 @@ export function registerTurns() {
   for (const h of ["combatTurnChange", "combatStart", "deleteCombat", "updateCombatant", "canvasReady", "createActiveEffect", "deleteActiveEffect"]) Hooks.on(h, safe(refreshTurnMarkers)); // the effects: a dead status (Midi's at 0 hp) defeats without touching the combatant
   Hooks.on("combatTurn", safeSync(onCombatTurn));
   Hooks.on("combatTurnChange", safe(onCombatTurnChange));
+  for (const h of ["preUpdateCombat", "preDeleteCombat"]) Hooks.on(h, safeSync(onPreUpdateCombat));
   Hooks.on("updateCombatant", safe(onUpdateCombatant));
   Hooks.on("renderTokenHUD", safeSync(onRenderTokenHUD));
   Hooks.on("preMoveToken", safeSync(onPreMoveToken)); // sync: a Promise would never veto

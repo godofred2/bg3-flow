@@ -137,7 +137,8 @@
       "Spotted": "¡<b>{enemy}</b> ha visto a <b>{name}</b>!"
     },
     "Light": {
-      "Off": "Apagar la luz (conjuro)"
+      "Off": "Apagar la luz (conjuro)",
+      "Flame": "Producir llama: la llama está en tu mano. Marca una criatura como objetivo para arrojarla."
     },
     "Hide": {
       "Button": "Esconderse",

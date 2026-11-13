@@ -137,7 +137,8 @@
       "Spotted": "<b>{enemy}</b> spotted <b>{name}</b>!"
     },
     "Light": {
-      "Off": "Put out the light (spell)"
+      "Off": "Put out the light (spell)",
+      "Flame": "Produce Flame: the flame is in your hand. Target a creature to throw it."
     },
     "Hide": {
       "Button": "Hide",

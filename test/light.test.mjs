@@ -17,7 +17,7 @@ globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2:
 globalThis.canvas = { scene: { id: "s", tokens: { contents: [] }, lights: { contents: [] }, createEmbeddedDocuments: async (type, data) => { calls.created.push([type, ...data]); return data; } } };
 globalThis.fromUuidSync = () => null;
 
-const { lightSpell, onRollComplete, onDeleteEffect, onRenderTokenHUD, extinguish, registerLight } = await import("../scripts/light.js");
+const { lightSpell, onRollComplete, onDeleteEffect, onRenderTokenHUD, extinguish, registerLight, templateCenter, onPreTargetingLight } = await import("../scripts/light.js");
 
 function tok(id, { light = { bright: 0, dim: 0, color: null }, flags = {}, owner = true } = {}) {
   const f = { "bg3-flow": { ...flags } };
@@ -101,13 +101,24 @@ test("lights stack: a Light over a Continual Flame shows Light, and when Light m
   assert.deepEqual(calls.updates.at(-1)[1].light, { bright: 60, dim: 120, color: "#ffffff", alpha: 0.1, animation: { type: null } });
 });
 
-test("Daylight cast on a point (a template): an ambient light at the template, flagged, no token touched; the caster's concentration ending removes flagged ambient lights too", async () => {
+test("templateCenter: a MeasuredTemplate's x/y, or a Foundry 14 Region's first shape (circle centre, rectangle middle, polygon average)", () => {
+  assert.deepEqual(templateCenter({ x: 1250, y: 850 }), { x: 1250, y: 850 });
+  assert.deepEqual(templateCenter({ shapes: [{ type: "circle", x: 1100, y: 800, radius: 600 }] }), { x: 1100, y: 800 });
+  assert.deepEqual(templateCenter({ shapes: [{ type: "rectangle", x: 1000, y: 700, width: 200, height: 100 }] }), { x: 1100, y: 750 });
+  assert.deepEqual(templateCenter({ shapes: [{ type: "polygon", points: [0, 0, 200, 0, 200, 100, 0, 100] }] }), { x: 100, y: 50 });
+  assert.equal(templateCenter({ shapes: [] }), null);
+  assert.equal(templateCenter(null), null);
+});
+
+test("Daylight cast on a point (a template, a Region on Foundry 14): an ambient light at the template, flagged, no token touched; Faerie Fire's cube still lights the creatures that failed; the caster's concentration ending removes flagged ambient lights too", async () => {
   reset();
   const b = actor("Actor.b"), tb = tok("tb"), t1 = tok("t1");
   canvas.scene.tokens.contents = [tb, t1];
-  globalThis.fromUuidSync = (u) => u === "Scene.s.MeasuredTemplate.tpl" ? { x: 1250, y: 850 } : null;
+  globalThis.fromUuidSync = (u) => u === "Scene.s.MeasuredTemplate.tpl" ? { shapes: [{ type: "circle", x: 1250, y: 850, radius: 600 }] } : u === "Scene.s.Region.cube" ? { shapes: [{ type: "rectangle", x: 0, y: 0, width: 400, height: 400 }] } : null;
   await onRollComplete(cast("Daylight", { targets: [t1], caster: b, token: tb, templateUuid: "Scene.s.MeasuredTemplate.tpl" }));
   assert.deepEqual(calls.updates, []);
+  await onRollComplete(cast("Faerie Fire", { activityType: "save", targets: [t1], failed: [t1], caster: b, token: tb, concentration: true, templateUuid: "Scene.s.Region.cube" }));
+  assert.deepEqual(calls.updates.map(([i, x]) => [i, x.light.dim]), [["t1", 10]]); // the cube's creatures, no ambient light
   assert.deepEqual(calls.created, [["AmbientLight", { x: 1250, y: 850, config: { bright: 60, dim: 120, color: "#ffffff", alpha: 0.1, animation: { type: null } }, flags: { "bg3-flow": { light: { key: "daylight", casterUuid: "Actor.b", itemUuid: "Actor.b.Item.Daylight", concentration: false } } } }]]);
   const deleted = [];
   canvas.scene.lights.contents = [{ flags: { "bg3-flow": { light: { key: "faerieFire", casterUuid: "Actor.b", concentration: true } } }, delete: async () => deleted.push("ff") }, { flags: {}, delete: async () => deleted.push("torch") }];
@@ -116,7 +127,7 @@ test("Daylight cast on a point (a template): an ambient light at the template, f
   globalThis.fromUuidSync = () => null;
 });
 
-test("Produce Flame lights the caster's own token, also when the SRD item's only activity is the attack and nothing is targeted; throwing it at someone puts it out; recasting keeps one flame", async () => {
+test("Produce Flame lights the caster's own token, also when the SRD item's only activity is the attack and nothing (or the caster itself, Midi's self target) is targeted; throwing it at someone puts it out; recasting keeps one flame", async () => {
   reset();
   const dru = actor("Actor.dru"), me = tok("dru");
   canvas.scene.tokens.contents = [me];
@@ -125,6 +136,9 @@ test("Produce Flame lights the caster's own token, also when the SRD item's only
   calls.updates = [];
   await onRollComplete(cast("Produce Flame", { activityType: "attack", caster: dru, token: me })); // the SRD item: an attack with no target is the flame in hand
   assert.deepEqual(calls.updates.map(([i, x]) => [i, x.light.bright]), [["dru", 0], ["dru", 10]]); // off, then on again
+  calls.updates = [];
+  await onRollComplete(cast("Produce Flame", { activityType: "attack", targets: [me], caster: dru, token: me })); // Midi targeted the caster (the SRD item affects self): still the flame in hand
+  assert.deepEqual(calls.updates.map(([i, x]) => [i, x.light.bright]), [["dru", 0], ["dru", 10]]);
   calls.updates = [];
   await onRollComplete(cast("Produce Flame", { activityType: "attack", targets: [tok("g")], caster: dru, token: me }));
   assert.deepEqual(calls.updates.map(([i, x]) => [i, x.light.bright]), [["dru", 0]]);
@@ -182,8 +196,29 @@ test("the token HUD gets a put-out button only on a token we lit; pressing it pu
 test("registerLight hooks the roll, the effect deletion and the HUD; the strings exist in both languages", () => {
   calls.hooks = [];
   registerLight();
-  for (const h of ["midi-qol.RollComplete", "deleteActiveEffect", "renderTokenHUD"]) assert.ok(calls.hooks.includes(h), h);
+  for (const h of ["midi-qol.RollComplete", "midi-qol.preTargetingV2", "deleteActiveEffect", "renderTokenHUD"]) assert.ok(calls.hooks.includes(h), h);
   const en = JSON.parse(readFileSync(new URL("../lang/en.json", import.meta.url), "utf8")).BG3FLOW, es = JSON.parse(readFileSync(new URL("../lang/es.json", import.meta.url), "utf8")).BG3FLOW;
   assert.ok(en.Settings.lightSpells?.Name && es.Settings.lightSpells?.Name);
   assert.ok(en.Light?.Off && es.Light?.Off);
+});
+
+test("onPreTargetingLight: the SRD Produce Flame's attack with nobody (or only the caster) targeted is stopped before Midi hits the caster: the flame is lit, the action paid, the use refused; with a goblin targeted the throw goes on", async () => {
+  reset();
+  const dru = actor("Actor.dru"), me = tok("dru"), g = tok("g");
+  canvas.scene.tokens.contents = [me, g];
+  game.user.targets = new Set();
+  const paid = [];
+  const wf = (targets) => { game.user.targets = new Set(targets.map((t) => t.object)); return { workflow: { item: { name: "Produce Flame", uuid: "Actor.dru.Item.Produce Flame", system: { properties: new Set() } }, activity: { type: "attack" }, actor: dru, token: me.object }, usage: { midiOptions: {} } }; };
+  assert.equal(await onPreTargetingLight(wf([]), { pay: async (a, c) => paid.push([a.uuid, c]) }), false);
+  assert.deepEqual(calls.updates.map(([i, x]) => [i, x.light.bright]), [["dru", 10]]);
+  assert.deepEqual(paid, [["Actor.dru", "action"]]);
+  calls.updates = [];
+  assert.equal(await onPreTargetingLight(wf([me]), { pay: async () => {} }), false); // Midi's self target
+  assert.deepEqual(calls.updates.map(([i, x]) => [i, x.light.bright]), [["dru", 0], ["dru", 10]]);
+  calls.updates = [];
+  assert.equal(await onPreTargetingLight(wf([g]), { pay: async () => {} }), undefined); // the throw: Midi goes on, RollComplete puts the flame out
+  assert.deepEqual(calls.updates, []);
+  const light = wf([]); light.workflow.item.name = "Light"; light.workflow.activity = { type: "utility" };
+  assert.equal(await onPreTargetingLight(light, { pay: async () => {} }), undefined); // other spells: not this hook's business
+  delete game.user.targets;
 });
