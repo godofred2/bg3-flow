@@ -74,6 +74,10 @@
         "Name": "New spells arrive prepared",
         "Hint": "A spell of the prepared kind added to a character is marked prepared on creation (imported automations tend to leave it unprepared). Other preparation modes and NPCs are untouched."
       },
+      "grappleAction": {
+        "Name": "Grapple action on every character",
+        "Hint": "Chris's Premades' Grapple item (the contest, the Grappled condition, the escape) is added to every player character that lacks it. A grappler walks at half speed and drags what it holds along."
+      },
       "lightSpells": {
         "Name": "Light spells light the token",
         "Hint": "Light, Continual Flame and Daylight light the picked token; Produce Flame the caster; Faerie Fire whoever failed. The light ends when Light or Produce Flame is cast again, when the flame is thrown, when concentration drops, or with the token HUD button. No Active Token Effects module needed."
@@ -135,6 +139,9 @@
       "Radius": "Detection radius (ft)",
       "NoTokens": "Select the enemy tokens first",
       "Spotted": "<b>{enemy}</b> spotted <b>{name}</b>!"
+    },
+    "Grapple": {
+      "Missing": "bg3-flow: Chris's Premades' Grapple item was not found in its compendium (CPR Miscellaneous 2014): the Grapple action was not added."
     },
     "Features": {
       "Engulfed": "Engulfed by {name}",

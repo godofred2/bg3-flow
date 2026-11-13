@@ -2,6 +2,7 @@
 // and budgeted on-turn. Groups are derived from combat.turns on every call, never stored.
 import { MODULE_ID, log, safe, safeSync } from "./main.js";
 import { groupBySide, groupOf, jumpTurn, isGroupStart, speedLimit, canMove, isDominated } from "./rules.js";
+import { isHolding } from "./grapple.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 
@@ -34,10 +35,11 @@ export function activeIds(combat) {
 
 function limitFor(doc, combatant, action) {
   const type = CONFIG.DND5E?.movementTypes?.[action];
-  return speedLimit({
+  const limit = speedLimit({
     speeds: doc.actor?.system?.attributes?.movement?.speeds,
     action, walkFallback: !type || !!type.walkFallback, dash: isDash(combatant)
   });
+  return isHolding(doc) ? limit / 2 : limit; // dragging a grappled creature: half speed
 }
 
 const waitsForAll = () => game.settings.get(MODULE_ID, "sharedTurnEnd") !== false;

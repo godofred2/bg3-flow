@@ -134,6 +134,10 @@ test("snapshot: enemies, visibility through walls, paths cut at the budget, occu
   settings.intelligenceThreshold = 6;
   const b = await snapshot(combat, combat.combatants[0], new Set(["9,9"]));
   assert.deepEqual([b.me.id, b.me.name, b.me.intelligence, b.me.budget, b.me.x, b.me.y, b.threshold], ["goblin", "goblin", 10, 20, 0, 0, 6]);
+  goblin.actor.appliedEffects = [{ flags: { cat: { identifier: "grappleSource", grapple: { tokenId: "rogue" } } } }]; // holding someone: half speed
+  const held = await snapshot(combat, combatantOf(goblin));
+  assert.deepEqual([held.me.budget, held.me.speed], [5, 15]); // 30 ft halved, 10 already spent
+  delete goblin.actor.appliedEffects;
   assert.deepEqual(b.enemies.map((e) => [e.id, e.visible, e.distance, e.hp, e.maxHp, e.ac, e.saves.dex]), [["rogue", true, 20, 6, 20, 14, 2], ["wizard", false, 20, 10, 10, 15, 2]]);
   assert.deepEqual(b.paths.rogue.slice(0, 3).map((s) => [s.x, s.y, s.cost, s.distance, s.occupied]), [[100, 0, 5, 15, false], [200, 0, 10, 10, true], [300, 0, 15, 5, false]]);
   assert.deepEqual(b.paths.rogue[2].waypoints, [{ x: 100, y: 0, elevation: 0 }, { x: 200, y: 0, elevation: 0 }, { x: 300, y: 0, elevation: 0 }]);

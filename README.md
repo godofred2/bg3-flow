@@ -180,6 +180,27 @@ Not counted yet: resistances and vulnerabilities, opportunity attacks from enemi
 
 **Engulf** (the Gelatinous Cube). The SRD import is a save at reach with no target type and no effect, so Midi aimed it at the cube itself and nothing marked the victim. The target picker now asks for the creature within 5 ft (any save at reach with no target type does: the monster itself is never offered), and on a failed save the victim gets an **Engulfed by X** effect (Restrained, the cube's item as origin, the escape rule in its description) with a chat line; a save, a creature already engulfed by that cube, or an item that carries its own effect (the 2024 Engulf, a CPR automation) get nothing from the module. The acid at the start of the cube's turns and the DC Strength escape are the table's: remove the effect when the creature is free. The 2014 Grapple works the same way through CPR's Grapple item (target within 5 ft, the contest, the Grappled condition).
 
+## Grapple (v0.19.1)
+
+The grapple itself is the stack's: Chris's Premades' **Grapple** item (compendium *CPR Miscellaneous (2014)*) runs the contest through CAT, puts the **Grappled** condition on the loser (speed 0) and gives it an escape action; the target picker asks for the creature within 5 ft. bg3-flow adds what the rules leave to the table, with the setting **Grapple action on every character** (default on):
+
+- Every player character without a Grapple action gets CPR's item at world load, when created, or when handed to a player. To add it by hand (to the selected tokens, or to your own character), a Script macro:
+
+```js
+const src = await fromUuid("Compendium.chris-premades.CPRMisc2014.Item.9wbU6kYxfAaRFrbI");
+if (!src) return ui.notifications.warn("CPR's Grapple item not found: is Chris's Premades active?");
+const actors = canvas.tokens.controlled.map((t) => t.actor).filter(Boolean);
+if (!actors.length && game.user.character) actors.push(game.user.character);
+for (const a of actors) {
+  if (a.items.some((i) => i.system?.identifier === "grapple" || i.name === src.name)) continue;
+  await a.createEmbeddedDocuments("Item", [src.toObject()]);
+  ui.notifications.info(`${a.name}: Grapple added.`);
+}
+```
+
+- **Dragging.** When a grappler walks, the creature it holds (CAT's grapple, or a creature engulfed by it) is moved to the free square next to the grappler's destination nearest to where it stood, as a displace move (no opportunity attack, no movement spent, CAT keeps the hold). Already adjacent: nothing moves; every neighbour taken: it stays and the DM sorts it out. The lead GM's client does it, so a player dragging an enemy needs no ownership.
+- **Half speed.** While holding someone, the movement budget is halved: a player's walk is refused past it, the autopilot plans with it.
+
 ## Light spells (v0.17.0)
 
 With **Light spells light the token** on, a cast through Midi changes the token's own light, no Active Token Effects module needed (CPR and the Plutonium addon automate none of these): **Light** (bright 20 / dim 40), **Continual Flame** (20 / 40, torch flicker) and **Daylight** (60 / 120) light the token picked by the target picker within the spell's range (Esc lights nothing); **Produce Flame** (10 / 20) lights the caster; **Faerie Fire** (dim 10, blue) lights every creature that failed the save. The token's previous light is kept in a flag and comes back when the spell ends: Light and Produce Flame end when the same caster casts them again (one instance each), Produce Flame also when thrown (the attack activity), a concentration spell (Faerie Fire) when the caster's concentration effect goes, and any of them with the **lightbulb** button in the token HUD (owner or GM). Durations are not tracked: an hour of Light is the table's call. A player lighting a token it does not own goes through the GM (socketlib). The lit square counts as bright light for the stealth rules above. Lights stack (v0.18.1): each spell is a layer on the token, the newest shows, and when it ends the one beneath comes back (a Light over a Continual Flame goes back to the flame), the token's own light last; the HUD button puts out every layer. Daylight cast on a point (the SRD item places a 60 ft template, a Region on Foundry 14: its first shape's centre) becomes an ambient light there instead of lighting every token inside; the DM deletes it (and Midi's template region) when the hour is up. The SRD Produce Flame has only the attack activity and targets the caster itself: with nobody else targeted the use is the cast, stopped before Midi rolls (the flame is lit, the action paid, a notice says to target a creature to throw it); with a creature targeted the use is stopped too and the throw re-launched on a clone of the activity aimed at that creature (target type creature, range 30 ft, set on the clone's prepared data so the spellcasting modifier stays on the roll: Midi would otherwise turn the SRD attack on the caster), and the flame goes out at the hit or miss (v0.18.3, modifier fixed in v0.18.4).
@@ -191,7 +212,7 @@ With **Light spells light the token** on, a cast through Midi changes the token'
 - **Default encounter radius**, **Obscured darkness threshold**: feature 3.
 - **Monster autopilot**, **Pause before each monster action**, **Pass the turn automatically**, **Intelligence threshold**: piece 4.
 - **Monsters flee**, **Flee threshold**, **Escape region name**: piece 4c.
-- **Lair actions**: piece 5. **Enlarge: Strength twice**, **New spells arrive prepared**, **Ask the spell level**: house rules. **Light spells light the token**: light spells (v0.17.0).
+- **Lair actions**: piece 5. **Enlarge: Strength twice**, **New spells arrive prepared**, **Ask the spell level**: house rules. **Light spells light the token**: light spells (v0.17.0). **Grapple action on every character**: grapple (v0.19.1).
 
 ## Development
 

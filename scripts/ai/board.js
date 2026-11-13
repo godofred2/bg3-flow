@@ -1,6 +1,7 @@
 // Piece 4: the board snapshot the autopilot plans on. Reads Foundry, never writes.
 import { MODULE_ID } from "../main.js";
 import { speedLimit } from "../rules.js";
+import { isHolding } from "../grapple.js";
 import { sees, distanceFt } from "../encounters.js";
 import { averageOf, hitChance, expectedValue } from "./plan.js";
 
@@ -195,7 +196,8 @@ function budgetOf(combatant, doc) {
   const dash = !!combatant.getFlag(MODULE_ID, "dash");
   const args = { speeds: doc.actor?.system?.attributes?.movement?.speeds, action: "walk", walkFallback: !type || !!type.walkFallback };
   const used = (doc.movementHistory ?? []).reduce((s, w) => s + (w.cost ?? 0), 0);
-  return { budget: Math.max(0, speedLimit({ ...args, dash }) - used), speed: speedLimit({ ...args, dash: false }), dash };
+  const half = isHolding(doc) ? 0.5 : 1; // dragging a grappled creature: half speed
+  return { budget: Math.max(0, speedLimit({ ...args, dash }) * half - used), speed: speedLimit({ ...args, dash: false }) * half, dash };
 }
 
 const named = (name, what) => String(name ?? "").trim().toLowerCase() === what;

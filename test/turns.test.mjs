@@ -510,3 +510,12 @@ test("a shared-turn member that is not the tracker's current combatant is writte
   assert.deepEqual(cb.current, { round: 1, turn: 2, combatantId: "c", tokenId: "tok-c" });
   game.combat = null; game.user.isGM = false;
 });
+
+test("preMoveToken: a grappler (CAT's grappleSource effect on it) moves at half speed: 30 ft becomes 15", () => {
+  const holder = combatant("hold", 1, { actor: { id: "act-hold", appliedEffects: [{ flags: { cat: { identifier: "grappleSource", grapple: { tokenId: "tok-r" } } } }], system: { attributes: { movement: { speeds: { walk: 30 } } } } } });
+  game.combat = combat([holder, cleric, g1], 0); game.user.isGM = false; calls.warn = [];
+  assert.equal(onPreMoveToken({ ...tokenDoc(holder), parent: { id: "scene", tokens: { contents: [] } } }, move({ cost: 15, spent: 0 })), undefined);
+  assert.equal(onPreMoveToken({ ...tokenDoc(holder), parent: { id: "scene", tokens: { contents: [] } } }, move({ cost: 20, spent: 0 })), false);
+  assert.match(calls.warn.at(-1), /NoMovement.*"limit":15/);
+  game.combat = null;
+});
