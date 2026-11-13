@@ -3,8 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const calls = { hooks: [], updates: [], gm: [], created: [] };
-globalThis.Hooks = { once() {}, on: (h) => calls.hooks.push(h), callAll() {} };
+const calls = { hooks: [], updates: [], gm: [], created: [], hookFns: {} };
+globalThis.Hooks = { once() {}, on: (h, fn) => { calls.hooks.push(h); calls.hookFns[h] = fn; return calls.hooks.length; }, off: (h) => { delete calls.hookFns[h]; }, callAll() {} };
 globalThis.ui = { notifications: { info() {}, warn() {} } };
 globalThis.CONFIG = { DND5E: {} };
 const settings = { lightSpells: true };
@@ -17,7 +17,7 @@ globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2:
 globalThis.canvas = { scene: { id: "s", tokens: { contents: [] }, lights: { contents: [] }, createEmbeddedDocuments: async (type, data) => { calls.created.push([type, ...data]); return data; } } };
 globalThis.fromUuidSync = () => null;
 
-const { lightSpell, onRollComplete, onDeleteEffect, onRenderTokenHUD, extinguish, registerLight, templateCenter, onPreTargetingLight } = await import("../scripts/light.js");
+const { lightSpell, onRollComplete, onDeleteEffect, onRenderTokenHUD, extinguish, registerLight, templateCenter, onPreTargetingLight, throwFlame } = await import("../scripts/light.js");
 
 function tok(id, { light = { bright: 0, dim: 0, color: null }, flags = {}, owner = true } = {}) {
   const f = { "bg3-flow": { ...flags } };
@@ -227,4 +227,15 @@ test("onPreTargetingLight: the SRD Produce Flame's attack with nobody (or only t
   const light = wf([]); light.workflow.item.name = "Light"; light.workflow.activity = { type: "utility" };
   assert.equal(await onPreTargetingLight(light, { pay: async () => {} }), undefined); // other spells: not this hook's business
   delete game.user.targets;
+});
+
+test("throwFlame: the attack is re-launched through Midi on the clone dnd5e announces, aimed at the creature (target type creature, range 30 ft) by setting the prepared properties, never updateSource (that resets the clone and loses the spellcasting ability from the roll)", async () => {
+  const used = [];
+  const clone = { uuid: "Actor.dru.Item.pf.Activity.a1", target: { affects: { type: "self", count: "" } }, range: { units: "self", value: null }, updateSource: () => { throw new Error("updateSource resets the clone's prepared data"); } };
+  globalThis.MidiQOL = { completeActivityUse: async (activity, config, dialog) => { calls.hookFns["dnd5e.preUseActivity"]?.({ uuid: "other" }); calls.hookFns["dnd5e.preUseActivity"]?.(clone); used.push([activity.uuid, config, dialog]); return {}; } };
+  await throwFlame({ activity: { uuid: "Actor.dru.Item.pf.Activity.a1" } }, ["Scene.s.Token.g"]);
+  assert.deepEqual([clone.target.affects.type, clone.target.affects.count, clone.range.units, clone.range.value], ["creature", "1", "ft", 30]);
+  assert.deepEqual(used, [["Actor.dru.Item.pf.Activity.a1", { midiOptions: { targetUuids: ["Scene.s.Token.g"], ignoreUserTargets: true, workflowOptions: { bg3Throw: true } } }, { configure: false }]]);
+  assert.equal(calls.hookFns["dnd5e.preUseActivity"], undefined); // the hook is taken off afterwards
+  delete globalThis.MidiQOL;
 });
