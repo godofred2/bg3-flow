@@ -10,6 +10,7 @@ Este módulo hace que nuestros combates en Foundry se parezcan a Baldur's Gate 3
 - En cuanto un enemigo te ve, o alguien hace sangre, el combate empieza solo. Un diálogo te pide **tirar iniciativa**: pulsa el botón y tus dados ruedan en pantalla. Si no estás, el DM tira por ti.
 - Una línea de chat dice quién ha visto a quién.
 - **Luz**, **Llama continua** y **Luz del día** iluminan la ficha que elijas (el selector pregunta dentro del alcance del conjuro); **Producir llama** te ilumina a ti; **Fuego feérico** a quien falle. Ojo: una ficha iluminada no puede esconderse en la oscuridad. Luz y Producir llama se apagan al volver a lanzarlos, los de concentración al perderla, y cualquiera con el botón de la **bombilla** en el HUD de la ficha. La duración de una hora la llevas tú.
+- Si te ordenan **soltar** (Command): las armas con las que atacaste por última vez se desequipan al empezar tu turno (una línea de chat lo dice). Recoger una es marcar *equipado* en tu hoja, y en combate eso cuesta tu acción, una por arma, solo en tu turno.
 
 ## 2. Luchar: tu grupo actúa junto
 

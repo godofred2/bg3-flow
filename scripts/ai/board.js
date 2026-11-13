@@ -37,6 +37,7 @@ export function activityInfo(activity) {
   if (area && ["wall", "ring"].includes(area.shape)) return null; // not blasts
   if (area && activity.type === "attack") return null; // a template on an attack places something (Spiritual Weapon): no blast
   if (spent(activity.item?.system?.uses) || spent(activity.uses)) return null;
+  if (activity.item?.flags?.[MODULE_ID]?.dropped) return null; // dropped on Command: not in hand (the autopilot picks it up with its action when nothing else attacks)
   if (activity.requiresSpellSlot && !(activity.actor?.system?.spells?.[`spell${activity.item?.system?.level}`]?.value > 0)) return null;
   // dnd5e gives every item's default activity the same id (dnd5eactivity000) and Midi names it "Midi Attack": the uuid is the identity, the item the name.
   const siblings = activity.item?.system?.activities?.size ?? activity.item?.system?.activities?.length ?? 1;

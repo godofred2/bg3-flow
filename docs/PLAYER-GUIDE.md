@@ -10,6 +10,7 @@ This module makes our Foundry combats feel like Baldur's Gate 3. You do not need
 - The moment an enemy spots you, or someone draws blood, combat starts by itself. A dialog asks you to **roll your initiative**: press the button, your dice roll on screen. If you are away, the DM rolls for you.
 - A chat line says who spotted whom.
 - **Light**, **Continual Flame** and **Daylight** light the token you pick (the picker asks within the spell's range); **Produce Flame** lights you; **Faerie Fire** lights whoever fails. Mind it: a lit token cannot hide in the dark. Light and Produce Flame go out when you cast them again, concentration spells when your concentration drops, and any of them with the **lightbulb** button in the token HUD. The hour-long duration is yours to keep track of.
+- Commanded to **drop**: the weapon(s) you attacked with last go unequipped at the start of your turn (a chat line says so). Picking one up means ticking *equipped* on your sheet, and in combat that costs your action, one per weapon, on your turn only.
 
 ## 2. Fighting: your group acts together
 

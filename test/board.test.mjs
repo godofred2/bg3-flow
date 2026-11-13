@@ -95,6 +95,8 @@ test("activityInfo: a goblin's scimitar and shortbow as Plutonium imports them",
   const scimitar = act({ name: "Scimitar", type: "attack", toHit: "+4", parts: [["1d6 + @mod", { mod: 2 }]], item: { type: "weapon", range: { reach: 5, value: null } } });
   assert.deepEqual(activityInfo(scimitar), { id: "A.a1", uuid: "A.a1", name: "Scimitar", kind: "attack", slot: "action", range: 5, bonus: 4, dc: undefined, saveAbility: undefined, onSave: undefined, damage: 5.5, healing: 0, ranged: false, area: null, affects: "creature", recharge: false });
   assert.equal(activityInfo(act({ name: "Dagger", type: "attack", siblings: 2 })).name, "Dagger (Midi Attack)"); // an item with several activities keeps the activity's name
+  const down = act({ name: "Scimitar", type: "attack" }); down.item.flags = { "bg3-flow": { dropped: true } };
+  assert.equal(activityInfo(down), null); // a weapon dropped on Command is not in hand
   const bow = act({ name: "Shortbow", type: "attack", toHit: "+4", parts: [["1d6 + 2", {}]], item: { type: "weapon", range: { reach: null, value: 80, long: 320 } }, attackType: "ranged" });
   assert.deepEqual([activityInfo(bow).range, activityInfo(bow).ranged], [80, true]);
 });

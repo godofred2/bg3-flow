@@ -104,7 +104,9 @@
     "Economy": {
       "NoAction": "{name} has no action left this turn.",
       "NoBonus": "{name} has no bonus action left this turn.",
-      "GmNote": "(GM: going ahead.)"
+      "GmNote": "(GM: going ahead.)",
+      "Dropped": "<b>{name}</b> drops {weapons}.",
+      "PickUp": "<b>{name}</b> picks up {weapon} (the action)."
     },
     "Picker": {
       "Pick": "{name}: click a target within {range} ({count} needed). Esc or right click cancels.",

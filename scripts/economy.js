@@ -2,6 +2,7 @@
 // (green dot, orange triangle). Players are stopped, the GM is warned, the autopilot and off-turn uses (reactions) are Midi's.
 import { MODULE_ID, log, safe, safeSync } from "./main.js";
 import { activeIds } from "./turns.js";
+import { commandKind } from "./ai/plan.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 const EXTRA_ATTACK = /^(extra attack|ataque (extra|adicional))/i, ACTION_SURGE = /^(action surge|acci[oó]n impetuosa)/i, CUNNING = /^(cunning action|acci[oó]n astuta)/i;
@@ -102,6 +103,62 @@ export async function payAction(actor, cost) {
   if (next !== l.state) await l.c.setFlag(MODULE_ID, "economy", next);
 }
 
+// ---- Command "drop": the last weapon(s) used go down; picking one up costs the action ----
+
+const itemsOf = (actor) => [...(actor?.items ?? [])];
+const itemOf = (actor, id) => actor?.items?.get?.(id) ?? itemsOf(actor).find((i) => i.id === id);
+const nameOf = (actor) => actingCombatant(actor)?.token?.name ?? actor?.name;
+const isDropped = (item) => !!(item?.getFlag?.(MODULE_ID, "dropped") ?? item?.flags?.[MODULE_ID]?.dropped);
+
+/** midi-qol.AttackRollComplete: the weapon just swung, newest first, two at most, each stamped with its turn (two in one turn = dual wielding). */
+export async function noteWeapon(workflow) {
+  const item = workflow?.item, actor = workflow?.actor;
+  if (item?.type !== "weapon" || !actor?.setFlag) return;
+  const combat = game.combat, stamp = combat?.started ? `${combat.id ?? ""}:${combat.round}:${combat.turn}` : "";
+  const list = [{ id: item.id, stamp }, ...(actor.getFlag(MODULE_ID, "lastWeapons") ?? []).filter((e) => e.id !== item.id)].slice(0, 2);
+  await actor.setFlag(MODULE_ID, "lastWeapons", list);
+}
+
+/** The weapons the actor dropped on Command and has not picked up. */
+export const droppedWeapons = (actor) => itemsOf(actor).filter(isDropped);
+
+/** Command "drop": the weapons used in the latest turn go unequipped and flagged (both when dual wielding); without a note, what it holds (two at most). */
+export async function dropWeapons(actor) {
+  const list = actor?.getFlag?.(MODULE_ID, "lastWeapons") ?? [], latest = list[0]?.stamp;
+  let items = list.filter((e) => e.stamp === latest).map((e) => itemOf(actor, e.id)).filter((i) => i && i.system?.equipped !== false);
+  if (!items.length) items = itemsOf(actor).filter((i) => i.type === "weapon" && i.system?.equipped).slice(0, 2);
+  if (!items.length) return [];
+  for (const i of items) await i.update({ "system.equipped": false, [`flags.${MODULE_ID}.dropped`]: true });
+  await ChatMessage.create({ content: L("Economy.Dropped", { name: nameOf(actor), weapons: items.map((i) => i.name).join(", ") }) });
+  return items;
+}
+
+/** The autopilot picking a dropped weapon back up: the item update pays the action through onPreUpdateItem on this same client. */
+export async function pickUpWeapon(actor, item) {
+  await item.update({ "system.equipped": true, flags: { [MODULE_ID]: { "-=dropped": null } } });
+  await ChatMessage.create({ content: L("Economy.PickUp", { name: nameOf(actor), weapon: item.name }) });
+}
+
+/** preUpdateItem: equipping a dropped weapon back. In combat only on the actor's turn and for the action (one per weapon); out of combat free. */
+export function onPreUpdateItem(item, changes) {
+  const equipping = changes?.system?.equipped ?? changes?.["system.equipped"];
+  if (equipping !== true || !isDropped(item)) return;
+  if (game.combat?.started) {
+    if (!actingCombatant(item.actor)) { ui.notifications.warn(L("Turns.NotYourTurn")); if (!game.user.isGM) return false; }
+    else if (affordAction(item.actor, "action") === false) return false;
+    else payAction(item.actor, "action");
+  }
+  changes.flags ??= {};
+  changes.flags[MODULE_ID] = { ...(changes.flags[MODULE_ID] ?? {}), "-=dropped": null }; // in hand again: the next equip is free
+}
+
+/** preDeleteActiveEffect: a player character's Command "drop" (Gambit's effect, expiring at its turn start) drops its weapons. Monsters: the autopilot. */
+export async function onPreDeleteCommandEffect(effect) {
+  const word = effect?.flags?.["gambits-premades"]?.commandWord, actor = effect?.parent;
+  if (!word || commandKind(word) !== "drop" || !actor?.hasPlayerOwner || !actingCombatant(actor)) return;
+  await dropWeapons(actor);
+}
+
 /**
  * dnd5e.postUseActivity (non-attacks, at the card), midi-qol.AttackRollComplete (attacks: the mode is known once rolled) and
  * midi-qol.RollComplete (whatever is left): a use on the actor's turn is paid once into the combatant's flag. A light weapon swung with the action gone is the off-hand swing and costs the bonus action,
@@ -171,6 +228,9 @@ export function registerEconomy() {
   Hooks.on("midi-qol.preTargetingV2", safe(onPreTargetingEconomy)); // safe() passes the return on: a `false` reaches Midi
   Hooks.on("dnd5e.postUseActivity", safe(onPostUseEconomy)); // non-attacks paid at the card
   Hooks.on("midi-qol.AttackRollComplete", safe(onRollCompleteEconomy)); // attacks paid as soon as the mode is known, not seconds later at RollComplete
+  Hooks.on("midi-qol.AttackRollComplete", safe(noteWeapon)); // Command "drop" needs the last weapon(s) used
+  Hooks.on("preUpdateItem", safeSync(onPreUpdateItem)); // picking a dropped weapon up costs the action (a `false` reaches Foundry)
+  Hooks.on("preDeleteActiveEffect", safe(onPreDeleteCommandEffect));
   Hooks.on("midi-qol.RollComplete", safe(onRollCompleteEconomy));
   Hooks.on("combatTurnChange", safe(resetEconomy));
   Hooks.on("combatStart", safe((combat) => resetEconomy(combat)));

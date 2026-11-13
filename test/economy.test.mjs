@@ -18,7 +18,7 @@ globalThis.game = {
 };
 globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: { wait: async () => null } } }, utils: { escapeHTML: (s) => s } };
 
-const { allowanceOf, costOf, canSpend, spend, FRESH, onPreTargetingEconomy, onRollCompleteEconomy, onPostUseEconomy, resetEconomy, drawEconomy, hideCost, affordAction, payAction } = await import("../scripts/economy.js");
+const { allowanceOf, costOf, canSpend, spend, FRESH, onPreTargetingEconomy, onRollCompleteEconomy, onPostUseEconomy, resetEconomy, drawEconomy, hideCost, affordAction, payAction, noteWeapon, dropWeapons, droppedWeapons, onPreUpdateItem, onPreDeleteCommandEffect } = await import("../scripts/economy.js");
 
 const actor = ({ items = [], fighter = 0, player = true } = {}) => ({ hasPlayerOwner: player, items: items.map((name) => ({ name })), classes: fighter ? { fighter: { system: { levels: fighter } } } : {} });
 function combatant(id, disposition, a = actor()) {
@@ -251,4 +251,106 @@ test("affordAction/payAction: a use outside Midi (the Hide button) on the actor'
   await payAction(pc.actor, "action");
   assert.deepEqual(pc.getFlag("bg3-flow", "economy"), FRESH);
   settings.actionEconomy = "players"; game.combat = null;
+});
+
+// Command "drop": the last weapon(s) used go unequipped; equipping one back costs the action (one per weapon).
+calls.items = []; calls.chat = [];
+globalThis.ChatMessage = { create: async (d) => calls.chat.push(d) };
+const weapon = (id, name, equipped = true, flags = {}) => {
+  const w = { id, name, type: "weapon", system: { equipped }, flags: { "bg3-flow": { ...flags } }, getFlag: (m, k) => w.flags[m]?.[k],
+    update: async (u) => { calls.items.push([id, u]); if ("system.equipped" in u) w.system.equipped = u["system.equipped"]; if (u["flags.bg3-flow.dropped"]) w.flags["bg3-flow"].dropped = true; } };
+  return w;
+};
+const armed = (weapons, player = true) => {
+  const a = { hasPlayerOwner: player, name: "pc", items: weapons, classes: {}, flags: { "bg3-flow": {} }, getFlag: (m, k) => a.flags[m]?.[k], setFlag: async (m, k, v) => { a.flags[m][k] = v; } };
+  for (const w of weapons) w.actor = a;
+  return a;
+};
+const inTurn = (a, turn = 0) => { const c = combatant("pc", 1, a), g = combatant("g", -1); game.combat = combat([c, g], turn); return c; };
+
+test("noteWeapon: the last two distinct weapons used, newest first, each stamped with the turn; other items are not noted", async () => {
+  const sword = weapon("w1", "Longsword"), dagger = weapon("w2", "Dagger"), axe = weapon("w3", "Handaxe"), a = armed([sword, dagger, axe]);
+  inTurn(a);
+  await noteWeapon({ item: sword, actor: a });
+  assert.deepEqual(a.getFlag("bg3-flow", "lastWeapons"), [{ id: "w1", stamp: ":1:0" }]);
+  await noteWeapon({ item: dagger, actor: a });
+  await noteWeapon({ item: sword, actor: a });
+  assert.deepEqual(a.getFlag("bg3-flow", "lastWeapons"), [{ id: "w1", stamp: ":1:0" }, { id: "w2", stamp: ":1:0" }]);
+  await noteWeapon({ item: { id: "s1", name: "Fire Bolt", type: "spell" }, actor: a });
+  assert.equal(a.getFlag("bg3-flow", "lastWeapons").length, 2);
+  game.combat.round = 2;
+  await noteWeapon({ item: axe, actor: a });
+  assert.deepEqual(a.getFlag("bg3-flow", "lastWeapons"), [{ id: "w3", stamp: ":2:0" }, { id: "w1", stamp: ":1:0" }]);
+  game.combat = null;
+  await noteWeapon({ item: sword, actor: a }); // out of combat: no stamp
+  assert.deepEqual(a.getFlag("bg3-flow", "lastWeapons")[0], { id: "w1", stamp: "" });
+});
+
+test("dropWeapons: the weapons used in the latest turn (both when dual wielding) go unequipped and flagged, the table is told; without a note, the equipped weapons (two at most); nothing without weapons", async () => {
+  calls.items = []; calls.chat = [];
+  const sword = weapon("w1", "Longsword"), dagger = weapon("w2", "Dagger"), a = armed([sword, dagger]);
+  inTurn(a);
+  a.flags["bg3-flow"].lastWeapons = [{ id: "w2", stamp: ":1:0" }, { id: "w1", stamp: ":1:0" }];
+  assert.deepEqual((await dropWeapons(a)).map((w) => w.id), ["w2", "w1"]);
+  assert.deepEqual(calls.items, [["w2", { "system.equipped": false, "flags.bg3-flow.dropped": true }], ["w1", { "system.equipped": false, "flags.bg3-flow.dropped": true }]]);
+  assert.deepEqual(calls.chat, [{ content: 'BG3FLOW.Economy.Dropped:{"name":"pc","weapons":"Dagger, Longsword"}' }]);
+  assert.deepEqual(droppedWeapons(a).map((w) => w.id), ["w1", "w2"]); // inventory order
+  calls.items = [];
+  const b = armed([weapon("w1", "Longsword"), weapon("w2", "Dagger")]);
+  b.flags["bg3-flow"].lastWeapons = [{ id: "w2", stamp: ":2:0" }, { id: "w1", stamp: ":1:0" }]; // the dagger alone this turn
+  assert.deepEqual((await dropWeapons(b)).map((w) => w.id), ["w2"]);
+  const c = armed([weapon("w1", "Longsword"), weapon("w2", "Dagger", false), weapon("w3", "Handaxe"), weapon("w4", "Club")]);
+  assert.deepEqual((await dropWeapons(c)).map((w) => w.id), ["w1", "w3"]); // no note: what it holds, two at most
+  calls.chat = [];
+  assert.deepEqual(await dropWeapons(armed([])), []);
+  assert.deepEqual(calls.chat, []);
+  game.combat = null;
+});
+
+test("onPreUpdateItem: equipping a dropped weapon on the actor's turn costs the action (refused when it is spent), out of turn is refused, out of combat it is free; the dropped flag is cleared with the update; other items are untouched", async () => {
+  reset(); calls.items = [];
+  const sword = weapon("w1", "Longsword", false, { dropped: true }), a = armed([sword]);
+  const c = inTurn(a);
+  let changes = { system: { equipped: true } };
+  assert.equal(onPreUpdateItem(sword, changes), undefined);
+  assert.deepEqual(changes.flags, { "bg3-flow": { "-=dropped": null } });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(canSpend(c.getFlag("bg3-flow", "economy"), "action", allowanceOf(a)).ok, false); // the action went on the pick-up
+  changes = { "system.equipped": true };
+  assert.equal(onPreUpdateItem(sword, changes), false); // a second weapon: no action left
+  assert.deepEqual(calls.warn.at(-1), 'BG3FLOW.Economy.NoAction:{"name":"pc"}');
+  game.user.isGM = true; calls.warn = [];
+  assert.equal(onPreUpdateItem(sword, { system: { equipped: true } }), undefined); // the GM is warned and goes ahead
+  assert.match(calls.warn.at(-1), /GmNote/);
+  game.user.isGM = false;
+  game.combat.turn = 1; calls.warn = []; // the goblin's turn
+  assert.equal(onPreUpdateItem(sword, { system: { equipped: true } }), false);
+  assert.deepEqual(calls.warn, ["BG3FLOW.Turns.NotYourTurn"]);
+  game.combat = null; changes = { system: { equipped: true } };
+  assert.equal(onPreUpdateItem(sword, changes), undefined); // out of combat: free
+  assert.deepEqual(changes.flags, { "bg3-flow": { "-=dropped": null } });
+  const plain = weapon("w2", "Dagger", false); changes = { system: { equipped: true } };
+  assert.equal(onPreUpdateItem(plain, changes), undefined);
+  assert.equal(changes.flags, undefined);
+  assert.equal(onPreUpdateItem(sword, { system: { equipped: false } }), undefined); // unequipping is never the module's business
+});
+
+test("onPreDeleteCommandEffect: a player character under Command \"drop\" drops its weapons when the effect expires on its turn; other words, other turns and monsters (the autopilot's) are left alone", async () => {
+  calls.items = [];
+  const sword = weapon("w1", "Longsword"), a = armed([sword]);
+  inTurn(a);
+  const fx = (word, parent) => ({ flags: { "gambits-premades": { commandWord: word } }, parent });
+  await onPreDeleteCommandEffect(fx("Halt", a));
+  assert.deepEqual(calls.items, []);
+  await onPreDeleteCommandEffect(fx("suelta", a));
+  assert.deepEqual(calls.items.map(([id, u]) => [id, u["system.equipped"]]), [["w1", false]]);
+  calls.items = []; sword.system.equipped = true; delete sword.flags["bg3-flow"].dropped;
+  game.combat.turn = 1;
+  await onPreDeleteCommandEffect(fx("Drop", a)); // not its turn: the DM's hand, not an expiry
+  assert.deepEqual(calls.items, []);
+  const m = armed([weapon("w9", "Scimitar")], false);
+  game.combat = combat([combatant("m", -1, m)], 0);
+  await onPreDeleteCommandEffect(fx("Drop", m)); // a monster: the autopilot drops on its turn
+  assert.deepEqual(calls.items, []);
+  game.combat = null;
 });

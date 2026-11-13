@@ -4,6 +4,7 @@ import { activeIds, lairTurn } from "../turns.js";
 import { snapshot, lairOf } from "./board.js";
 import { planTurn, pickTarget, splitAtTunnelFighter, commandKind, planCommand, planConfusion, stumbleTo, DIRS } from "./plan.js";
 import { isConfused } from "../rules.js";
+import { dropWeapons, pickUpWeapon, droppedWeapons } from "../economy.js";
 import { promptTunnelFighter, tunnelFighterAttack, activeOwner, awaitOrGm } from "../prompts.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
@@ -300,7 +301,15 @@ export async function runTurn(combat, deps = {}) {
           else await whisper(L("Autopilot.UnknownCommand", { name: c.token.name, word: cmd.word }));
         }
         const conf = confusionOf(c, combat);
-        const p = cmd?.kind ? planCommand(board, cmd.kind, cmd.origin) : (conf && planConfusion(board, conf)) || plan(board);
+        let p = cmd?.kind ? planCommand(board, cmd.kind, cmd.origin) : (conf && planConfusion(board, conf)) || plan(board);
+        if (!p.command && !p.confused) { // a weapon dropped on Command and nothing left to attack with: pick it up (the action) and close in
+          const down = droppedWeapons(c.actor);
+          if (down.length && !board.activities.some((a) => a.kind === "attack")) {
+            await pickUpWeapon(c.actor, down[0]);
+            const ap = planCommand(board, "approach");
+            p = { ...ap, command: null, noAction: true, reason: `picks up ${down[0].name} (the action); ${ap.reason}` };
+          }
+        }
         if (p.move) reserved.add(`${p.move.x},${p.move.y}`);
         await whisper(L("Autopilot.Decision", { name: c.token.name, reason: p.reason })); // the decision (toll and alternatives included) is said before it runs
         plans.push([c, p]);
@@ -360,9 +369,13 @@ export async function runTurn(combat, deps = {}) {
       try {
         let board = await snap(combat, c, reserved);
         if (board.me.hp <= 0) continue; // dropped on the way (an opportunity attack): no action
-        if (first.command) { if (first.prone) await c.actor?.toggleStatusEffect?.("prone", { active: true }); continue; } // the command was its turn: no action, no bonus action
+        if (first.command) { // the command was its turn: no action, no bonus action
+          if (first.prone) await c.actor?.toggleStatusEffect?.("prone", { active: true });
+          if (first.command === "drop") await dropWeapons(c.actor);
+          continue;
+        }
         let fled = !!first.dash;
-        if (!first.move && !first.confused) { // it stayed put while the others moved: the board changed under it (an ally walked off), so it may still walk now
+        if (!first.move && !first.confused && !first.noAction) { // it stayed put while the others moved: the board changed under it (an ally walked off), so it may still walk now
           const again = plan(board);
           if (again.move) {
             await whisper(L("Autopilot.Decision", { name: c.token.name, reason: again.reason }));
@@ -373,7 +386,7 @@ export async function runTurn(combat, deps = {}) {
           }
         }
         const still = { ...board, me: { ...board.me, budget: 0 } }; // act from where it stands: a move that fell short never fires out of reach
-        const done = fled ? true : await act(c, still, first.confused ? first : plan(still), first); // the flight (already whispered) was the action: nothing else this turn but the bonus action
+        const done = fled ? true : await act(c, still, first.confused || first.noAction ? first : plan(still), first); // the flight (already whispered) was the action: nothing else this turn but the bonus action
         if (done === null) return;
         if (done === false) { clean = false; continue; }
         if (first.confused) continue; // the d10 was its turn: no bonus action

@@ -960,3 +960,33 @@ test("a confused player character: the GM's client rolls for it at its turn star
   assert.deepEqual(moves, []);
   canvas.scene.tokens.contents = [];
 });
+
+// Command "drop" on the autopilot: the weapon goes down; a monster left without an attack picks it up with its action next turn.
+test("runTurn: Drop unequips the monster's last weapon and tells the table; next turn, with no attack left, it picks it up (the action) and may still move and use its bonus action; with another attack in hand it fights on", async () => {
+  reset();
+  globalThis.ChatMessage = { create: async (d) => calls.chat.push(d) };
+  const items = [];
+  const sc = { id: "w-sc", name: "Scimitar", type: "weapon", system: { equipped: true }, flags: { "bg3-flow": {} }, getFlag: (m, k) => sc.flags[m]?.[k],
+    update: async (u) => { items.push(u); if ("system.equipped" in u) sc.system.equipped = u["system.equipped"]; if (u["flags.bg3-flow.dropped"]) sc.flags["bg3-flow"].dropped = true; if (u.flags?.["bg3-flow"] && "-=dropped" in u.flags["bg3-flow"]) delete sc.flags["bg3-flow"].dropped; } };
+  const g1 = combatant("g1"), pc = combatant("pc", { disposition: 1, playerOwner: true });
+  g1.actor.items = [sc]; g1.actor.name = "g1"; g1.actor.flags = { "bg3-flow": { lastWeapons: [{ id: "w-sc", stamp: "" }] } };
+  g1.actor.getFlag = (m, k) => g1.actor.flags[m]?.[k]; g1.actor.setFlag = async (m, k, v) => { g1.actor.flags[m][k] = v; };
+  sc.actor = g1.actor;
+  g1.actor.effects = [commandEffect("Drop")];
+  await runTurn(makeCombat([g1, pc]), deps({ plans: { g1: attackPlan() } }));
+  assert.deepEqual(items, [{ "system.equipped": false, "flags.bg3-flow.dropped": true }]);
+  assert.deepEqual(uses, []);
+  assert.ok(calls.chat.some((m) => !m.whisper && m.content === 'BG3FLOW.Economy.Dropped:{"name":"g1","weapons":"Scimitar"}'));
+  reset(); items.length = 0; g1.actor.effects = [];
+  const d = deps({ plans: { g1: attackPlan() }, bonus: { g1: { move: null, actions: [{ activityId: "hw", targetIds: ["g1"] }], reason: "heal" } }, allies: () => [{ id: "g1", uuid: "T.g1", name: "g1", hp: 1, maxHp: 7 }] });
+  const snap = d.snap; d.snap = async (...a) => { const b = await snap(...a); return { ...b, activities: b.activities.filter((x) => x.kind !== "attack") }; }; // the board without the dropped Scimitar: no attack left
+  await runTurn(makeCombat([g1, pc]), d);
+  assert.deepEqual(items, [{ "system.equipped": true, flags: { "bg3-flow": { "-=dropped": null } } }]);
+  assert.equal(sc.flags["bg3-flow"].dropped, undefined);
+  assert.deepEqual(uses, [["hw", "T.g1"]]); // the bonus action is still its own; no attack this turn
+  assert.ok(calls.chat.some((m) => !m.whisper && m.content === 'BG3FLOW.Economy.PickUp:{"name":"g1","weapon":"Scimitar"}'));
+  reset(); items.length = 0; sc.system.equipped = false; sc.flags["bg3-flow"].dropped = true;
+  await runTurn(makeCombat([g1, pc]), deps({ plans: { g1: attackPlan() } })); // the board still offers an attack (a bow): it fights, the Scimitar stays down
+  assert.deepEqual(items, []);
+  assert.equal(uses.length, 1);
+});
