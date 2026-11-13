@@ -247,6 +247,10 @@ test("planFlee: Dash toward the escape region, stop on entering it or at the bud
   assert.deepEqual(at(p.move), { x: 100, y: 0, elevation: 0 }); // already dashing: the budget is what is left
   p = planFlee(fleeBoard({ away: [esc(100, 5, undefined, 35), esc(200, 10, undefined, 45), esc(300, 15, undefined, 40), esc(400, 65, undefined, 90)] }));
   assert.deepEqual([at(p.move), p.reason, p.escape], [{ x: 200, y: 0, elevation: 0 }, "flee: Dash away from enemies (hp 1/8)", null]);
+  // Along a scene edge every square keeps the same distance from the nearest enemy: the tie goes to the square farthest from everyone (the sum), then the longer run.
+  const edge = (x, y, cost, dr, df) => ({ x, y, elevation: 0, cost, waypoints: [{ x, y, elevation: 0 }], distances: { rogue: dr, fighter: df } });
+  p = planFlee(fleeBoard({ away: [edge(0, 1300, 10, 50, 50), edge(0, 1200, 15, 50, 55), edge(0, 1100, 20, 50, 60), edge(0, 1000, 25, 50, 60)] }));
+  assert.deepEqual(at(p.move), { x: 0, y: 1000, elevation: 0 });
   assert.deepEqual(planFlee(fleeBoard()), { move: null, actions: [], reason: "flee: nowhere to go", dash: false, escape: null });
 });
 test("planTurn flees before anything else, fights when cornered, and the bonus slot never flees", () => {

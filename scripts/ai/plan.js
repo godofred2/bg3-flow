@@ -232,8 +232,9 @@ export function planFlee(board) {
     if (!last) return none;
     return { move: moveTo(inside ?? last), actions: [], reason: `flee: Dash toward ${board.escape.name} ${hp}`, dash: true, escape: inside ? board.escape.uuid : null };
   }
-  const nearest = (s) => Math.min(...Object.values(s.distances ?? {}), Infinity);
-  const best = (board.away ?? []).filter(free).sort((a, b) => nearest(b) - nearest(a))[0];
+  // Farthest from the nearest enemy; on a tie (every square along a scene edge keeps the same distance) farthest from everyone, then the longer run.
+  const nearest = (s) => Math.min(...Object.values(s.distances ?? {}), Infinity), sum = (s) => Object.values(s.distances ?? {}).reduce((t, d) => t + d, 0);
+  const best = (board.away ?? []).filter(free).sort((a, b) => nearest(b) - nearest(a) || sum(b) - sum(a) || b.cost - a.cost)[0];
   return best ? { move: moveTo(best), actions: [], reason: `flee: Dash away from enemies ${hp}`, dash: true, escape: null } : none;
 }
 
