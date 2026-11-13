@@ -7,6 +7,7 @@ import { registerAutopilot, runTurn } from "./ai/run.js";
 import { registerHouseRules } from "./houserules.js";
 import { registerTargeting } from "./targeting.js";
 import { registerEconomy } from "./economy.js";
+import { registerLight } from "./light.js";
 
 export const MODULE_ID = "bg3-flow";
 
@@ -58,6 +59,7 @@ Hooks.once("init", () => {
   reg("enlargeStrength", Boolean, true);
   reg("preparedSpells", Boolean, true);
   reg("askSpellLevel", Boolean, true);
+  reg("lightSpells", Boolean, true);
   reg("targetPicker", Boolean, true);
   game.settings.register(MODULE_ID, "actionEconomy", {
     name: L("Settings.actionEconomy.Name"), hint: L("Settings.actionEconomy.Hint"), scope: "world", config: true, type: String, default: "players",
@@ -88,6 +90,7 @@ Hooks.once("ready", () => {
   registerHouseRules();
   registerEconomy(); // before the picker: a player out of actions is refused before being asked to pick a target
   registerTargeting();
+  registerLight();
   game.modules.get(MODULE_ID).api = { toggleDash, startEncounter, markEncounter, runTurn };
   log(`v${game.modules.get(MODULE_ID)?.version} ready`);
 });

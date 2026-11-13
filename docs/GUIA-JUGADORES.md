@@ -9,6 +9,7 @@ Este módulo hace que nuestros combates en Foundry se parezcan a Baldur's Gate 3
 - Pulsa el botón del **ojo** en tu ficha para esconderte. Tira Sigilo (o escribe un valor). Sigues oculto hasta que empieza el combate, hasta que atacas o hasta que lo pulsas otra vez. A oscuras o con poca luz, un buen Sigilo te mantiene invisible; a plena luz, esconderse no sirve de nada.
 - En cuanto un enemigo te ve, o alguien hace sangre, el combate empieza solo. Un diálogo te pide **tirar iniciativa**: pulsa el botón y tus dados ruedan en pantalla. Si no estás, el DM tira por ti.
 - Una línea de chat dice quién ha visto a quién.
+- **Luz**, **Llama continua** y **Luz del día** iluminan la ficha que elijas (el selector pregunta dentro del alcance del conjuro); **Producir llama** te ilumina a ti; **Fuego feérico** a quien falle. Ojo: una ficha iluminada no puede esconderse en la oscuridad. Luz y Producir llama se apagan al volver a lanzarlos, los de concentración al perderla, y cualquiera con el botón de la **bombilla** en el HUD de la ficha. La duración de una hora la llevas tú.
 
 ## 2. Luchar: tu grupo actúa junto
 

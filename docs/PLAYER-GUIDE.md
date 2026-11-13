@@ -9,6 +9,7 @@ This module makes our Foundry combats feel like Baldur's Gate 3. You do not need
 - Press the **eye** button on your token to hide. It rolls your Stealth (or lets you type a value). You stay hidden until combat starts, until you attack, or until you press it again. In the dark or in dim light, a good Stealth keeps you unseen; in bright light, hiding does nothing.
 - The moment an enemy spots you, or someone draws blood, combat starts by itself. A dialog asks you to **roll your initiative**: press the button, your dice roll on screen. If you are away, the DM rolls for you.
 - A chat line says who spotted whom.
+- **Light**, **Continual Flame** and **Daylight** light the token you pick (the picker asks within the spell's range); **Produce Flame** lights you; **Faerie Fire** lights whoever fails. Mind it: a lit token cannot hide in the dark. Light and Produce Flame go out when you cast them again, concentration spells when your concentration drops, and any of them with the **lightbulb** button in the token HUD. The hour-long duration is yours to keep track of.
 
 ## 2. Fighting: your group acts together
 

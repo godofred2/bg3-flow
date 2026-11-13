@@ -175,6 +175,10 @@ Not counted yet: resistances and vulnerabilities, opportunity attacks from enemi
 - **New spells arrive prepared.** A spell of the prepared kind added to a character is marked prepared when it is created (Chris's Premades automations, applied at import by Coven's Automation Toolkit, leave imported spells unprepared, so Midi never offered the Fighter's Shield; dnd5e's own drop onto a character resets it too). Methods that do not prepare (innate, at will; the system's spellcasting config decides, pact magic prepares under the 2024 rules), spells already prepared or always prepared, and NPCs are untouched.
 - **First turn of a fresh combat.** With Gambit's Premades opportunity attacks on, the autopilot waits for its reaction regions to appear (they are created at combat start, one combatant at a time, at most 3 s) before the first monster moves, so a monster acting first still draws the fighter's opportunity attack.
 
+## Light spells (v0.17.0)
+
+With **Light spells light the token** on, a cast through Midi changes the token's own light, no Active Token Effects module needed (CPR and the Plutonium addon automate none of these): **Light** (bright 20 / dim 40), **Continual Flame** (20 / 40, torch flicker) and **Daylight** (60 / 120) light the token picked by the target picker within the spell's range (Esc lights nothing); **Produce Flame** (10 / 20) lights the caster; **Faerie Fire** (dim 10, blue) lights every creature that failed the save. The token's previous light is kept in a flag and comes back when the spell ends: Light and Produce Flame end when the same caster casts them again (one instance each), Produce Flame also when thrown (the attack activity), a concentration spell (Faerie Fire) when the caster's concentration effect goes, and any of them with the **lightbulb** button in the token HUD (owner or GM). Durations are not tracked: an hour of Light is the table's call. A player lighting a token it does not own goes through the GM (socketlib). The lit square counts as bright light for the stealth rules above.
+
 ## Settings
 
 - **Full automation**, **BG3 turn flow**, **Encounters and stealth**: feature toggles. **Target picker**: feature 1. **Action economy**: piece 6.
@@ -182,7 +186,7 @@ Not counted yet: resistances and vulnerabilities, opportunity attacks from enemi
 - **Default encounter radius**, **Obscured darkness threshold**: feature 3.
 - **Monster autopilot**, **Pause before each monster action**, **Pass the turn automatically**, **Intelligence threshold**: piece 4.
 - **Monsters flee**, **Flee threshold**, **Escape region name**: piece 4c.
-- **Lair actions**: piece 5. **Enlarge: Strength twice**, **New spells arrive prepared**, **Ask the spell level**: house rules.
+- **Lair actions**: piece 5. **Enlarge: Strength twice**, **New spells arrive prepared**, **Ask the spell level**: house rules. **Light spells light the token**: light spells (v0.17.0).
 
 ## Development
 

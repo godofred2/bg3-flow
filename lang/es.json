@@ -74,6 +74,10 @@
         "Name": "Los conjuros nuevos llegan preparados",
         "Hint": "Un conjuro de tipo preparado añadido a un personaje se marca como preparado al crearse (las automatizaciones importadas suelen dejarlo sin preparar). Otros modos de preparación y los PNJ no se tocan."
       },
+      "lightSpells": {
+        "Name": "Los conjuros de luz iluminan la ficha",
+        "Hint": "Luz, Llama continua y Luz del día iluminan la ficha elegida; Producir llama al lanzador; Fuego feérico a quien falle. La luz termina al volver a lanzar Luz o Producir llama, al arrojar la llama, al perder la concentración o con el botón del HUD de la ficha. No hace falta el módulo Active Token Effects."
+      },
       "askSpellLevel": {
         "Name": "Preguntar el nivel del conjuro",
         "Hint": "Un conjuro con nivel lanzado con un espacio superior disponible abre el diálogo de espacio de conjuro, aunque Midi consuma los recursos por su cuenta. Los trucos y las reacciones nunca preguntan."
@@ -129,6 +133,9 @@
       "Radius": "Radio de detección (pies)",
       "NoTokens": "Selecciona antes las fichas enemigas",
       "Spotted": "¡<b>{enemy}</b> ha visto a <b>{name}</b>!"
+    },
+    "Light": {
+      "Off": "Apagar la luz (conjuro)"
     },
     "Hide": {
       "Button": "Esconderse",

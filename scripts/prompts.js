@@ -16,6 +16,7 @@ export function registerSockets(s, { startEncounter }) {
     return c.initiative ?? null;
   });
   s.register("startEncounter", (sceneId, groupId) => startEncounter(sceneId, groupId));
+  s.register("tokenUpdate", async (uuid, update) => { const doc = await fromUuid(uuid); return doc?.update?.(update); }); // light spells: a player lighting a token it does not own
   // Piece 4c: the Tunnel Fighter stance's reaction at the triggers Gambit does not cover, on the PC owner's client (3D dice show there). 30 s, then Pass.
   s.register("tunnelFighter", async (actorUuid, activityUuid, targetUuid) => {
     const activity = fromUuidSync(activityUuid);
@@ -47,6 +48,7 @@ export const promptTunnelFighter = (userId, actorUuid, activityUuid, targetUuid)
 
 export const promptInitiative = (userId, combatId, combatantId) => socket.executeAsUser("promptInitiative", userId, combatId, combatantId);
 export const askGmToStart = (sceneId, groupId) => socket.executeAsGM("startEncounter", sceneId, groupId);
+export const tokenUpdateAsGm = (uuid, update) => socket.executeAsGM("tokenUpdate", uuid, update);
 
 /** First connected non-GM owner of a document, or null. */
 export const activeOwner = (doc) => game.users.find((u) => u.active && !u.isGM && doc.testUserPermission(u, "OWNER")) ?? null;
