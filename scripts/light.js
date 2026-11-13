@@ -90,15 +90,29 @@ export async function onRollComplete(workflow, deps = {}) {
   log(`${spec.key}: ${targets.map((t) => t.name).join(", ")} lit by ${workflow.actor?.name}`);
 }
 
+/** The throw: Midi's use of the SRD activity turns on the caster whatever is targeted (the activity affects self), so the attack is run
+ *  again on a clone aimed at the creature: dnd5e announces the clone through dnd5e.preUseActivity, where its target and range are set. */
+async function throwFlame(workflow, targetUuids) {
+  const activity = workflow.activity;
+  const hook = Hooks.on("dnd5e.preUseActivity", (used) => {
+    if (used?.uuid !== activity.uuid) return;
+    used.updateSource?.({ "target.affects.type": "creature", "target.affects.count": "1", "range.units": "ft", "range.value": 30 });
+  });
+  try { await MidiQOL.completeActivityUse(activity, { midiOptions: { targetUuids, ignoreUserTargets: true, workflowOptions: { bg3Throw: true } } }, { configure: false }); }
+  finally { Hooks.off("dnd5e.preUseActivity", hook); }
+}
+
 /** midi-qol.preTargetingV2: the SRD Produce Flame's attack targets the caster itself (the item affects self) and would hit it. With nobody
- *  else targeted the use is the cast: the flame is lit, the action paid, and Midi's attack stopped. Targeting a creature throws it. */
-export async function onPreTargetingLight({ workflow }, deps = {}) {
-  const { pay = payAction } = deps;
-  if (game.settings.get(MODULE_ID, "lightSpells") === false) return;
+ *  else targeted the use is the cast: the flame is lit, the action paid, and Midi's attack stopped. With a creature targeted the use is
+ *  stopped too and the throw re-launched at it (after this use has gone), unless it is that re-launch. */
+export async function onPreTargetingLight({ workflow, usage }, deps = {}) {
+  const { pay = payAction, throwAt = throwFlame, defer = (fn) => setTimeout(fn, 0) } = deps;
+  if (game.settings.get(MODULE_ID, "lightSpells") === false || usage?.midiOptions?.workflowOptions?.bg3Throw) return;
   const spec = lightSpell(workflow?.item?.name);
   if (!spec?.self || workflow.activity?.type !== "attack") return;
   const self = workflow.token?.document ?? workflow.token;
-  if ([...(game.user.targets ?? [])].some((t) => (t.document ?? t) !== self && (t.document ?? t).id !== self?.id)) return; // the throw
+  const others = [...(game.user.targets ?? [])].map((t) => t.document ?? t).filter((t) => t !== self && t.id !== self?.id);
+  if (others.length) { defer(() => throwAt(workflow, [others[0].uuid]).catch((err) => console.error(`[${MODULE_ID}]`, err))); return false; } // the throw, re-aimed
   const casterUuid = workflow.actor?.uuid ?? "", mine = (l) => l.key === spec.key && l.casterUuid === casterUuid;
   for (const t of ours(mine)) await extinguish(t, mine);
   if (self) await lightUp(self, spec, { key: spec.key, casterUuid, itemUuid: workflow.item?.uuid ?? "", concentration: false }, tokenUpdateAsGm);

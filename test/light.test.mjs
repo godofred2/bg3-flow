@@ -216,8 +216,14 @@ test("onPreTargetingLight: the SRD Produce Flame's attack with nobody (or only t
   assert.equal(await onPreTargetingLight(wf([me]), { pay: async () => {} }), false); // Midi's self target
   assert.deepEqual(calls.updates.map(([i, x]) => [i, x.light.bright]), [["dru", 0], ["dru", 10]]);
   calls.updates = [];
-  assert.equal(await onPreTargetingLight(wf([g]), { pay: async () => {} }), undefined); // the throw: Midi goes on, RollComplete puts the flame out
-  assert.deepEqual(calls.updates, []);
+  const thrown = [];
+  const throwAt = async (workflow, uuids) => thrown.push([workflow.item.name, uuids]);
+  assert.equal(await onPreTargetingLight(wf([g]), { pay: async () => {}, throwAt, defer: (fn) => fn() }), false); // the throw: Midi's own use would turn on the caster (the SRD item affects self): stopped, and re-launched on a clone aimed at the goblin
+  assert.deepEqual(thrown, [["Produce Flame", ["Scene.s.Token.g"]]]);
+  assert.deepEqual(calls.updates, []); // the flame goes out at the re-launched use's RollComplete, not here
+  const relaunched = wf([g]); relaunched.usage.midiOptions.workflowOptions = { bg3Throw: true };
+  assert.equal(await onPreTargetingLight(relaunched, { pay: async () => {}, throwAt, defer: (fn) => fn() }), undefined); // our own re-launch goes through
+  assert.equal(thrown.length, 1);
   const light = wf([]); light.workflow.item.name = "Light"; light.workflow.activity = { type: "utility" };
   assert.equal(await onPreTargetingLight(light, { pay: async () => {} }), undefined); // other spells: not this hook's business
   delete game.user.targets;
