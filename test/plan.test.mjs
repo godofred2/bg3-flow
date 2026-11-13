@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { averageOf, hitChance, failChance, expectedValue, parseMultiattack, pickTarget, planTurn, shouldFlee, planFlee, oaCost, splitAtTunnelFighter, commandKind, planCommand, planConfusion } = await import("../scripts/ai/plan.js");
+const { averageOf, hitChance, failChance, expectedValue, parseMultiattack, pickTarget, planTurn, shouldFlee, planFlee, oaCost, splitAtTunnelFighter, commandKind, planCommand, planConfusion, stumbleTo, DIRS } = await import("../scripts/ai/plan.js");
 
 test("averageOf: dice average plus flat, unknown tokens count as 0", () => {
   assert.equal(averageOf("2d6 + 3"), 10);
@@ -400,4 +400,19 @@ test("planConfusion (the Confusion d10): 1 stumbles a full move in the rolled di
   assert.deepEqual(planConfusion(b, { roll: 8, target: null }).actions, []);
   assert.deepEqual(planConfusion({ ...b, activities: [bow] }, { roll: 7, target: "rogue" }).actions, []); // no melee attack
   assert.equal(planConfusion(b, { roll: 9 }), null);
+});
+
+test("stumbleTo / planConfusion on a 1: the destination stays inside the scene and on the grid; at the edge there is no move", () => {
+  const grid = { px: 100, ft: 5 }, rect = { x: 0, y: 0, width: 1000, height: 400 };
+  assert.deepEqual(stumbleTo({ x: 500, y: 0, w: 1 }, DIRS[4], 30, grid, rect), { x: 500, y: 300 }); // south 30 ft, cut at the bottom edge
+  assert.deepEqual(stumbleTo({ x: 500, y: 100, w: 1 }, DIRS[2], 30, grid, rect), { x: 900, y: 100 }); // east, cut at the right edge
+  assert.deepEqual(stumbleTo({ x: 251, y: 149, w: 1 }, DIRS[0], 30, grid, rect), { x: 300, y: 0 }); // off the grid: snapped
+  assert.deepEqual(stumbleTo({ x: 300, y: 100, w: 1 }, DIRS[6], 15, grid, null), { x: 0, y: 100 }); // no rect: no clamp
+  const rogue = pc("rogue", 5);
+  const b = { ...board({ enemies: [rogue], activities: [scimitar] }), grid, rect };
+  b.me.speed = 30; b.me.x = 0; b.me.y = 0; b.me.w = 1;
+  assert.deepEqual(at(planConfusion(b, { roll: 1, dir: 3 }).move), { x: 600, y: 0, elevation: 0 });
+  const edge = planConfusion(b, { roll: 1, dir: 7 }); // west from the left edge: nowhere to stumble
+  assert.deepEqual([edge.move, edge.actions, edge.confused], [null, [], true]);
+  assert.match(edge.reason, /stumbles W/);
 });

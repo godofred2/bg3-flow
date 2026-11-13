@@ -2,7 +2,7 @@
 import { MODULE_ID, log, safe, safeSync } from "../main.js";
 import { activeIds, lairTurn } from "../turns.js";
 import { snapshot, lairOf } from "./board.js";
-import { planTurn, pickTarget, splitAtTunnelFighter, commandKind, planCommand, planConfusion, DIRS } from "./plan.js";
+import { planTurn, pickTarget, splitAtTunnelFighter, commandKind, planCommand, planConfusion, stumbleTo, DIRS } from "./plan.js";
 import { isConfused } from "../rules.js";
 import { promptTunnelFighter, tunnelFighterAttack, activeOwner, awaitOrGm } from "../prompts.js";
 
@@ -28,7 +28,7 @@ export function onPreDeleteEffect(effect) {
   const word = effect?.flags?.[GP]?.commandWord, combat = game.combat;
   if (!word || !combat?.started) return;
   const c = combat.combatants.find((x) => x.actor === effect.parent);
-  if (c) kept.set(c.id, { word, origin: effect.origin ?? "", round: combat.round });
+  if (c && activeIds(combat).has(c.id)) kept.set(c.id, { word, origin: effect.origin ?? "", round: combat.round }); // on its own turn: an expiry, not the DM's hand
 }
 
 const rollDie = (n) => async (token, flavor) => { const r = await new Roll(`1d${n}`).evaluate(); await r.toMessage({ speaker: ChatMessage.getSpeaker?.({ token }) ?? {}, flavor }); return r.total; };
@@ -58,9 +58,13 @@ export async function rollConfusion(combat, active, { d10 = rollDie(10), d8 = ro
     const key = roll === 1 ? "Stumble" : roll <= 6 ? "Nothing" : roll <= 8 ? (target ? "Attack" : "NoOne") : "Normal";
     const d = DIRS[(dir - 1 + 8) % 8];
     await ChatMessage.create({ content: L(`Autopilot.Confusion.${key}`, { name, roll, ...(roll === 1 ? { dir: L(`Autopilot.Dir.${d.k}`) } : {}), ...(target ? { target: target.name } : {}) }) });
-    if (roll === 1 && !isAuto(c)) { // a player character: walked by this client
-      const mv = c.actor?.system?.attributes?.movement, s = canvas.dimensions?.size ?? 100, ft = canvas.dimensions?.distance ?? 5, px = (mv?.speeds?.walk ?? mv?.walk ?? 30) / ft * s;
-      await c.token.move([{ x: (c.token.x ?? 0) + d.dx * px, y: (c.token.y ?? 0) + d.dy * px, elevation: c.token.elevation ?? 0, action: "walk" }], { autoRotate: true, showRuler: false, bg3Autopilot: true });
+    if (roll === 1 && !isAuto(c)) { // a player character: walked by this client, inside the scene and back on the grid (the edge or a wall may stop it short)
+      const mv = c.actor?.system?.attributes?.movement, dims = canvas.dimensions ?? {}, tok = c.token;
+      const to = stumbleTo({ x: tok.x ?? 0, y: tok.y ?? 0, w: tok.width ?? 1 }, d, mv?.speeds?.walk ?? mv?.walk ?? 30, { px: dims.size ?? 100, ft: dims.distance ?? 5 }, dims.sceneRect ?? null);
+      if (to.x === tok.x && to.y === tok.y) continue;
+      await tok.move([{ ...to, elevation: tok.elevation ?? 0, action: "walk" }], { autoRotate: true, showRuler: false, bg3Autopilot: true });
+      await arrive(tok);
+      await snapToGrid(tok);
     }
   }
 }

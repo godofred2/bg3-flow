@@ -268,12 +268,22 @@ export function planCommand(board, kind, origin = "") {
 export const DIRS = [{ k: "N", dx: 0, dy: -1 }, { k: "NE", dx: 1, dy: -1 }, { k: "E", dx: 1, dy: 0 }, { k: "SE", dx: 1, dy: 1 }, { k: "S", dx: 0, dy: 1 }, { k: "SW", dx: -1, dy: 1 }, { k: "W", dx: -1, dy: 0 }, { k: "NW", dx: -1, dy: -1 }];
 /** Confusion's d10, rolled at the turn's start (run.js): 1 a full move in the d8 direction and no action, 2-6 nothing, 7-8 a melee attack
  *  on the creature drawn within reach (`target`: a token id, ally or enemy; nothing without one or without a melee attack), 9-10 null: the usual plan. */
+/** Where a stumble of `speedFt` in direction `d` ends: kept inside the scene rect (the token's own width) and on the grid (a wall or the
+ *  edge may still stop it earlier: Foundry constrains the walk). Grid-aligned squares are multiples of the grid size (Foundry pads scenes by whole squares). */
+export function stumbleTo(me, d, speedFt, grid, rect) {
+  const px = speedFt / grid.ft * grid.px, wpx = (me.w ?? 1) * grid.px;
+  let x = me.x + d.dx * px, y = me.y + d.dy * px;
+  if (rect) { x = Math.min(Math.max(x, rect.x), rect.x + rect.width - wpx); y = Math.min(Math.max(y, rect.y), rect.y + rect.height - wpx); }
+  return { x: Math.round(x / grid.px) * grid.px, y: Math.round(y / grid.px) * grid.px };
+}
+
 export function planConfusion(board, { roll, dir = 1, target = null }) {
   if (roll >= 9) return null;
   const none = (reason) => ({ move: null, actions: [], reason, confused: true });
   if (roll === 1) {
-    const d = DIRS[(dir - 1 + 8) % 8], px = (board.me.speed ?? 30) / board.grid.ft * board.grid.px;
-    const s = { x: board.me.x + d.dx * px, y: board.me.y + d.dy * px, elevation: board.me.elevation ?? 0 };
+    const d = DIRS[(dir - 1 + 8) % 8], to = stumbleTo(board.me, d, board.me.speed ?? 30, board.grid, board.rect ?? null);
+    if (to.x === board.me.x && to.y === board.me.y) return none(`confused (${roll}): stumbles ${d.k} into the edge`);
+    const s = { ...to, elevation: board.me.elevation ?? 0 };
     return { move: { ...s, waypoints: [s] }, actions: [], reason: `confused (${roll}): stumbles ${d.k}`, confused: true };
   }
   if (roll <= 6) return none(`confused (${roll}): does nothing`);

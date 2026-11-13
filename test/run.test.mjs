@@ -832,6 +832,10 @@ test("commandOf: the live effect's word, else the word kept when the effect expi
   g.actor.effects = [commandEffect("Drop")];
   assert.deepEqual(commandOf(g, combat), { word: "Drop", kind: "drop", origin: "Actor.pc.Item.cmd" });
   g.actor.effects = [];
+  const other = makeCombat([combatant("pc", { disposition: 1, playerOwner: true }), g], 0); // the PC's turn
+  onPreDeleteEffect({ ...commandEffect("Drop"), parent: g.actor });
+  assert.equal(commandOf(g, other), null); // removed by hand on someone else's turn: not an expiry, not kept
+  game.combat = combat;
   onPreDeleteEffect({ ...commandEffect("Huye"), parent: g.actor });
   assert.deepEqual(commandOf(g, combat), { word: "Huye", kind: "flee", origin: "Actor.pc.Item.cmd" });
   combat.round = 2;
@@ -943,6 +947,11 @@ test("a confused player character: the GM's client rolls for it at its turn star
   canvas.scene.tokens.contents = [tokenAt(pc, 0), tokenAt(g1, 100)];
   await runTurn(makeCombat([pc, g1]), { ...deps({ plans: {} }), d10: async () => 1, d8: async () => 5, rand: () => 0 }); // the PC's turn: no autopilot member
   assert.deepEqual(moves.map((m) => [m[0], m[1].at(-1).x, m[1].at(-1).y]), [["pc", 0, 500]]); // south, 25 ft
+  reset(); delete pc.flags["bg3-flow"].confusion;
+  const dims = canvas.dimensions; canvas.dimensions = { size: 100, distance: 5, sceneRect: { x: 0, y: 0, width: 1000, height: 300 } };
+  await runTurn(makeCombat([pc, g1]), { ...deps({ plans: {} }), d10: async () => 1, d8: async () => 5, rand: () => 0 });
+  assert.deepEqual(moves.map((m) => [m[0], m[1].at(-1).x, m[1].at(-1).y]), [["pc", 0, 200]]); // cut at the scene's bottom edge, on the grid
+  canvas.dimensions = dims;
   assert.deepEqual(pc.getFlag("bg3-flow", "confusion"), { round: 1, roll: 1, dir: 5, target: null });
   reset(); delete pc.flags["bg3-flow"].confusion;
   await runTurn(makeCombat([pc, g1]), { ...deps({ plans: {} }), d10: async () => 8, d8: async () => 1, rand: () => 0 });

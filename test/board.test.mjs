@@ -271,8 +271,10 @@ test("snapshot: flee inputs: settings, speed, dash flag, alone from the roster, 
   canvas.scene.tokens.contents = [goblin, rogue, goblin2];
   b = await snapshot({ combatants: [combatantOf(goblin), combatantOf(rogue), combatantOf(goblin2, true)] }, combatantOf(goblin));
   assert.deepEqual([b.escape, b.me.alone], [null, false]); // a defeated ally in the roster: not alone
-  assert.deepEqual(b.away.map((s) => s.x), [200, 100, 0]); // straight away from the rogue, up to the flee budget (60 ft) and the scene edge
+  assert.deepEqual(b.away.slice(0, 3).map((s) => s.x), [200, 100, 0]); // straight away from the rogue first, up to the scene edge (15 ft)
   assert.deepEqual(b.away[2].distances, { rogue: 25 });
+  assert.ok(b.away.length > 3 && Math.max(...b.away.map((s) => s.distances.rogue)) > 25, "the other directions are offered too: the edge does not cap the flight");
+  assert.deepEqual(b.rect, { x: 0, y: 0, width: 3000, height: 3000 });
   delete canvas.scene.regions;
 });
 

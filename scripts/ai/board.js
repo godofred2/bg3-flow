@@ -282,7 +282,8 @@ export async function snapshot(combat, combatant, reserved = new Set()) {
     if (seen.some((e) => distances[e.id] < 2 * grid.ft)) continue;
     retreats.push({ x: tl.x, y: tl.y, elevation: doc.elevation ?? 0, cost: distanceFt(myCentre, doc.getCenterPoint(tl)), waypoints: [{ x: tl.x, y: tl.y, elevation: doc.elevation ?? 0 }], distances });
   }
-  // Flight: the nearest escape region's squares (route uncut: the planner cuts at the Dash budget), else a route straight away from the visible enemies.
+  // Flight: the nearest escape region's squares (route uncut: the planner cuts at the Dash budget), else routes away from the visible enemies:
+  // straight away first, then every compass direction (a scene edge or a wall in the first one must not cap the flight; the planner picks the farthest square).
   const fleeBudget = dash ? budget : budget + speed, elevation = doc.elevation ?? 0;
   const word = String(game.settings.get(MODULE_ID, "escapeRegionName") ?? "").trim().toLowerCase();
   const regions = word ? (canvas.scene?.regions?.contents ?? []).filter((r) => String(r.name ?? "").toLowerCase().includes(word)) : [];
@@ -313,8 +314,7 @@ export async function snapshot(combat, combatant, reserved = new Set()) {
       const tl = { x: myCentre.x + u[0] * reach - w * grid.px / 2, y: myCentre.y + u[1] * reach - h * grid.px / 2 };
       if (rect) { tl.x = Math.min(Math.max(tl.x, rect.x), rect.x + rect.width - w * grid.px); tl.y = Math.min(Math.max(tl.y, rect.y), rect.y + rect.height - h * grid.px); }
       const o = canvas.grid.getOffset(tl), snapped = canvas.grid.getTopLeftPoint(o);
-      away = await pathToPoint(doc, { x: snapped.x, y: snapped.y, elevation }, taken, Infinity, foots);
-      if (away.length) break;
+      away.push(...await pathToPoint(doc, { x: snapped.x, y: snapped.y, elevation }, taken, Infinity, foots));
     }
   }
   const activities = [];
@@ -330,6 +330,7 @@ export async function snapshot(combat, combatant, reserved = new Set()) {
   const multi = [...(actor?.items ?? [])].find((i) => named(i.name, "multiattack"));
   return {
     me, enemies, allies, activities, multiattack: multi ? stripHtml(multi.system?.description?.value) : null, paths, retreats, grid, reserved,
+    rect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
     threshold: game.settings.get(MODULE_ID, "intelligenceThreshold") ?? 6,
     flee: { enabled: game.settings.get(MODULE_ID, "fleeEnabled") !== false, threshold: Number(game.settings.get(MODULE_ID, "fleeThreshold") ?? 25) }, escape, away
   };
