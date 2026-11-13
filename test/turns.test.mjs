@@ -443,3 +443,19 @@ test("a dominated player character is the DM's: its owner's moves and uses are r
   assert.equal(onPreMoveToken(tokenDoc(conf), move()), undefined);
   game.combat = null;
 });
+
+test("combatTurnChange at a group start expires DAE turn-start effects on the members DAE does not see (not the current combatant's, not one applied this very turn) and turn-end effects on the group that just ended", async () => {
+  game.user.isGM = true; game.users.activeGM = { isSelf: true };
+  const gone = [];
+  const fx = (name, kind, start = { startRound: 0, startTurn: 0 }) => ({ name, flags: { dae: { specialDuration: [kind] } }, duration: start, delete: async () => gone.push(name) });
+  const withFx = (id, disposition, effects) => combatant(id, disposition, { actor: { id: `act-${id}`, appliedEffects: effects, system: { attributes: { movement: { speeds: { walk: 30 } } } } } });
+  const c1 = withFx("c1", 1, [fx("c1-start", "turnStart")]); // the current combatant: DAE's own business
+  const r1 = withFx("r1", 1, [fx("r1-start", "turnStart"), fx("r1-fresh", "turnStart", { startRound: 1, startTurn: 2 }), fx("r1-end", "turnEnd"), fx("r1-bless", "isDamaged")]);
+  const h1 = withFx("h1", -1, [fx("h1-end", "turnEnd"), fx("h1-start", "turnStart")]); // the prior group's first member: DAE's
+  const h2 = withFx("h2", -1, [fx("h2-end", "turnEnd"), fx("h2-start", "turnStart")]);
+  const cb = combat([h1, h2, c1, r1], 2);
+  calls.chat = [];
+  await onCombatTurnChange(cb, { round: 1, turn: 0, combatantId: "h1" }, { round: 1, turn: 2, combatantId: "c1" });
+  assert.deepEqual(gone.sort(), ["h2-end", "r1-start"]);
+  game.user.isGM = false;
+});

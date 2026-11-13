@@ -985,6 +985,7 @@ test("runTurn: Drop unequips the monster's last weapon and tells the table; next
   assert.equal(sc.flags["bg3-flow"].dropped, undefined);
   assert.deepEqual(uses, [["hw", "T.g1"]]); // the bonus action is still its own; no attack this turn
   assert.ok(calls.chat.some((m) => !m.whisper && m.content === 'BG3FLOW.Economy.PickUp:{"name":"g1","weapon":"Scimitar"}'));
+  assert.ok(calls.chat.some((m) => m.whisper && /picks up Scimitar \(the action\); approach/.test(m.content) && !/command:/.test(m.content)), "the whisper names no command");
   reset(); items.length = 0; sc.system.equipped = false; sc.flags["bg3-flow"].dropped = true;
   await runTurn(makeCombat([g1, pc]), deps({ plans: { g1: attackPlan() } })); // the board still offers an attack (a bow): it fights, the Scimitar stays down
   assert.deepEqual(items, []);

@@ -82,7 +82,7 @@ test("rollOrType: roll button returns the skill roll total, use button the typed
 test("registerSockets registers the four handlers, promptInitiative rolls on the player's client and tokenUpdate updates a token on the GM", async () => {
   const handlers = {};
   registerSockets({ register: (n, fn) => { handlers[n] = fn; } }, { startEncounter: async (s, g) => ["started", s, g] });
-  assert.deepEqual(Object.keys(handlers).sort(), ["promptInitiative", "startEncounter", "tokenUpdate", "tunnelFighter"]);
+  assert.deepEqual(Object.keys(handlers).sort(), ["createAmbientLight", "promptInitiative", "startEncounter", "tokenUpdate", "tunnelFighter"]);
   const prevFromUuid = globalThis.fromUuid;
   globalThis.fromUuid = async (u) => u === "Scene.s.Token.t" ? { update: async (x) => ["updated", u, x] } : null;
   assert.deepEqual(await handlers.tokenUpdate("Scene.s.Token.t", { light: { bright: 20 } }), ["updated", "Scene.s.Token.t", { light: { bright: 20 } }]);

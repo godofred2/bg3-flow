@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const calls = { hooks: [], updates: [], gm: [] };
+const calls = { hooks: [], updates: [], gm: [], created: [] };
 globalThis.Hooks = { once() {}, on: (h) => calls.hooks.push(h), callAll() {} };
 globalThis.ui = { notifications: { info() {}, warn() {} } };
 globalThis.CONFIG = { DND5E: {} };
@@ -14,7 +14,8 @@ globalThis.game = {
   settings: { get: (m, k) => settings[k], set() {}, register() {}, registerMenu() {} }
 };
 globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: { wait: async () => null } } }, utils: { escapeHTML: (s) => s } };
-globalThis.canvas = { scene: { tokens: { contents: [] } } };
+globalThis.canvas = { scene: { id: "s", tokens: { contents: [] }, lights: { contents: [] }, createEmbeddedDocuments: async (type, data) => { calls.created.push([type, ...data]); return data; } } };
+globalThis.fromUuidSync = () => null;
 
 const { lightSpell, onRollComplete, onDeleteEffect, onRenderTokenHUD, extinguish, registerLight } = await import("../scripts/light.js");
 
@@ -34,11 +35,13 @@ function tok(id, { light = { bright: 0, dim: 0, color: null }, flags = {}, owner
   return doc;
 }
 const actor = (uuid) => ({ uuid, name: uuid });
-const cast = (name, { activityType = "utility", targets = [], failed = [], caster, token, aborted = false, concentration = false } = {}) => ({
+const cast = (name, { activityType = "utility", targets = [], failed = [], caster, token, aborted = false, concentration = false, templateUuid = null } = {}) => ({
   aborted, activity: { type: activityType }, item: { name, uuid: `${caster.uuid}.Item.${name}`, system: { properties: new Set(concentration ? ["concentration"] : []) } },
-  actor: caster, token: token?.object, targets: new Set(targets.map((d) => d.object)), failedSaves: new Set(failed.map((d) => d.object))
+  actor: caster, token: token?.object, targets: new Set(targets.map((d) => d.object)), failedSaves: new Set(failed.map((d) => d.object)), templateUuid
 });
-const reset = () => { calls.updates = []; calls.gm = []; canvas.scene.tokens.contents = []; game.user.isGM = true; };
+const reset = () => { calls.updates = []; calls.gm = []; calls.created = []; canvas.scene.tokens.contents = []; canvas.scene.lights.contents = []; game.user.isGM = true; };
+const LIGHT = { bright: 20, dim: 40, color: "#ffe6b3", alpha: 0.15, animation: { type: null } };
+const layer = (key, casterUuid, light, itemName = "Light", concentration = false) => ({ key, casterUuid, itemUuid: `${casterUuid}.Item.${itemName}`, concentration, light });
 
 test("lightSpell: the five light spells by name, English or Spanish; anything else is null", () => {
   assert.deepEqual([lightSpell("Light").key, lightSpell(" luz ").key, lightSpell("Produce Flame").key, lightSpell("Producir llama").key, lightSpell("Continual Flame").key, lightSpell("Daylight").key, lightSpell("Luz del día").key, lightSpell("Faerie Fire").key, lightSpell("Fuego feérico").key],
@@ -56,8 +59,8 @@ test("Light lights the picked token (bright 20, dim 40) and remembers its old li
   assert.equal(calls.updates.length, 1);
   const [id, u] = calls.updates[0];
   assert.equal(id, "rogue");
-  assert.deepEqual([u.light.bright, u.light.dim], [20, 40]);
-  assert.deepEqual(u["flags.bg3-flow.light"], { prev: { bright: 5, dim: 10, color: "#ff0000" }, key: "light", casterUuid: "Actor.cleric", itemUuid: "Actor.cleric.Item.Light", concentration: false });
+  assert.deepEqual(u.light, LIGHT);
+  assert.deepEqual(u["flags.bg3-flow.light"], { prev: { bright: 5, dim: 10, color: "#ff0000" }, layers: [layer("light", "Actor.cleric", LIGHT)] });
   calls.updates = [];
   await onRollComplete(cast("Light", { targets: [goblin], caster: cleric, token: me })); // the spell ends when cast again
   assert.deepEqual(calls.updates.map(([i, x]) => [i, x.light.bright, x.light.dim]), [["rogue", 5, 10], ["goblin", 20, 40]]);
@@ -72,30 +75,55 @@ test("Light lights the picked token (bright 20, dim 40) and remembers its old li
   settings.lightSpells = true;
 });
 
-test("Continual Flame and Daylight stack on several targets (no single-cast rule); a second Light caster does not put out the first caster's", async () => {
+test("lights stack: a Light over a Continual Flame shows Light, and when Light moves on the token goes back to the Continual Flame, not to darkness; a second caster's Light does not put out the first's; Daylight on a token is 60/120", async () => {
   reset();
   const a = actor("Actor.a"), b = actor("Actor.b"), ta = tok("ta"), tb = tok("tb"), t1 = tok("t1"), t2 = tok("t2");
   canvas.scene.tokens.contents = [ta, tb, t1, t2];
   await onRollComplete(cast("Continual Flame", { targets: [t1], caster: a, token: ta }));
-  await onRollComplete(cast("Continual Flame", { targets: [t2], caster: a, token: ta }));
+  await onRollComplete(cast("Continual Flame", { targets: [t2], caster: a, token: ta })); // no single-cast rule: both burn
   assert.deepEqual(calls.updates.map(([i, x]) => [i, x.light.bright]), [["t1", 20], ["t2", 20]]);
+  const flame = t1.light;
   calls.updates = [];
-  await onRollComplete(cast("Light", { targets: [t1], caster: a, token: ta })); // our Light over a Continual Flame: the flame is what comes back later
-  assert.deepEqual(t1.getFlag("bg3-flow", "light").prev, { bright: 0, dim: 0, color: null }); // the first flag's prev is kept
-  await onRollComplete(cast("Light", { targets: [t2], caster: b, token: tb }));
-  assert.deepEqual(calls.updates.map(([i]) => i), ["t1", "t2"]); // b's cast did not touch a's
+  await onRollComplete(cast("Light", { targets: [t1], caster: a, token: ta }));
+  assert.deepEqual(t1.light, LIGHT);
+  assert.deepEqual(t1.getFlag("bg3-flow", "light").layers.map((l) => l.key), ["continualFlame", "light"]);
+  assert.deepEqual(t1.getFlag("bg3-flow", "light").prev, { bright: 0, dim: 0, color: null });
+  calls.updates = [];
+  await onRollComplete(cast("Light", { targets: [t2], caster: a, token: ta })); // Light moves on
+  assert.deepEqual(calls.updates.map(([i]) => i), ["t1", "t2"]);
+  assert.deepEqual(t1.light, flame); // back to the Continual Flame
+  assert.deepEqual(t1.getFlag("bg3-flow", "light").layers.map((l) => l.key), ["continualFlame"]);
+  calls.updates = [];
+  await onRollComplete(cast("Light", { targets: [t1], caster: b, token: tb })); // b's Light does not touch a's
+  assert.deepEqual(calls.updates.map(([i]) => i), ["t1"]);
+  assert.deepEqual(t2.getFlag("bg3-flow", "light").layers.map((l) => l.key), ["continualFlame", "light"]);
   await onRollComplete(cast("Daylight", { targets: [t1], caster: b, token: tb }));
   assert.deepEqual(calls.updates.at(-1)[1].light, { bright: 60, dim: 120, color: "#ffffff", alpha: 0.1, animation: { type: null } });
 });
 
-test("Produce Flame lights the caster's own token; throwing it (the attack activity) puts it out; recasting keeps one flame", async () => {
+test("Daylight cast on a point (a template): an ambient light at the template, flagged, no token touched; the caster's concentration ending removes flagged ambient lights too", async () => {
+  reset();
+  const b = actor("Actor.b"), tb = tok("tb"), t1 = tok("t1");
+  canvas.scene.tokens.contents = [tb, t1];
+  globalThis.fromUuidSync = (u) => u === "Scene.s.MeasuredTemplate.tpl" ? { x: 1250, y: 850 } : null;
+  await onRollComplete(cast("Daylight", { targets: [t1], caster: b, token: tb, templateUuid: "Scene.s.MeasuredTemplate.tpl" }));
+  assert.deepEqual(calls.updates, []);
+  assert.deepEqual(calls.created, [["AmbientLight", { x: 1250, y: 850, config: { bright: 60, dim: 120, color: "#ffffff", alpha: 0.1, animation: { type: null } }, flags: { "bg3-flow": { light: { key: "daylight", casterUuid: "Actor.b", itemUuid: "Actor.b.Item.Daylight", concentration: false } } } }]]);
+  const deleted = [];
+  canvas.scene.lights.contents = [{ flags: { "bg3-flow": { light: { key: "faerieFire", casterUuid: "Actor.b", concentration: true } } }, delete: async () => deleted.push("ff") }, { flags: {}, delete: async () => deleted.push("torch") }];
+  await onDeleteEffect({ statuses: new Set(["concentrating"]), parent: b });
+  assert.deepEqual(deleted, ["ff"]);
+  globalThis.fromUuidSync = () => null;
+});
+
+test("Produce Flame lights the caster's own token, also when the SRD item's only activity is the attack and nothing is targeted; throwing it at someone puts it out; recasting keeps one flame", async () => {
   reset();
   const dru = actor("Actor.dru"), me = tok("dru");
   canvas.scene.tokens.contents = [me];
   await onRollComplete(cast("Produce Flame", { caster: dru, token: me }));
   assert.deepEqual(calls.updates.map(([i, x]) => [i, x.light.bright, x.light.dim]), [["dru", 10, 20]]);
   calls.updates = [];
-  await onRollComplete(cast("Produce Flame", { caster: dru, token: me }));
+  await onRollComplete(cast("Produce Flame", { activityType: "attack", caster: dru, token: me })); // the SRD item: an attack with no target is the flame in hand
   assert.deepEqual(calls.updates.map(([i, x]) => [i, x.light.bright]), [["dru", 0], ["dru", 10]]); // off, then on again
   calls.updates = [];
   await onRollComplete(cast("Produce Flame", { activityType: "attack", targets: [tok("g")], caster: dru, token: me }));
@@ -108,7 +136,7 @@ test("Faerie Fire lights the creatures that failed the save (dim 10) under conce
   const bard = actor("Actor.bard"), other = actor("Actor.other"), me = tok("bard"), g1 = tok("g1"), g2 = tok("g2"), g3 = tok("g3"), lit = tok("lit");
   canvas.scene.tokens.contents = [me, g1, g2, g3, lit];
   await onRollComplete(cast("Faerie Fire", { activityType: "save", targets: [g1, g2, g3], failed: [g1, g2], caster: bard, token: me, concentration: true }));
-  assert.deepEqual(calls.updates.map(([i, x]) => [i, x.light.bright, x.light.dim, x["flags.bg3-flow.light"].concentration]), [["g1", 0, 10, true], ["g2", 0, 10, true]]);
+  assert.deepEqual(calls.updates.map(([i, x]) => [i, x.light.bright, x.light.dim, x["flags.bg3-flow.light"].layers[0].concentration]), [["g1", 0, 10, true], ["g2", 0, 10, true]]);
   await onRollComplete(cast("Light", { targets: [lit], caster: other, token: me }));
   calls.updates = [];
   await onDeleteEffect({ statuses: new Set(["concentrating"]), parent: bard });
@@ -134,9 +162,9 @@ test("a player's cast sends the token update through the GM (socket); the GM's c
   game.user.isGM = true;
 });
 
-test("the token HUD gets a put-out button only on a token we lit; pressing it puts the old light back", async () => {
+test("the token HUD gets a put-out button only on a token we lit; pressing it puts out every layer and the old light comes back", async () => {
   reset();
-  const lit = tok("lit", { light: { bright: 20, dim: 40 }, flags: { light: { prev: { bright: 0, dim: 0 }, key: "light", casterUuid: "Actor.x", itemUuid: "I", concentration: false } } }), plain = tok("plain");
+  const lit = tok("lit", { light: LIGHT, flags: { light: { prev: { bright: 0, dim: 0 }, layers: [layer("continualFlame", "Actor.x", { bright: 20, dim: 40 }, "Continual Flame"), layer("light", "Actor.x", LIGHT)] } } }), plain = tok("plain");
   const html = () => { const h = { inserted: "", handlers: {}, querySelector: (sel) => sel === ".col.left" ? h : (h.inserted.includes("bg3-light-off") ? { addEventListener: (e, fn) => { h.handlers[e] = fn; } } : null), insertAdjacentHTML: (w, s) => { h.inserted += s; } }; return h; };
   const h1 = html();
   onRenderTokenHUD({ object: { document: plain } }, h1);

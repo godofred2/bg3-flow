@@ -1,9 +1,11 @@
 // Light spells: the token's own light follows the cast (no Active Token Effects module needed). Light, Continual Flame and Daylight
-// light the picked token (the picker asks within the spell's range); Produce Flame lights the caster; Faerie Fire lights whoever failed.
-// The light ends when the same caster casts a single-instance spell again (Light, Produce Flame), when Produce Flame is thrown, when the
-// caster's concentration drops (Faerie Fire), or by hand (the HUD button). ponytail: durations are not tracked (the table's call).
+// light the picked token (the picker asks within the spell's range); Daylight on a point (a template) becomes an ambient light there;
+// Produce Flame lights the caster; Faerie Fire lights whoever failed. Lights stack on a token (a Light over a Continual Flame): each
+// spell is a layer, the newest shows, and when it ends the one beneath comes back, the token's own light last. A light ends when the
+// same caster casts a single-instance spell again (Light, Produce Flame), when Produce Flame is thrown, when the caster's concentration
+// drops (Faerie Fire), or by hand (the HUD button puts out every layer). ponytail: durations are not tracked (the table's call).
 import { MODULE_ID, log, safe, safeSync } from "./main.js";
-import { tokenUpdateAsGm } from "./prompts.js";
+import { tokenUpdateAsGm, ambientLightAsGm } from "./prompts.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 const FLAG = () => `flags.${MODULE_ID}.light`; // lazy: main.js imports this module, so MODULE_ID is not set yet at load
@@ -18,6 +20,7 @@ const SPELLS = [
 export const lightSpell = (name) => SPELLS.find((s) => s.re.test(String(name ?? "").trim())) ?? null;
 
 const flagOf = (doc) => doc?.getFlag?.(MODULE_ID, "light") ?? doc?.flags?.[MODULE_ID]?.light;
+const layersOf = (doc) => flagOf(doc)?.layers ?? [];
 const plain = (light) => light?.toObject ? light.toObject() : JSON.parse(JSON.stringify(light ?? {}));
 const leadGm = () => !!game.users.activeGM?.isSelf;
 const sceneTokens = () => canvas?.scene?.tokens?.contents ?? [];
@@ -25,18 +28,29 @@ const sceneTokens = () => canvas?.scene?.tokens?.contents ?? [];
 const applyUpdate = async (doc, update, asGm) => (game.user.isGM || doc.isOwner ? doc.update(update) : asGm(doc.uuid, update));
 
 async function lightUp(doc, spec, meta, asGm) {
-  const had = flagOf(doc);
-  await applyUpdate(doc, { light: { ...spec.light }, [FLAG()]: { prev: had?.prev ?? plain(doc.light), ...meta } }, asGm); // a light over ours keeps the original to come back to
+  const f = flagOf(doc);
+  const layers = [...(f?.layers ?? []), { ...meta, light: { ...spec.light } }];
+  await applyUpdate(doc, { light: { ...spec.light }, [FLAG()]: { prev: f?.prev ?? plain(doc.light), layers } }, asGm); // the token's own light is kept beneath every layer
 }
 
-/** Put a token's old light back, if the light is ours. */
-export async function extinguish(doc, asGm = tokenUpdateAsGm) {
+/** Put out the layers `pred` picks (all by default): the newest layer left shows, or the token's own light when none is left. */
+export async function extinguish(doc, pred = () => true, asGm = tokenUpdateAsGm) {
   const f = flagOf(doc);
   if (!f) return;
-  await applyUpdate(doc, { light: f.prev, [`flags.${MODULE_ID}.-=light`]: null }, asGm);
+  const layers = f.layers ?? [], left = layers.filter((l) => !pred(l));
+  if (left.length === layers.length) return;
+  const update = left.length ? { light: { ...left.at(-1).light }, [FLAG()]: { prev: f.prev, layers: left } } : { light: f.prev, [`flags.${MODULE_ID}.-=light`]: null };
+  await applyUpdate(doc, update, asGm);
 }
 
-const ours = (pred) => sceneTokens().filter((t) => { const f = flagOf(t); return f && pred(f); });
+const ours = (pred) => sceneTokens().filter((t) => layersOf(t).some(pred));
+
+/** Daylight on a point: Midi placed a template, the spell's light is an ambient light there (the DM deletes it when the spell ends). */
+async function ambientAt(tpl, spec, meta) {
+  const data = { x: tpl.x, y: tpl.y, config: { ...spec.light }, flags: { [MODULE_ID]: { light: meta } } };
+  if (game.user.isGM) await canvas.scene.createEmbeddedDocuments("AmbientLight", [data]);
+  else await ambientLightAsGm(canvas.scene.id, data);
+}
 
 /** midi-qol.RollComplete on the caster's client: light the spell's targets, after ending the caster's previous instance of a single-cast spell. */
 export async function onRollComplete(workflow, deps = {}) {
@@ -44,22 +58,32 @@ export async function onRollComplete(workflow, deps = {}) {
   if (game.settings.get(MODULE_ID, "lightSpells") === false || !workflow || workflow.aborted) return;
   const spec = lightSpell(workflow.item?.name);
   if (!spec) return;
-  const casterUuid = workflow.actor?.uuid ?? "", mine = (f) => f.key === spec.key && f.casterUuid === casterUuid;
-  if (spec.self && workflow.activity?.type === "attack") { for (const t of ours(mine)) await extinguish(t, asGm); return; } // the flame is thrown
+  const casterUuid = workflow.actor?.uuid ?? "", mine = (l) => l.key === spec.key && l.casterUuid === casterUuid;
   const docs = (set) => [...(set ?? [])].map((t) => t.document ?? t).filter(Boolean);
-  const targets = spec.self ? [workflow.token?.document].filter(Boolean) : docs(spec.failed ? workflow.failedSaves : workflow.targets);
-  if (!targets.length) return; // Esc on the picker, or nobody failed: nothing to light
-  if (spec.single) for (const t of ours(mine)) await extinguish(t, asGm); // the spell ends when cast again
   const concentration = !!(workflow.item?.system?.properties?.has?.("concentration") || workflow.item?.requiresConcentration);
-  for (const t of targets) await lightUp(t, spec, { key: spec.key, casterUuid, itemUuid: workflow.item?.uuid ?? "", concentration }, asGm);
+  const meta = { key: spec.key, casterUuid, itemUuid: workflow.item?.uuid ?? "", concentration };
+  let targets;
+  if (spec.self) { // the flame in hand: the SRD item's only activity is the attack, so an attack with nobody targeted is the cast; thrown at someone it goes out
+    const thrown = workflow.activity?.type === "attack" && (workflow.targets?.size > 0 || workflow.hitTargets?.size > 0);
+    if (thrown) { for (const t of ours(mine)) await extinguish(t, mine, asGm); return; }
+    targets = [workflow.token?.document].filter(Boolean);
+  } else {
+    const tpl = workflow.templateUuid ? globalThis.fromUuidSync?.(workflow.templateUuid) : workflow.template;
+    if (tpl && typeof tpl.x === "number") { await ambientAt(tpl, spec, meta); log(`${spec.key}: ambient light at ${tpl.x},${tpl.y} by ${workflow.actor?.name}`); return; }
+    targets = docs(spec.failed ? workflow.failedSaves : workflow.targets);
+  }
+  if (!targets.length) return; // Esc on the picker, or nobody failed: nothing to light
+  if (spec.single) for (const t of ours(mine)) await extinguish(t, mine, asGm); // the spell ends when cast again
+  for (const t of targets) await lightUp(t, spec, meta, asGm);
   log(`${spec.key}: ${targets.map((t) => t.name).join(", ")} lit by ${workflow.actor?.name}`);
 }
 
-/** deleteActiveEffect on the lead GM: the caster's concentration dropping puts out the lights it held. */
+/** deleteActiveEffect on the lead GM: the caster's concentration dropping puts out the lights it held, on tokens and ambient ones. */
 export async function onDeleteEffect(effect) {
   if (!leadGm() || !effect?.statuses?.has?.("concentrating")) return;
-  const uuid = effect.parent?.uuid;
-  for (const t of ours((f) => f.concentration && f.casterUuid === uuid)) await extinguish(t);
+  const uuid = effect.parent?.uuid, held = (l) => l.concentration && l.casterUuid === uuid;
+  for (const t of ours(held)) await extinguish(t, held);
+  for (const l of canvas?.scene?.lights?.contents ?? []) if (held(l.flags?.[MODULE_ID]?.light ?? {})) await l.delete();
 }
 
 /** renderTokenHUD: a put-out button on a token we lit, for its owner or the GM. */

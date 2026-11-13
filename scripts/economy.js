@@ -139,14 +139,17 @@ export async function pickUpWeapon(actor, item) {
   await ChatMessage.create({ content: L("Economy.PickUp", { name: nameOf(actor), weapon: item.name }) });
 }
 
+const paying = new Set(); // combatant ids with a pick-up payment in flight: two ticks in one instant must not both pass (the flag lands after a round trip)
 /** preUpdateItem: equipping a dropped weapon back. In combat only on the actor's turn and for the action (one per weapon); out of combat free. */
 export function onPreUpdateItem(item, changes) {
   const equipping = changes?.system?.equipped ?? changes?.["system.equipped"];
   if (equipping !== true || !isDropped(item)) return;
   if (game.combat?.started) {
-    if (!actingCombatant(item.actor)) { ui.notifications.warn(L("Turns.NotYourTurn")); if (!game.user.isGM) return false; }
+    const c = actingCombatant(item.actor);
+    if (!c) { ui.notifications.warn(L("Turns.NotYourTurn")); if (!game.user.isGM) return false; }
+    else if (paying.has(c.id)) { if (mode() === "players" && refuse(c, "action") === false) return false; }
     else if (affordAction(item.actor, "action") === false) return false;
-    else payAction(item.actor, "action");
+    else { paying.add(c.id); payAction(item.actor, "action").finally(() => paying.delete(c.id)); }
   }
   changes.flags ??= {};
   changes.flags[MODULE_ID] = { ...(changes.flags[MODULE_ID] ?? {}), "-=dropped": null }; // in hand again: the next equip is free

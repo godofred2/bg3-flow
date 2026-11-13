@@ -331,6 +331,14 @@ test("onPreUpdateItem: equipping a dropped weapon on the actor's turn costs the 
   assert.deepEqual(changes.flags, { "bg3-flow": { "-=dropped": null } });
   const plain = weapon("w2", "Dagger", false); changes = { system: { equipped: true } };
   assert.equal(onPreUpdateItem(plain, changes), undefined);
+  const two = armed([weapon("w1", "Longsword", false, { dropped: true }), weapon("w2", "Dagger", false, { dropped: true })]);
+  await new Promise((r) => setTimeout(r, 0)); // the GM's pick-up above has landed
+  const slow = inTurn(two); calls.warn = [];
+  const setFlag = slow.setFlag; slow.setFlag = async (m, k, v) => { await new Promise((r) => setTimeout(r, 0)); return setFlag(m, k, v); }; // Foundry's flag lands after a round trip
+  assert.equal(onPreUpdateItem(two.items[0], { system: { equipped: true } }), undefined);
+  assert.equal(onPreUpdateItem(two.items[1], { system: { equipped: true } }), false); // same instant: the first payment is still in flight
+  assert.deepEqual(calls.warn, ['BG3FLOW.Economy.NoAction:{"name":"pc"}']);
+  game.combat = null;
   assert.equal(changes.flags, undefined);
   assert.equal(onPreUpdateItem(sword, { system: { equipped: false } }), undefined); // unequipping is never the module's business
 });

@@ -101,12 +101,30 @@ export function onCombatTurn(combat, updateData, updateOptions) {
   }
 }
 
-/** combatTurnChange (GM only acts): at a group's first member, reset members' movement and Dash, announce the shared turn. */
+/** DAE expires its turn-start and turn-end special durations for combat.combatant only; a shared turn's other members never become it,
+ *  so their effects (Gambit's Command, "until the start of your next turn" buffs) are expired here. ponytail: turnStart/turnEnd only; the
+ *  source-turn variants (turnStartSource) are left to DAE. */
+export async function expireShared(members, { kind, round, turn, skipId }) {
+  for (const c of members) {
+    if (c.id === skipId) continue;
+    for (const e of [...(c.actor?.appliedEffects ?? c.actor?.effects ?? [])]) {
+      if (!(e.flags?.dae?.specialDuration ?? []).includes(kind)) continue;
+      if (kind === "turnStart" && e.duration?.startRound === round && e.duration?.startTurn === turn) continue; // applied during this very turn: it lasts to the next one, as DAE has it
+      await e.delete?.();
+    }
+  }
+}
+
+/** combatTurnChange (GM only acts): at a group's first member, reset members' movement and Dash, run DAE's turn expiries for the members
+ *  DAE does not see, announce the shared turn. */
 export async function onCombatTurnChange(combat, prior, current) {
   if (!game.users.activeGM?.isSelf || !combat?.started) return; // one GM acts, however many are connected
   const turns = turnsOf(combat), groups = groupsOf(combat);
   if (!isGroupStart(groups, turns, current.turn, skipDefeated(combat))) return;
-  const members = groupOf(groups, turns[current.turn].id).ids.map((id) => combat.combatants.find((c) => c.id === id)).filter(Boolean);
+  const membersOf = (turn) => (turns[turn] ? groupOf(groups, turns[turn].id)?.ids ?? [] : []).map((id) => combat.combatants.find((c) => c.id === id)).filter(Boolean);
+  const members = membersOf(current.turn);
+  if (typeof prior?.turn === "number" && prior.turn !== current.turn) await expireShared(membersOf(prior.turn), { kind: "turnEnd", skipId: prior.combatantId ?? turns[prior.turn]?.id });
+  await expireShared(members, { kind: "turnStart", round: combat.round, turn: current.turn, skipId: current.combatantId ?? combat.combatant?.id });
   for (const c of members) {
     await c.token?.clearMovementHistory?.();
     if (isDash(c)) await c.unsetFlag(MODULE_ID, "dash");

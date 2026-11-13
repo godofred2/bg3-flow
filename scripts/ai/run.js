@@ -307,7 +307,7 @@ export async function runTurn(combat, deps = {}) {
           if (down.length && !board.activities.some((a) => a.kind === "attack")) {
             await pickUpWeapon(c.actor, down[0]);
             const ap = planCommand(board, "approach");
-            p = { ...ap, command: null, noAction: true, reason: `picks up ${down[0].name} (the action); ${ap.reason}` };
+            p = { ...ap, command: null, noAction: true, reason: `picks up ${down[0].name} (the action); ${ap.reason.replace(/^command: /, "")}` };
           }
         }
         if (p.move) reserved.add(`${p.move.x},${p.move.y}`);
