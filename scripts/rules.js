@@ -52,8 +52,14 @@ export const MIDI_PRESET = Object.freeze({
   showReactionAttackRoll: "all",
   enforceReactions: "all",
   recordAOO: "all",
-  autoItemEffects: "applyRemove" // a reaction's effect (Shield +5 AC, Uncanny Dodge half damage) applies itself
-  // No optionalRules.hiddenAdvantage: Midi 14.6.8 offers none/perObserver/perObserverPassive/perceptive, all vision-based; Hide puts Midi's advantage flag on the effect instead.
+  autoItemEffects: "applyRemove", // a reaction's effect (Shield +5 AC, Uncanny Dodge half damage) applies itself
+  // Midi's optional rules (all behind one switch, off by default): advantage and disadvantage from conditions (frightened, poisoned, prone,
+  // restrained, paralyzed, stunned, unconscious...), flanking (advantage only, no effect applied), the 2014 unseen/invisible attacker rules.
+  // Midi's own defaults do the rest (ranged attacks with a foe within 5 ft at disadvantage, hidden per observer, range checks). Targets you
+  // can't see are warned about, not refused: the autopilot judges sight with the BG3 rules and must not be refused by Midi's token vision.
+  // No optionalRules.hiddenAdvantage override: Midi 14.6.8's values are vision-based; Hide puts Midi's advantage flag on the effect instead.
+  optionalRulesEnabled: true,
+  optionalRules: Object.freeze({ conditionRules: true, checkFlanking: "advonly", invisAdvantage: "RAW2014", targetMustBeSeen: "warn" })
 });
 
 const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);

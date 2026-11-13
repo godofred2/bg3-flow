@@ -15,9 +15,10 @@ export function needsPick({ activity, usage, targeted, onTurn = true }) {
   if (!activity || activity.target?.template?.type) return null; // an area: the template picks
   const affects = activity.target?.affects?.type ?? "", units = activity.range?.units;
   if (affects === "self" || units === "self") return null;
-  if (!affects && activity.type !== "attack") return null; // nothing to aim at (a weapon's attack leaves affects blank)
+  // Nothing to aim at (a weapon's attack leaves affects blank), except a save at reach with no target type (the SRD Engulf): Midi would aim it at the monster itself.
+  if (!affects && activity.type !== "attack" && !(activity.type === "save" && ["touch", "ft"].includes(units))) return null;
   const count = Math.max(1, parseInt(activity.target?.affects?.count) || 1);
-  return { count, range: ["any", "spec"].includes(units) ? Infinity : rangeOf(activity), self: activity.type !== "attack" && affects !== "enemy" };
+  return { count, range: ["any", "spec"].includes(units) ? Infinity : rangeOf(activity), self: activity.type !== "attack" && affects !== "enemy" && !!affects }; // blank affects (Engulf): never the monster itself
 }
 
 const MORE = /(one|1) additional (creature|target|humanoid|beast|person)|(criatura|objetivo|humanoide|bestia|persona)s? adicional/i;

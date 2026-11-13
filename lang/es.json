@@ -136,6 +136,11 @@
       "NoTokens": "Selecciona antes las fichas enemigas",
       "Spotted": "¡<b>{enemy}</b> ha visto a <b>{name}</b>!"
     },
+    "Features": {
+      "Engulfed": "Engullido por {name}",
+      "EngulfedHint": "Engullido por {by}: apresado, no puede respirar, recibe el ácido al inicio de cada turno de {by}. Escapar: una acción y una prueba de Fuerza CD {dc}; si la supera sale 5 pies. Quita este efecto cuando quede libre.",
+      "EngulfedLine": "<b>{names}</b> engullido por <b>{by}</b>: apresado, no puede respirar, ácido al inicio de cada uno de sus turnos. Escapar: una acción y una prueba de Fuerza CD {dc}."
+    },
     "Light": {
       "Off": "Apagar la luz (conjuro)",
       "Flame": "Producir llama: la llama está en tu mano. Marca una criatura como objetivo para arrojarla."

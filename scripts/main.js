@@ -8,6 +8,7 @@ import { registerHouseRules } from "./houserules.js";
 import { registerTargeting } from "./targeting.js";
 import { registerEconomy } from "./economy.js";
 import { registerLight } from "./light.js";
+import { registerFeatures } from "./features.js";
 
 export const MODULE_ID = "bg3-flow";
 
@@ -91,6 +92,7 @@ Hooks.once("ready", () => {
   registerEconomy(); // before the picker: a player out of actions is refused before being asked to pick a target
   registerTargeting();
   registerLight();
+  registerFeatures();
   game.modules.get(MODULE_ID).api = { toggleDash, startEncounter, markEncounter, runTurn };
   log(`v${game.modules.get(MODULE_ID)?.version} ready`);
 });

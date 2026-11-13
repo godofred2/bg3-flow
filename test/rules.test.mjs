@@ -21,6 +21,8 @@ test("MIDI_PRESET has the spec values", () => {
   assert.equal(MIDI_PRESET.gmAutoDamage, "onHit");
   assert.deepEqual(MIDI_PRESET.autoFastForward, ["attack", "damage", "check", "save", "skill", "tool"]);
   assert.deepEqual(MIDI_PRESET.gmAutoFastForward, ["attack", "damage", "check", "save", "skill", "tool"]);
+  assert.equal(MIDI_PRESET.optionalRulesEnabled, true); // Midi's optional rules: off by default, and every rule below sits behind that switch
+  assert.deepEqual(MIDI_PRESET.optionalRules, { conditionRules: true, checkFlanking: "advonly", invisAdvantage: "RAW2014", targetMustBeSeen: "warn" });
   assert.equal(MIDI_PRESET.autoCheckHit, "all");
   assert.equal(MIDI_PRESET.autoCheckSaves, "allShow");
   assert.equal(MIDI_PRESET.autoApplyDamage, "yes");
@@ -40,7 +42,7 @@ test("MIDI_PRESET has the spec values", () => {
   assert.equal(MIDI_PRESET.enforceReactions, "all");
   assert.equal(MIDI_PRESET.recordAOO, "all");
   assert.equal(MIDI_PRESET.autoItemEffects, "applyRemove"); // Shield's +5 AC and Uncanny Dodge's half damage apply themselves
-  assert.equal(MIDI_PRESET.optionalRules, undefined); // Midi 14.6.8's hidden-advantage rule has no value that reads the Hiding status: the Hide button puts Midi's advantage flag on the effect instead
+  assert.equal(MIDI_PRESET.optionalRules.hiddenAdvantage, undefined); // Midi 14.6.8's hidden-advantage rule has no value that reads the Hiding status: the Hide button puts Midi's advantage flag on the effect instead
 });
 test("mergePreset merges a nested preset object into Midi's (optionalRules), keeping the other rules", () => {
   const merged = mergePreset({ optionalRules: { hiddenAdvantage: "none", invisAdvantage: "RAW2024" }, autoTarget: "none" }, { optionalRules: { hiddenAdvantage: "effect" } });

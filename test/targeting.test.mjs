@@ -30,6 +30,8 @@ test("needsPick: a single-target spell, a touch spell or a weapon attack asks fo
   assert.equal(needsPick({ activity: act({ template: "sphere" }), targeted: 0 }), null); // Fireball: the template picks
   assert.equal(needsPick({ activity: act({ affects: "self", units: "self", value: null }), targeted: 0 }), null); // Shield
   assert.equal(needsPick({ activity: act({ type: "utility", affects: "" }), targeted: 0 }), null); // nothing to aim at
+  assert.deepEqual(needsPick({ activity: act({ type: "save", affects: "", units: "touch", value: null, item: { type: "feat" } }), targeted: 0 }), { count: 1, range: 5, self: false }); // the SRD Engulf: a save at reach with no target type (Midi would aim it at the monster itself)
+  assert.equal(needsPick({ activity: act({ type: "save", affects: "", units: "self", value: null }), targeted: 0 }), null); // a self save (Fear-like breath without a template): not ours
   assert.deepEqual(needsPick({ activity: act(), targeted: 1 }), { count: 1, range: 60, self: true }); // the last use's target still marked: picked again (a heal, then an attack, both went to the ally)
   assert.equal(needsPick({ activity: act(), targeted: 1, onTurn: false }), null); // off its turn (Gambit's opportunity attack targets for the reacting actor): the targets set stand
   assert.deepEqual(needsPick({ activity: act(), targeted: 0, onTurn: false }), { count: 1, range: 60, self: true }); // nothing targeted off turn: still picked

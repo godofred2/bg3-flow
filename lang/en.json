@@ -136,6 +136,11 @@
       "NoTokens": "Select the enemy tokens first",
       "Spotted": "<b>{enemy}</b> spotted <b>{name}</b>!"
     },
+    "Features": {
+      "Engulfed": "Engulfed by {name}",
+      "EngulfedHint": "Engulfed by {by}: restrained, cannot breathe, takes the acid at the start of each of {by}'s turns. Escape: an action and a DC {dc} Strength check; on a success it moves 5 ft out. Remove this effect when it is free.",
+      "EngulfedLine": "<b>{names}</b> engulfed by <b>{by}</b>: restrained, cannot breathe, acid at the start of each of its turns. Escape: an action and a DC {dc} Strength check."
+    },
     "Light": {
       "Off": "Put out the light (spell)",
       "Flame": "Produce Flame: the flame is in your hand. Target a creature to throw it."
