@@ -102,7 +102,7 @@
       "Menu": "Apply BG3 automation preset",
       "Hint": "Configure Midi QOL for fully automatic attacks, damage and saves with public dice.",
       "Title": "BG3 automation preset",
-      "Confirm": "<p>This overwrites Midi QOL's workflow settings so attacks, damage and saves resolve with no prompts, all dice public, templates auto-target everyone inside, and reaction prompts (Shield, Uncanny Dodge, opportunity attacks) are on with a 30 second timeout. It also turns off dnd5e's own initiative grouping.</p><p>You can tweak any setting afterwards. Apply?</p>",
+      "Confirm": "<p>This overwrites Midi QOL's workflow settings so attacks, damage and saves resolve with no prompts, all dice public, templates auto-target everyone inside, and reaction prompts (Shield, Uncanny Dodge, opportunity attacks) are on with a 30 second timeout. It also turns off dnd5e's own initiative grouping.</p><p>You can tweak any setting afterwards. Apply?</p> It also switches Midi's optional game rules on: advantage and disadvantage from conditions, flanking (advantage only), unseen attackers (2014), unseen targets warned about.",
       "Done": "BG3 automation preset applied."
     },
     "Economy": {
@@ -141,7 +141,7 @@
       "Spotted": "<b>{enemy}</b> spotted <b>{name}</b>!"
     },
     "Grapple": {
-      "Missing": "bg3-flow: Chris's Premades' Grapple item was not found in its compendium (CPR Miscellaneous 2014): the Grapple action was not added."
+      "Missing": "bg3-flow: Chris's Premades is not active, so the Grapple action was not added to the characters."
     },
     "Features": {
       "Engulfed": "Engulfed by {name}",

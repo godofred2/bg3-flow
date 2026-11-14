@@ -19,7 +19,7 @@ globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2:
 const scene = { id: "s", tokens: { contents: [], get: (id) => scene.tokens.contents.find((t) => t.id === id) } };
 globalThis.canvas = { scene, grid: { size: 100 }, dimensions: { size: 100 } };
 
-const { heldBy, isHolding, dragSquare, onMoveTokenGrapple, ensureGrapple, GRAPPLE_UUID, registerGrapple } = await import("../scripts/grapple.js");
+const { heldBy, isHolding, dragSquare, onMoveTokenGrapple, ensureGrapple, GRAPPLE_UUID, GRAPPLE_ITEM, registerGrapple } = await import("../scripts/grapple.js");
 
 const grappleSource = (tokenId) => ({ flags: { cat: { identifier: "grappleSource", grapple: { dc: 13, reach: 5, tokenId } } } });
 function tok(id, x, y, { effects = [], width = 1 } = {}) {
@@ -53,15 +53,26 @@ test("dragSquare: the free square next to the mover nearest to where the held cr
   held.x = 100; held.y = 100;
   scene.tokens.contents = [mover, held, ...[-1, 0, 1].flatMap((dx) => [-1, 0, 1].filter((dy) => dx || dy).map((dy) => tok(`n${dx}${dy}`, 500 + dx * 100, 500 + dy * 100)))];
   assert.equal(dragSquare(mover, held), null); // boxed in: the creature stays (the DM sorts it out)
+  scene.tokens.contents = [mover, held];
+  assert.deepEqual(dragSquare(mover, held, { x: 900, y: 900 }), { x: 800, y: 800 }); // the mover's destination, not where it stands now
+  const cube = tok("cube", 500, 500, { width: 2 }), fighter = tok("f", 1000, 600);
+  scene.tokens.contents = [cube, fighter];
+  assert.deepEqual(dragSquare(cube, fighter, { x: 500, y: 500 }), { x: 700, y: 600 }); // a Large mover: the ring around its 2x2 footprint, never a square inside it
+  assert.equal(dragSquare(cube, fighter, { x: 800, y: 500 }), null); // the fighter already touches the footprint's edge
+  const big = tok("big", 0, 0, { width: 2 }), small = tok("s", 100, 100);
+  scene.tokens.contents = [big, small];
+  assert.deepEqual(dragSquare(big, small, { x: 500, y: 500 }), { x: 400, y: 400 }); // from inside the old footprint (engulfed) to the new footprint's edge
 });
 
 test("moveToken on the lead GM: the grappler's walk drags its held creatures to its side with a displace move (no opportunity attack, no budget); a teleport, a stranger's move or another client do nothing", async () => {
   reset();
   const grappler = tok("g", 500, 500, { effects: [grappleSource("v")] }), victim = tok("v", 100, 100), bystander = tok("b", 900, 900);
   scene.tokens.contents = [grappler, victim, bystander];
-  const movement = (action = "walk") => ({ passed: { waypoints: [{ x: 500, y: 500, action }] } });
+  const movement = (action = "walk", dest = { x: 500, y: 500 }) => ({ destination: dest, passed: { waypoints: [{ ...dest, action }] } });
+  grappler.x = 200; grappler.y = 200; // the document may still read the origin when the hook fires: the movement's destination rules
   await onMoveTokenGrapple(grappler, movement());
   assert.deepEqual(calls.moves, [["v", [{ x: 400, y: 400, elevation: 0, action: "displace" }], { showRuler: false, bg3Drag: true }]]);
+  grappler.x = 500; grappler.y = 500;
   calls.moves = [];
   await onMoveTokenGrapple(grappler, movement()); // now adjacent: nothing
   await onMoveTokenGrapple(bystander, movement());
@@ -84,12 +95,20 @@ test("ensureGrapple: every player character without the Grapple action gets CPR'
   calls.created = []; settings.grappleAction = false;
   await ensureGrapple([actor("Bard")]);
   settings.grappleAction = true; game.modules.get = () => undefined;
-  await ensureGrapple([actor("Bard")]);
-  game.modules.get = (id) => (id === "chris-premades" ? { active: true } : undefined);
-  globalThis.fromUuid = async () => null;
-  await ensureGrapple([actor("Bard"), actor("Druid")]);
+  await ensureGrapple([actor("Bard")]); // no CPR: nothing to bind the item to, one warning
   assert.deepEqual(calls.created, []);
-  assert.equal(calls.warn.length, 1);
+  assert.equal(calls.warn.length, 1); calls.warn = [];
+  game.modules.get = (id) => (id === "chris-premades" ? { active: true } : undefined);
+  globalThis.fromUuid = async () => null; // CPR 2.1.7: the automation is bundled, the compendium item is not: the module's own copy of it
+  const bard = actor("Bard"), made = [];
+  bard.createEmbeddedDocuments = async (t, data) => { made.push(data[0]); calls.created.push([bard.name, t, data[0].name]); };
+  await ensureGrapple([bard, actor("Druid")]);
+  assert.deepEqual(calls.created.map(([n, , i]) => [n, i]), [["Bard", "Grapple"], ["Druid", "Grapple"]]);
+  assert.deepEqual(calls.warn, []);
+  assert.deepEqual(made[0], GRAPPLE_ITEM);
+  assert.deepEqual([GRAPPLE_ITEM.type, GRAPPLE_ITEM.system.identifier, GRAPPLE_ITEM.system.activities.GrappleAct000001.flags.cat.macros.roll, GRAPPLE_ITEM.system.activities.GrappleAct000001.target.affects, GRAPPLE_ITEM.system.activities.GrappleAct000001.range.value],
+    ["feat", "grapple", [{ source: "chris-premades", identifier: "grapple", rules: "all" }], { count: "1", type: "creature", choice: false, special: "" }, "5"]);
+  calls.created = [];
   game.user.isGM = false;
   globalThis.fromUuid = async () => src;
   await ensureGrapple([actor("Bard")]); // players' clients never add items
@@ -97,10 +116,15 @@ test("ensureGrapple: every player character without the Grapple action gets CPR'
   game.user.isGM = true;
 });
 
-test("registerGrapple hooks ready, createActor and moveToken; the strings exist in both languages", () => {
-  calls.hooks = [];
+test("registerGrapple runs the start-up check at once (it is called from ready: a ready hook of its own would never fire), hooks createActor, updateActor and moveToken; the strings exist in both languages", async () => {
+  calls.hooks = []; calls.created = []; game.user.isGM = true;
+  globalThis.fromUuid = async () => null;
+  game.actors = [{ name: "Wizard", type: "character", hasPlayerOwner: true, items: [], createEmbeddedDocuments: async (t, data) => calls.created.push(["Wizard", t, data[0].name]) }];
   registerGrapple();
-  for (const h of ["createActor", "moveToken"]) assert.ok(calls.hooks.includes(h), h);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(calls.created, [["Wizard", "Item", "Grapple"]]);
+  for (const h of ["createActor", "updateActor", "moveToken"]) assert.ok(calls.hooks.includes(h), h);
+  assert.ok(!calls.hooks.includes("ready"));
   const en = JSON.parse(readFileSync(new URL("../lang/en.json", import.meta.url), "utf8")).BG3FLOW, es = JSON.parse(readFileSync(new URL("../lang/es.json", import.meta.url), "utf8")).BG3FLOW;
   assert.ok(en.Settings.grappleAction?.Name && es.Settings.grappleAction?.Name);
   assert.ok(en.Grapple?.Missing && es.Grapple?.Missing);

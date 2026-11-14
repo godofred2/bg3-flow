@@ -14,11 +14,14 @@ export function needsPick({ activity, usage, targeted, onTurn = true }) {
   if (targeted > 0 && (!onTurn || activity?.activation?.type === "reaction")) return null;
   if (!activity || activity.target?.template?.type) return null; // an area: the template picks
   const affects = activity.target?.affects?.type ?? "", units = activity.range?.units;
-  if (affects === "self" || units === "self") return null;
+  const creatures = ["creature", "creatureOrObject", "ally", "enemy", "willing", "object"].includes(affects);
+  if (affects === "self" || (units === "self" && !creatures)) return null; // range self with creature targets (the 2024 Engulf: what the monster covers) is asked within reach
   // Nothing to aim at (a weapon's attack leaves affects blank), except a save at reach with no target type (the SRD Engulf): Midi would aim it at the monster itself.
   if (!affects && activity.type !== "attack" && !(activity.type === "save" && ["touch", "ft"].includes(units))) return null;
-  const count = Math.max(1, parseInt(activity.target?.affects?.count) || 1);
-  return { count, range: ["any", "spec"].includes(units) ? Infinity : rangeOf(activity), self: activity.type !== "attack" && affects !== "enemy" && !!affects }; // blank affects (Engulf): never the monster itself
+  const given = parseInt(activity.target?.affects?.count);
+  const count = Math.max(1, given || (units === "self" ? 4 : 1)); // no count at range self ("any creatures it covers"): up to four, Enter confirms fewer
+  const range = units === "self" ? 5 : ["any", "spec"].includes(units) ? Infinity : rangeOf(activity);
+  return { count, range, self: activity.type !== "attack" && affects !== "enemy" && !!affects && units !== "self" }; // blank affects (Engulf) or range self: never the monster itself
 }
 
 const MORE = /(one|1) additional (creature|target|humanoid|beast|person)|(criatura|objetivo|humanoide|bestia|persona)s? adicional/i;

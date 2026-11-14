@@ -178,13 +178,13 @@ Not counted yet: resistances and vulnerabilities, opportunity attacks from enemi
 
 ## Monster features (v0.19.0)
 
-**Engulf** (the Gelatinous Cube). The SRD import is a save at reach with no target type and no effect, so Midi aimed it at the cube itself and nothing marked the victim. The target picker now asks for the creature within 5 ft (any save at reach with no target type does: the monster itself is never offered), and on a failed save the victim gets an **Engulfed by X** effect (Restrained, the cube's item as origin, the escape rule in its description) with a chat line; a save, a creature already engulfed by that cube, or an item that carries its own effect (the 2024 Engulf, a CPR automation) get nothing from the module. The acid at the start of the cube's turns and the DC Strength escape are the table's: remove the effect when the creature is free. The 2014 Grapple works the same way through CPR's Grapple item (target within 5 ft, the contest, the Grappled condition).
+**Engulf** (the Gelatinous Cube). The SRD import is a save at reach with no target type and no effect, so Midi aimed it at the cube itself and nothing marked the victim. The target picker now asks for the creature within 5 ft (any save at reach with no target type does: the monster itself is never offered), and on a failed save the victim gets an **Engulfed by X** effect (Restrained, the cube's item as origin, the escape rule in its description) with a chat line; a save, a creature already engulfed by that cube, or an item that carries its own effect (the 2024 Engulf, a CPR automation) get nothing from the module. The acid at the start of the cube's turns and the DC Strength escape are the table's: remove the effect when the creature is free. The 2014 Grapple works the same way through CPR's Grapple item (target within 5 ft, the contest, the Grappled condition). The 2024 Engulf (range self, "any creatures" it covers, its own Restrained effect) gets the picker too: up to four creatures within reach, Enter confirms fewer, and its own effect does the rest (v0.19.2). The picker only offers tokens the player can see: a creature in the dark cannot be picked, which is the rule.
 
 ## Grapple (v0.19.1)
 
 The grapple itself is the stack's: Chris's Premades' **Grapple** item (compendium *CPR Miscellaneous (2014)*) runs the contest through CAT, puts the **Grappled** condition on the loser (speed 0) and gives it an escape action; the target picker asks for the creature within 5 ft. bg3-flow adds what the rules leave to the table, with the setting **Grapple action on every character** (default on):
 
-- Every player character without a Grapple action gets CPR's item at world load, when created, or when handed to a player. To add it by hand (to the selected tokens, or to your own character), a Script macro:
+- Every player character without a Grapple action gets CPR's item at world load, when created, or when handed to a player: from CPR's compendium when it carries it (2.1.8 and later), else the module's own copy of it (CPR 2.1.7 bundles the automation the item binds, not the item). To add it by hand (to the selected tokens, or to your own character), a Script macro (CPR 2.1.7: replace the compendium lookup with `game.modules.get("bg3-flow")` and use the copy below, or just reload with the setting on):
 
 ```js
 const src = await fromUuid("Compendium.chris-premades.CPRMisc2014.Item.9wbU6kYxfAaRFrbI");
@@ -198,7 +198,7 @@ for (const a of actors) {
 }
 ```
 
-- **Dragging.** When a grappler walks, the creature it holds (CAT's grapple, or a creature engulfed by it) is moved to the free square next to the grappler's destination nearest to where it stood, as a displace move (no opportunity attack, no movement spent, CAT keeps the hold). Already adjacent: nothing moves; every neighbour taken: it stays and the DM sorts it out. The lead GM's client does it, so a player dragging an enemy needs no ownership.
+- **Dragging.** When a grappler walks, the creature it holds (CAT's grapple, or a creature engulfed by it) is moved to the free square on the ring around the grappler's destination footprint (a Large cube's 2x2 included) nearest to where it stood, as a displace move (no opportunity attack, no movement spent, CAT keeps the hold). Already touching that footprint: nothing moves; every ring square taken: it stays and the DM sorts it out. The lead GM's client does it, so a player dragging an enemy needs no ownership (v0.19.2 reads the movement's destination, not the document, which may still show the origin when the hook fires).
 - **Half speed.** While holding someone, the movement budget is halved: a player's walk is refused past it, the autopilot plans with it.
 
 ## Light spells (v0.17.0)
