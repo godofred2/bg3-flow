@@ -30,11 +30,14 @@ function tok(id, x, y, { effects = [], width = 1 } = {}) {
 }
 const reset = () => { calls.moves = []; calls.created = []; calls.warn = []; scene.tokens.contents = []; game.users.activeGM = { isSelf: true }; };
 
-test("heldBy / isHolding: the tokens CAT says this one grapples (its grappleSource effects) and the ones bg3-flow says it engulfed", () => {
+test("heldBy / isHolding: the tokens CAT says this one grapples (its grappleSource effects), the ones bg3-flow says it engulfed, and the ones Restrained or Grappled by an effect of this creature's own (the 2024 Engulf's)", () => {
   reset();
   const cube = tok("cube", 0, 0, { effects: [grappleSource("rogue")] }), rogue = tok("rogue", 100, 0), fighter = tok("fighter", 200, 0, { effects: [{ flags: { "bg3-flow": { engulfedBy: "Scene.s.Token.cube" } } }] }), cleric = tok("cleric", 300, 0);
-  scene.tokens.contents = [cube, rogue, fighter, cleric];
-  assert.deepEqual(heldBy(cube).map((t) => t.id), ["rogue", "fighter"]);
+  const wizard = tok("wizard", 400, 0, { effects: [{ statuses: new Set(["restrained"]), origin: "Actor.cube.Item.engulf24", flags: {} }] }); // the 2024 item's own effect
+  const bard = tok("bard", 500, 0, { effects: [{ statuses: ["grappled"], origin: "Scene.s.Token.cube.Item.tentacle", flags: {} }] }); // an unlinked monster's item
+  const druid = tok("druid", 600, 0, { effects: [{ statuses: new Set(["restrained"]), origin: "Actor.spider.Item.web", flags: {} }] }); // someone else's
+  scene.tokens.contents = [cube, rogue, fighter, cleric, wizard, bard, druid];
+  assert.deepEqual(heldBy(cube).map((t) => t.id), ["rogue", "fighter", "wizard", "bard"]);
   assert.deepEqual(heldBy(cleric), []);
   assert.equal(isHolding(cube), true);
   assert.equal(isHolding(cleric), false);
@@ -70,8 +73,12 @@ test("moveToken on the lead GM: the grappler's walk drags its held creatures to 
   scene.tokens.contents = [grappler, victim, bystander];
   const movement = (action = "walk", dest = { x: 500, y: 500 }) => ({ destination: dest, passed: { waypoints: [{ ...dest, action }] } });
   grappler.x = 200; grappler.y = 200; // the document may still read the origin when the hook fires: the movement's destination rules
+  CONFIG.Token.movement.actions.catForce = { costMultiplier: 0 }; // CAT's forced-movement action: no cost, and CAT keeps the hold (a teleport such as displace breaks it)
   await onMoveTokenGrapple(grappler, movement());
-  assert.deepEqual(calls.moves, [["v", [{ x: 400, y: 400, elevation: 0, action: "displace" }], { showRuler: false, bg3Drag: true }]]);
+  assert.deepEqual(calls.moves, [["v", [{ x: 400, y: 400, elevation: 0, action: "catForce" }], { showRuler: false, bg3Drag: true, constrainOptions: { ignoreTokens: true } }]]);
+  delete CONFIG.Token.movement.actions.catForce; calls.moves = []; victim.x = 100; victim.y = 100;
+  await onMoveTokenGrapple(grappler, movement());
+  assert.equal(calls.moves[0][1][0].action, "displace"); // without CAT's action: a plain displacement
   grappler.x = 500; grappler.y = 500;
   calls.moves = [];
   await onMoveTokenGrapple(grappler, movement()); // now adjacent: nothing

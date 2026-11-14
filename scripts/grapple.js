@@ -33,16 +33,21 @@ const effectsOf = (actor) => [...(actor?.appliedEffects ?? actor?.effects ?? [])
 const tokensOf = (doc) => doc?.parent?.tokens?.contents ?? canvas?.scene?.tokens?.contents ?? [];
 const sources = (doc) => effectsOf(doc?.actor).filter((e) => e.flags?.cat?.identifier === "grappleSource" && e.flags.cat.grapple?.tokenId);
 const size = (doc) => Math.max(1, Math.round(doc?.width ?? 1));
+const hasStatus = (e, s) => (e.statuses?.has ? e.statuses.has(s) : (e.statuses ?? []).includes(s));
+/** An effect that binds its bearer to `doc`: bg3-flow's engulfed mark, or a Restrained/Grappled effect from one of doc's own items (the 2024 Engulf, a tentacle). */
+const bindsTo = (e, doc) => e.flags?.[MODULE_ID]?.engulfedBy === doc.uuid
+  || ((hasStatus(e, "restrained") || hasStatus(e, "grappled")) && [doc.actor?.uuid, doc.uuid].some((u) => u && String(e.origin ?? "").startsWith(u)));
+const bound = (doc) => tokensOf(doc).filter((t) => t !== doc && effectsOf(t.actor).some((e) => bindsTo(e, doc)));
 
-/** The tokens this one holds: CAT's grapples and bg3-flow's engulfed. */
+/** The tokens this one holds: CAT's grapples, bg3-flow's engulfed, and whoever its own effects restrain or grapple. */
 export function heldBy(doc) {
   if (!doc) return [];
   const all = tokensOf(doc), ids = new Set(sources(doc).map((e) => e.flags.cat.grapple.tokenId));
-  for (const t of all) if (t !== doc && effectsOf(t.actor).some((e) => e.flags?.[MODULE_ID]?.engulfedBy === doc.uuid)) ids.add(t.id);
+  for (const t of bound(doc)) ids.add(t.id);
   return [...ids].map((id) => all.find((t) => t.id === id)).filter(Boolean);
 }
-/** Holding someone (cheap: no token lookup for the grapples). */
-export const isHolding = (doc) => !!doc && (sources(doc).length > 0 || tokensOf(doc).some((t) => t !== doc && effectsOf(t.actor).some((e) => e.flags?.[MODULE_ID]?.engulfedBy === doc.uuid)));
+/** Holding someone. */
+export const isHolding = (doc) => !!doc && (sources(doc).length > 0 || bound(doc).length > 0);
 
 /** Where a dragged creature lands: the free square on the ring around the mover's footprint at `dest` nearest to where the creature stood;
  *  null when it already touches that footprint or every ring square is taken. */
@@ -65,8 +70,9 @@ export function dragSquare(mover, held, dest = { x: mover.x, y: mover.y }) {
   return best;
 }
 
-/** moveToken on the lead GM: a walking grappler drags what it holds (a displace move: no opportunity attack, no budget, CAT keeps the hold).
- *  The movement's destination is read, not the document (which may still show the origin when the hook fires). */
+/** moveToken on the lead GM: a walking grappler drags what it holds with CAT's forced-movement action (catForce: no cost, no opportunity
+ *  attack, and CAT keeps the hold while within reach; a teleport such as displace would break it), through other tokens' spaces. The
+ *  movement's destination is read, not the document (which may still show the origin when the hook fires). */
 export async function onMoveTokenGrapple(doc, movement) {
   if (!game.users.activeGM?.isSelf) return;
   const wps = [...(movement?.passed?.waypoints ?? []), ...(movement?.pending?.waypoints ?? [])];
@@ -76,7 +82,8 @@ export async function onMoveTokenGrapple(doc, movement) {
   for (const held of heldBy(doc)) {
     const to = dragSquare(doc, held, { x: dest.x, y: dest.y });
     if (!to) continue;
-    await held.move([{ ...to, elevation: held.elevation ?? 0, action: "displace" }], { showRuler: false, bg3Drag: true });
+    const forced = CONFIG.Token.movement.actions.catForce ? "catForce" : "displace";
+    await held.move([{ ...to, elevation: held.elevation ?? 0, action: forced }], { showRuler: false, bg3Drag: true, constrainOptions: { ignoreTokens: true } });
     log(`${held.name} dragged along by ${doc.name}`);
   }
 }

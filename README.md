@@ -198,7 +198,7 @@ for (const a of actors) {
 }
 ```
 
-- **Dragging.** When a grappler walks, the creature it holds (CAT's grapple, or a creature engulfed by it) is moved to the free square on the ring around the grappler's destination footprint (a Large cube's 2x2 included) nearest to where it stood, as a displace move (no opportunity attack, no movement spent, CAT keeps the hold). Already touching that footprint: nothing moves; every ring square taken: it stays and the DM sorts it out. The lead GM's client does it, so a player dragging an enemy needs no ownership (v0.19.2 reads the movement's destination, not the document, which may still show the origin when the hook fires).
+- **Dragging.** When a grappler walks, the creature it holds (CAT's grapple, or a creature engulfed by it) is moved to the free square on the ring around the grappler's destination footprint (a Large cube's 2x2 included) nearest to where it stood, with CAT's forced-movement action (no opportunity attack, no movement spent, CAT keeps the hold while within reach; a teleport would break it, v0.19.3), through other tokens' spaces. Already touching that footprint: nothing moves; every ring square taken: it stays and the DM sorts it out. Held means: CAT's grapple, a creature the module marked engulfed, or any creature Restrained or Grappled by an effect of the grappler's own (the 2024 Engulf, a tentacle; v0.19.3). The lead GM's client does it, so a player dragging an enemy needs no ownership (v0.19.2 reads the movement's destination, not the document, which may still show the origin when the hook fires).
 - **Half speed.** While holding someone, the movement budget is halved: a player's walk is refused past it, the autopilot plans with it.
 
 ## Light spells (v0.17.0)
