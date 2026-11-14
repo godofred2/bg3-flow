@@ -17,7 +17,7 @@ globalThis.canvas = { ready: true, dimensions: { size: 100, distance: 5 }, scene
 const { needsPick, onPreTargetingPick, pickTargets, extraTargets, onTargetingCompletePick, registerTargeting } = await import("../scripts/targeting.js");
 
 const act = ({ type = "save", affects = "creature", count = "1", template = "", units = "ft", value = 60, item = { type: "spell" }, activation = "action", scaling = 0 } = {}) => ({
-  type, name: "X", item: { type: item.type, system: { range: item.range ?? {}, description: { value: item.description ?? "" } }, flags: { dnd5e: { scaling } } }, activation: { type: activation },
+  type, name: "X", item: { type: item.type, name: item.name ?? "X", system: { identifier: item.identifier, range: item.range ?? {}, description: { value: item.description ?? "" } }, flags: { dnd5e: { scaling } } }, activation: { type: activation },
   target: { affects: { type: affects, count }, template: { type: template } }, range: { units, value, override: false }
 });
 
@@ -34,6 +34,7 @@ test("needsPick: a single-target spell, a touch spell or a weapon attack asks fo
   assert.equal(needsPick({ activity: act({ type: "save", affects: "", units: "self", value: null }), targeted: 0 }), null); // a self save (Fear-like breath without a template): not ours
   assert.deepEqual(needsPick({ activity: act({ type: "save", affects: "creatureOrObject", count: "", units: "self", value: null, item: { type: "feat" } }), targeted: 0 }), { count: 4, range: 5, self: false }); // the 2024 Engulf: range self, creatures it covers, no count: up to four within reach, Enter confirms fewer
   assert.deepEqual(needsPick({ activity: act({ type: "utility", affects: "creature", count: "1", units: "self", value: null }), targeted: 0 }), { count: 1, range: 5, self: false }); // a touch-like "creature" at range self
+  assert.deepEqual(needsPick({ activity: act({ type: "utility", affects: "creature", count: "1", units: "ft", value: 5, item: { type: "feat", identifier: "grapple", name: "Grapple" } }), targeted: 0 }), { count: 1, range: 5, self: false }); // Grapple: never yourself (a mis-click left the Fighter grappling itself)
   assert.deepEqual(needsPick({ activity: act(), targeted: 1 }), { count: 1, range: 60, self: true }); // the last use's target still marked: picked again (a heal, then an attack, both went to the ally)
   assert.equal(needsPick({ activity: act(), targeted: 1, onTurn: false }), null); // off its turn (Gambit's opportunity attack targets for the reacting actor): the targets set stand
   assert.deepEqual(needsPick({ activity: act(), targeted: 0, onTurn: false }), { count: 1, range: 60, self: true }); // nothing targeted off turn: still picked

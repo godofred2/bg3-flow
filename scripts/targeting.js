@@ -21,7 +21,8 @@ export function needsPick({ activity, usage, targeted, onTurn = true }) {
   const given = parseInt(activity.target?.affects?.count);
   const count = Math.max(1, given || (units === "self" ? 4 : 1)); // no count at range self ("any creatures it covers"): up to four, Enter confirms fewer
   const range = units === "self" ? 5 : ["any", "spec"].includes(units) ? Infinity : rangeOf(activity);
-  return { count, range, self: activity.type !== "attack" && affects !== "enemy" && !!affects && units !== "self" }; // blank affects (Engulf) or range self: never the monster itself
+  const grapple = activity.item?.system?.identifier === "grapple" || /^(grapple|agarr)/i.test(String(activity.item?.name ?? "").trim()); // a mis-click left a Fighter grappling itself
+  return { count, range, self: activity.type !== "attack" && affects !== "enemy" && !!affects && units !== "self" && !grapple }; // blank affects (Engulf), range self or Grapple: never the actor itself
 }
 
 const MORE = /(one|1) additional (creature|target|humanoid|beast|person)|(criatura|objetivo|humanoide|bestia|persona)s? adicional/i;

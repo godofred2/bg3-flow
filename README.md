@@ -182,7 +182,7 @@ Not counted yet: resistances and vulnerabilities, opportunity attacks from enemi
 
 ## Grapple (v0.19.1)
 
-The grapple itself is the stack's: Chris's Premades' **Grapple** item (compendium *CPR Miscellaneous (2014)*) runs the contest through CAT, puts the **Grappled** condition on the loser (speed 0) and gives it an escape action; the target picker asks for the creature within 5 ft. bg3-flow adds what the rules leave to the table, with the setting **Grapple action on every character** (default on):
+The grapple itself is the stack's: Chris's Premades' **Grapple** item (compendium *CPR Miscellaneous (2014)*) runs the contest through CAT, puts the **Grappled** condition on the loser (speed 0) and gives it an escape action; the target picker asks for the creature within 5 ft and never offers the grappler itself (v0.19.5). bg3-flow adds what the rules leave to the table, with the setting **Grapple action on every character** (default on):
 
 - Every player character without a Grapple action gets CPR's item at world load, when created, or when handed to a player: from CPR's compendium when it carries it (2.1.8 and later), else the module's own copy of it (CPR 2.1.7 bundles the automation the item binds, not the item). To add it by hand (to the selected tokens, or to your own character), a Script macro (CPR 2.1.7: replace the compendium lookup with `game.modules.get("bg3-flow")` and use the copy below, or just reload with the setting on):
 
