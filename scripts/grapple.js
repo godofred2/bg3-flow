@@ -78,9 +78,11 @@ export async function onMoveTokenGrapple(doc, movement) {
   const wps = [...(movement?.passed?.waypoints ?? []), ...(movement?.pending?.waypoints ?? [])];
   const action = wps.at(-1)?.action ?? doc.movementAction ?? "walk";
   if (CONFIG.Token.movement.actions[action]?.teleport) return; // shoved or teleported itself: CAT decides whether the hold survives
-  const dest = movement?.destination ?? wps.at(-1) ?? doc;
+  if (movement?.pending?.waypoints?.length) return; // paused midway (an opportunity-attack prompt): the drag waits for the walk's end, else the creature is left out of reach when the walk goes on
+  const s = canvas?.grid?.size ?? canvas?.dimensions?.size ?? 100, raw = movement?.destination ?? wps.at(-1) ?? doc;
+  const dest = { x: Math.round(raw.x / s) * s, y: Math.round(raw.y / s) * s }; // a pause point can sit off the grid by a hair
   for (const held of heldBy(doc)) {
-    const to = dragSquare(doc, held, { x: dest.x, y: dest.y });
+    const to = dragSquare(doc, held, dest);
     if (!to) continue;
     const forced = CONFIG.Token.movement.actions.catForce ? "catForce" : "displace";
     await held.move([{ ...to, elevation: held.elevation ?? 0, action: forced }], { showRuler: false, bg3Drag: true, constrainOptions: { ignoreTokens: true } });

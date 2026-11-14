@@ -79,6 +79,11 @@ test("moveToken on the lead GM: the grappler's walk drags its held creatures to 
   delete CONFIG.Token.movement.actions.catForce; calls.moves = []; victim.x = 100; victim.y = 100;
   await onMoveTokenGrapple(grappler, movement());
   assert.equal(calls.moves[0][1][0].action, "displace"); // without CAT's action: a plain displacement
+  calls.moves = []; victim.x = 100; victim.y = 100;
+  await onMoveTokenGrapple(grappler, { destination: { x: 809, y: 500 }, passed: { waypoints: [{ x: 809, y: 500, action: "walk" }] }, pending: { waypoints: [{ x: 700, y: 500, action: "walk" }, { x: 600, y: 500, action: "walk" }] } }); // paused midway (an opportunity-attack prompt): not yet
+  assert.deepEqual(calls.moves, []);
+  await onMoveTokenGrapple(grappler, { destination: { x: 591, y: 509 }, passed: { waypoints: [{ x: 591, y: 509, action: "walk" }] }, pending: { waypoints: [] } }); // the walk's end, off the grid by a hair: snapped
+  assert.deepEqual(calls.moves.map((m) => [m[0], m[1][0].x, m[1][0].y]), [["v", 500, 400]]);
   grappler.x = 500; grappler.y = 500;
   calls.moves = [];
   await onMoveTokenGrapple(grappler, movement()); // now adjacent: nothing
