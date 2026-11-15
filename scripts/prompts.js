@@ -17,6 +17,19 @@ export function registerSockets(s, { startEncounter }) {
   });
   s.register("startEncounter", (sceneId, groupId) => startEncounter(sceneId, groupId));
   s.register("tokenUpdate", async (uuid, update) => { const doc = await fromUuid(uuid); return doc?.update?.(update); }); // light spells: a player lighting a token it does not own
+  // Cloud Rune: the holder's owner (or the GM) chooses where the attack goes, 30 s, then Pass. Returns a token uuid or null.
+  s.register("cloudRune", async (data) => {
+    const title = L("Runes.Ask", { reactor: data.reactor, attacker: data.attacker, target: data.target });
+    let timer;
+    const r = await foundry.applications.api.DialogV2.wait({
+      window: { title: L("Runes.Title") }, content: `<p>${foundry.utils.escapeHTML(title)}</p>`,
+      buttons: [...data.choices.map((c, i) => ({ action: `c${i}`, label: c.name, callback: () => c.uuid })), { action: "pass", label: L("Runes.Pass"), default: true, callback: () => null }],
+      rejectClose: false,
+      render: (ev, dialog) => { timer = setTimeout(() => dialog.close(), 30000); }
+    });
+    clearTimeout(timer);
+    return typeof r === "string" ? r : null;
+  });
   s.register("createAmbientLight", (sceneId, data) => game.scenes.get(sceneId)?.createEmbeddedDocuments("AmbientLight", [data])); // Daylight on a point by a player
   // Piece 4c: the Tunnel Fighter stance's reaction at the triggers Gambit does not cover, on the PC owner's client (3D dice show there). 30 s, then Pass.
   s.register("tunnelFighter", async (actorUuid, activityUuid, targetUuid) => {
@@ -49,6 +62,8 @@ export const promptTunnelFighter = (userId, actorUuid, activityUuid, targetUuid)
 
 export const promptInitiative = (userId, combatId, combatantId) => socket.executeAsUser("promptInitiative", userId, combatId, combatantId);
 export const askGmToStart = (sceneId, groupId) => socket.executeAsGM("startEncounter", sceneId, groupId);
+/** Ask the Cloud Rune holder's owner (`userId`), or the GM when nobody owning it is connected. */
+export const promptCloudRune = (userId, data) => (userId ? socket.executeAsUser("cloudRune", userId, data) : socket.executeAsGM("cloudRune", data));
 export const tokenUpdateAsGm = (uuid, update) => socket.executeAsGM("tokenUpdate", uuid, update);
 export const ambientLightAsGm = (sceneId, data) => socket.executeAsGM("createAmbientLight", sceneId, data);
 

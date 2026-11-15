@@ -74,6 +74,10 @@
         "Name": "New spells arrive prepared",
         "Hint": "A spell of the prepared kind added to a character is marked prepared on creation (imported automations tend to leave it unprepared). Other preparation modes and NPCs are untouched."
       },
+      "runeFeatures": {
+        "Name": "Rune Knight: Cloud Rune and Giant's Might",
+        "Hint": "Cloud Rune: whoever has the Rune Knight's feature or an equipped item named Cloud Rune is asked, when a creature within 30 ft is hit, whether to spend the reaction to move the attack to another creature within 30 ft (same roll). Giant's Might: Large for a minute (the token too), advantage on Strength checks and saves, +1d6 weapon damage once per turn."
+      },
       "autoDash": {
         "Name": "Dash by walking",
         "Hint": "Walking past your speed with your action still unspent (or your bonus action, with Cunning Action) spends it as a Dash and lets you go on, up to twice your speed. Off: the walk is refused and Dash must be used from the sheet."
@@ -146,6 +150,15 @@
       "Radius": "Detection radius (ft)",
       "NoTokens": "Select the enemy tokens first",
       "Spotted": "<b>{enemy}</b> spotted <b>{name}</b>!"
+    },
+    "Runes": {
+      "Title": "Cloud Rune",
+      "Ask": "{reactor}: {attacker} hit {target}. Use your reaction and the Cloud Rune to send the attack to another creature?",
+      "Pass": "Pass",
+      "Redirect": "<b>{reactor}</b> invokes the Cloud Rune: {attacker}'s attack on {target} goes to <b>{other}</b>: {result}.",
+      "Hit": "hit",
+      "Miss": "miss",
+      "MightBonus": "Giant's Might +1d6"
     },
     "Grapple": {
       "Missing": "bg3-flow: Chris's Premades is not active, so the Grapple action was not added to the characters."

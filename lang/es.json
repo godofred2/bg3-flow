@@ -74,6 +74,10 @@
         "Name": "Los conjuros nuevos llegan preparados",
         "Hint": "Un conjuro de tipo preparado añadido a un personaje se marca como preparado al crearse (las automatizaciones importadas suelen dejarlo sin preparar). Otros modos de preparación y los PNJ no se tocan."
       },
+      "runeFeatures": {
+        "Name": "Caballero rúnico: Runa de las nubes y Poder del gigante",
+        "Hint": "Runa de las nubes: quien tenga el rasgo del caballero rúnico o un objeto equipado llamado Cloud Rune decide, cuando impactan a una criatura a 30 pies, si gasta su reacción para desviar el ataque a otra criatura a 30 pies (misma tirada). Poder del gigante: Grande durante un minuto (también la ficha), ventaja en pruebas y salvaciones de Fuerza, +1d6 de daño con armas una vez por turno."
+      },
       "autoDash": {
         "Name": "Carrera al caminar",
         "Hint": "Caminar más allá de tu velocidad con la acción sin gastar (o la acción adicional, con Acción Astuta) la gasta como Carrera y te deja seguir, hasta el doble de tu velocidad. Apagado: el movimiento se rechaza y hay que usar Carrera desde la hoja."
@@ -146,6 +150,15 @@
       "Radius": "Radio de detección (pies)",
       "NoTokens": "Selecciona antes las fichas enemigas",
       "Spotted": "¡<b>{enemy}</b> ha visto a <b>{name}</b>!"
+    },
+    "Runes": {
+      "Title": "Runa de las nubes",
+      "Ask": "{reactor}: {attacker} ha impactado a {target}. ¿Usar tu reacción y la Runa de las nubes para enviar el ataque a otra criatura?",
+      "Pass": "Pasar",
+      "Redirect": "<b>{reactor}</b> invoca la Runa de las nubes: el ataque de {attacker} a {target} va a <b>{other}</b>: {result}.",
+      "Hit": "impacta",
+      "Miss": "falla",
+      "MightBonus": "Poder del gigante +1d6"
     },
     "Grapple": {
       "Missing": "bg3-flow: Chris's Premades no está activo, así que no se añadió la acción de agarrar a los personajes."

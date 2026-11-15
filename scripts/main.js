@@ -10,6 +10,7 @@ import { registerEconomy } from "./economy.js";
 import { registerLight } from "./light.js";
 import { registerFeatures } from "./features.js";
 import { registerGrapple } from "./grapple.js";
+import { registerRunes } from "./runes.js";
 
 export const MODULE_ID = "bg3-flow";
 
@@ -64,6 +65,7 @@ Hooks.once("init", () => {
   reg("lightSpells", Boolean, true);
   reg("grappleAction", Boolean, true);
   reg("autoDash", Boolean, true);
+  reg("runeFeatures", Boolean, true);
   reg("targetPicker", Boolean, true);
   game.settings.register(MODULE_ID, "actionEconomy", {
     name: L("Settings.actionEconomy.Name"), hint: L("Settings.actionEconomy.Hint"), scope: "world", config: true, type: String, default: "players",
@@ -97,6 +99,7 @@ Hooks.once("ready", () => {
   registerLight();
   registerFeatures();
   registerGrapple();
+  registerRunes();
   game.modules.get(MODULE_ID).api = { toggleDash, startEncounter, markEncounter, runTurn };
   log(`v${game.modules.get(MODULE_ID)?.version} ready`);
 });
