@@ -189,7 +189,7 @@ export function onPreMoveToken(doc, movement) {
     if (pay && canMove({ spent, cost, limit: limit * 2 }).ok) {
       payAction(doc.actor, pay).catch((err) => console.error(`[${MODULE_ID}]`, err));
       combatant.setFlag(MODULE_ID, "dash", true).catch((err) => console.error(`[${MODULE_ID}]`, err));
-      ChatMessage.create({ content: L("Turns.AutoDash", { name: combatant.token?.name ?? doc.name ?? doc.id, cost: L(pay === "bonus" ? "Economy.Bonus" : "Economy.Action") }) }).catch(() => {});
+      ChatMessage.create({ speaker: ChatMessage.getSpeaker?.({ token: doc }) ?? {}, content: L("Turns.AutoDash", { name: combatant.token?.name ?? doc.name ?? doc.id, cost: L(pay === "bonus" ? "Economy.Bonus" : "Economy.Action") }) }).catch(() => {});
       return;
     }
   }

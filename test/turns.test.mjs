@@ -7,7 +7,7 @@ const hookCalls = [];
 globalThis.Hooks = { once() {}, on() {}, callAll: (name, ...a) => hookCalls.push([name, ...a]) };
 globalThis.ui = { notifications: { info() {}, warn: (m) => calls.warn.push(m) } };
 globalThis.canvas = null;
-globalThis.ChatMessage = { create: async (d) => calls.chat.push(d) };
+globalThis.ChatMessage = { create: async (d) => calls.chat.push(d), getSpeaker: ({ token }) => ({ token: token?.id, alias: token?.name }) };
 globalThis.CONFIG = {
   time: { turnTime: 6, roundTime: 60 },
   Token: { movement: { actions: { walk: {}, fly: {}, blink: { teleport: true } } } },
@@ -534,6 +534,7 @@ test("preMoveToken auto-Dash: a walk past the speed with the action still there 
   await new Promise((r) => setTimeout(r, 0));
   assert.deepEqual(calls.flags.filter((f) => f[0] === "ro").map((f) => [f[1], f[2]?.bonus ?? f[2]]), [["economy", true], ["dash", true]]); // Cunning Action: the bonus action
   assert.deepEqual(calls.chat.map((m) => m.content), ['BG3FLOW.Turns.AutoDash:{"name":"tok-ro","cost":"BG3FLOW.Economy.Bonus"}']);
+  assert.equal(calls.chat[0].speaker?.token, "tok-ro"); // spoken by the dashing token, not the player's own character
   calls.warn = [];
   assert.equal(onPreMoveToken(tokenDoc(far), move({ cost: 70, spent: 0 })), false); // past twice the speed: no Dash helps
   assert.equal(onPreMoveToken(tokenDoc(spent), move({ cost: 20, spent: 20 })), false); // the action is gone

@@ -420,6 +420,8 @@ Result of the v0.19.4 run: R3, R4 pass (one drag per completed walk, whole squar
 - [ ] W6. The Rogue (Cunning Action) walks 40 ft: "Rogue Dashes (the bonus action)", the orange triangle empties, the green dot stays. With the bonus action already spent: the action is used instead. With both spent: "Not enough movement".
 - [ ] W7. A walk past twice the speed (70 ft) is refused outright, nothing spent. Setting *Dash by walking* off: a 40 ft walk is refused and the Dash item from the sheet still doubles.
 
+Result of the v0.20.0 run: W5-W7 pass. The auto-Dash chat line had no speaker (it showed under the player's own character): v0.20.1 speaks it as the dashing token. Round 7l closed. Not ours: dnd5e 6.0 deprecation warnings (bonuses.rsak.attack) from Plutonium/DAE data read at an attack.
+
 ## 8. Report template
 
 ```
