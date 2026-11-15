@@ -76,7 +76,7 @@
       },
       "runeFeatures": {
         "Name": "Caballero rúnico: Runa de las nubes y Poder del gigante",
-        "Hint": "Runa de las nubes: quien tenga el rasgo del caballero rúnico o un objeto equipado llamado Cloud Rune decide, cuando impactan a una criatura a 30 pies, si gasta su reacción para desviar el ataque a otra criatura a 30 pies (misma tirada). Poder del gigante: Grande durante un minuto (también la ficha), ventaja en pruebas y salvaciones de Fuerza, +1d6 de daño con armas una vez por turno."
+        "Hint": "Runa de las nubes: quien tenga el rasgo del caballero rúnico o un objeto equipado llamado Cloud Rune decide, cuando impactan a una criatura a 30 pies, si gasta su reacción para desviar el ataque a otra criatura a 30 pies (misma tirada). Poder del gigante: Grande durante un minuto (también la ficha), ventaja en pruebas y salvaciones de Fuerza, y la regla de la mesa de Fuerza x2 (los ataques con arma de Fuerza suman otra vez el modificador de Fuerza) en lugar del +1d6."
       },
       "autoDash": {
         "Name": "Carrera al caminar",

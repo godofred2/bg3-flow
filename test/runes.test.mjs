@@ -93,7 +93,7 @@ test("onHitsChecked: the holder's owner chooses another creature; the same roll 
   settings.runeFeatures = true;
 });
 
-test("Giant's Might: on use, an effect on the Rune Knight (advantage on Strength checks and saves, size Large, Midi's optional +1d6 weapon damage once per turn, 1 minute) and its Medium token grows to 2x2; a second use refreshes it; an item that carries its own effect is left alone; the effect's end puts the token back", async () => {
+test("Giant's Might: on use, an effect on the Rune Knight (advantage on Strength checks and saves, size Large, the Strength modifier again on Strength weapon damage, 1 minute) and its Medium token grows to 2x2; a second use refreshes it; an item that carries its own effect is left alone; the effect's end puts the token back", async () => {
   reset();
   const marek = tok("marek", 0);
   canvas.scene.tokens.contents = [marek];
@@ -105,11 +105,9 @@ test("Giant's Might: on use, an effect on the Rune Knight (advantage on Strength
   const [id, fx] = calls.effects[0];
   assert.equal(id, "marek");
   const keys = Object.fromEntries(fx.changes.map((c) => [c.key, c.value]));
-  assert.deepEqual(keys, {
-    "flags.midi-qol.advantage.ability.check.str": "1", "flags.midi-qol.advantage.ability.save.str": "1", "system.traits.size": "lg",
-    "flags.midi-qol.optional.giantsMight.damage.mwak": "1d6", "flags.midi-qol.optional.giantsMight.damage.rwak": "1d6",
-    "flags.midi-qol.optional.giantsMight.count": "turn", "flags.midi-qol.optional.giantsMight.label": "BG3FLOW.Runes.MightBonus"
-  });
+  assert.deepEqual(keys, { "flags.midi-qol.advantage.ability.check.str": "1", "flags.midi-qol.advantage.ability.save.str": "1", "system.traits.size": "lg", "damage": "@abilities.str.mod" });
+  const dmg = fx.changes.find((c) => c.key === "damage"); // the table's "Strength twice" rule instead of the 1d6: Strength weapon attacks add the Strength modifier again
+  assert.deepEqual([dmg.type, JSON.parse(dmg.conditions)], ["dnd5e.bonus", [{ k: "roll.attack.classification", v: "weapon", o: "exact" }, { k: "roll.ability", v: "str", o: "exact" }]]);
   assert.deepEqual([fx.origin, fx.duration.rounds, fx.flags["bg3-flow"].giantsMight.prev], ["Actor.marek.Item.gm", 10, { width: 1, height: 1 }]);
   assert.deepEqual(calls.tokens, [["marek", { width: 2, height: 2 }]]);
   // a second use while it lasts: the old effect goes first (its end restores the size, then it grows again)

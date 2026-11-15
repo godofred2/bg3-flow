@@ -76,7 +76,7 @@
       },
       "runeFeatures": {
         "Name": "Rune Knight: Cloud Rune and Giant's Might",
-        "Hint": "Cloud Rune: whoever has the Rune Knight's feature or an equipped item named Cloud Rune is asked, when a creature within 30 ft is hit, whether to spend the reaction to move the attack to another creature within 30 ft (same roll). Giant's Might: Large for a minute (the token too), advantage on Strength checks and saves, +1d6 weapon damage once per turn."
+        "Hint": "Cloud Rune: whoever has the Rune Knight's feature or an equipped item named Cloud Rune is asked, when a creature within 30 ft is hit, whether to spend the reaction to move the attack to another creature within 30 ft (same roll). Giant's Might: Large for a minute (the token too), advantage on Strength checks and saves, and the table's Strength-twice rule (Strength weapon attacks add the Strength modifier again) instead of +1d6."
       },
       "autoDash": {
         "Name": "Dash by walking",

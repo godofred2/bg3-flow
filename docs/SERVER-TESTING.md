@@ -429,7 +429,7 @@ Setup on bg3-flow-test: a Rune Knight fighter (build one, or a copy of Eldemar's
 - [ ] C1. The goblin hits the Fighter while the Rune Knight stands within 30 ft: Player1 gets the Cloud Rune dialog (buttons: the Rune Knight, the ogre and any creature within 30 ft of him except the goblin and the Fighter; Pass). Picking the ogre: the chat line says the attack goes to the ogre with "hit" or "miss" against its AC; the Fighter takes nothing; on a hit the ogre takes the goblin's damage; the Rune Knight's reaction is marked used and the rune's use spent. The autopilot waited for the answer.
 - [ ] C2. Pass, a timeout (30 s), the reaction already used, the rune's use spent, the Rune Knight farther than 30 ft or unable to see the Fighter: no dialog or no change. A critical hit redirected always hits.
 - [ ] C3. The equipped "Cloud Rune" item on the Cleric (not a Rune Knight): the Cleric's owner is asked; unequipped: nobody is asked.
-- [ ] G1. Giant's Might (bonus action): the token grows to 2x2, the actor shows size Large, a Strength check rolls with advantage, the first weapon hit in a turn offers Midi's optional "+1d6" (the second hit that turn does not). The green triangle (bonus action) empties.
+- [ ] G1. Giant's Might (bonus action): the token grows to 2x2, the actor shows size Large, a Strength check rolls with advantage, and a Longsword (Strength) hit adds the Strength modifier twice (v0.21.1: no +1d6), a Dexterity weapon only once. The green triangle (bonus action) empties.
 - [ ] G2. Using it again refreshes the effect (one effect, token stays 2x2). Deleting the effect (or the minute running out) puts the token back to 1x1.
 - [ ] G3. The autopilot's monsters see the Large Rune Knight's new squares (a goblin walks around the 2x2 space).
 

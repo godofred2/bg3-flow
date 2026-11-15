@@ -1,11 +1,12 @@
 // Rune Knight features nothing in the stack automates. Cloud Rune: when a creature within 30 ft of the holder is hit by an attack roll,
 // the holder may use its reaction to move the attack to another creature within 30 ft of itself (not the attacker), with the same roll.
 // The holder is whoever carries the rune: the Rune Knight's own feature, or an equipped item named Cloud Rune (a table rule). Giant's
-// Might: Large for a minute, advantage on Strength checks and saves, +1d6 weapon damage once per turn (Midi's optional bonus), the
-// token grown to 2x2 and put back when it ends. ponytail: no room check for growing; the rune's uses are the item's own.
+// Might: Large for a minute, advantage on Strength checks and saves, and the table's "Strength twice" rule instead of the book's +1d6
+// (Strength weapon attacks add the Strength modifier again, as Enlarge does here), the token grown to 2x2 and put back when it ends. ponytail: no room check for growing; the rune's uses are the item's own.
 import { MODULE_ID, log, safe } from "./main.js";
 import { sees, distanceFt } from "./encounters.js";
 import { activeOwner, promptCloudRune } from "./prompts.js";
+import { STRENGTH_TWICE } from "./houserules.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 const on = () => game.settings.get(MODULE_ID, "runeFeatures") !== false;
@@ -84,17 +85,13 @@ export async function onRollCompleteGiant(workflow) {
   if (!actor) return;
   for (const e of [...(actor.effects ?? [])]) if (e.flags?.[MODULE_ID]?.[GM_FLAG]) await e.delete(); // a second use: refresh
   const grow = token && (token.width ?? 1) < 2;
-  const opt = "flags.midi-qol.optional.giantsMight";
   await actor.createEmbeddedDocuments("ActiveEffect", [{
     name: workflow.item.name, img: workflow.item.img, origin: workflow.item.uuid, transfer: false, duration: { rounds: 10 },
     changes: [
       { key: "flags.midi-qol.advantage.ability.check.str", mode: 5, value: "1" },
       { key: "flags.midi-qol.advantage.ability.save.str", mode: 5, value: "1" },
       { key: "system.traits.size", mode: 5, value: "lg" },
-      { key: `${opt}.damage.mwak`, mode: 5, value: "1d6" },
-      { key: `${opt}.damage.rwak`, mode: 5, value: "1d6" },
-      { key: `${opt}.count`, mode: 5, value: "turn" },
-      { key: `${opt}.label`, mode: 5, value: L("Runes.MightBonus") }
+      { ...STRENGTH_TWICE } // the table's rule instead of the book's +1d6
     ],
     flags: { [MODULE_ID]: { [GM_FLAG]: { prev: grow ? { width: token.width ?? 1, height: token.height ?? 1 } : null } } }
   }]);

@@ -5,6 +5,8 @@ const KEYS = new Set(["system.bonuses.mwak.damage", "system.rolls.damage.mwak.bo
 const WEAPON = { k: "roll.attack.classification", v: "weapon", o: "exact" }, STR = { k: "roll.ability", v: "str", o: "exact" };
 // dnd5e 6 checks the conditions of an attribute change at data preparation, with no roll in sight: a per-roll condition needs a
 // rule-type change (type "dnd5e.bonus", key "damage"), collected at every damage roll and filtered with that roll's data.
+/** The table's "Strength twice" rule: Strength weapon attacks add the Strength modifier again (Enlarge, Giant's Might). */
+export const STRENGTH_TWICE = Object.freeze({ key: "damage", type: "dnd5e.bonus", value: "@abilities.str.mod", conditions: JSON.stringify([WEAPON, STR]) });
 const PAIR = [
   { key: "damage", type: "dnd5e.bonus", value: "@abilities.str.mod", conditions: JSON.stringify([WEAPON, STR]) },
   { key: "damage", type: "dnd5e.bonus", value: "1d4", conditions: JSON.stringify([WEAPON, { o: "NOT", v: STR }]) }
