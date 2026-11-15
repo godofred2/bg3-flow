@@ -13,7 +13,7 @@ globalThis.CONFIG = {
   Token: { movement: { actions: { walk: {}, fly: {}, blink: { teleport: true } } } },
   DND5E: { movementTypes: { walk: {}, fly: { walkFallback: false }, swim: { walkFallback: true } } }
 };
-const settings = { lockGmMovement: false, dashNames: "Dash, Carrera" };
+const settings = { lockGmMovement: false, dashNames: "Dash, Carrera", autoDash: false }; // the older veto tests expect refusals: the auto-Dash is switched on in its own test
 globalThis.game = {
   i18n: { localize: (k) => k, format: (k, d) => `${k}:${JSON.stringify(d)}` },
   user: { isGM: false }, users: [],
@@ -517,5 +517,29 @@ test("preMoveToken: a grappler (CAT's grappleSource effect on it) moves at half 
   assert.equal(onPreMoveToken({ ...tokenDoc(holder), parent: { id: "scene", tokens: { contents: [] } } }, move({ cost: 15, spent: 0 })), undefined);
   assert.equal(onPreMoveToken({ ...tokenDoc(holder), parent: { id: "scene", tokens: { contents: [] } } }, move({ cost: 20, spent: 0 })), false);
   assert.match(calls.warn.at(-1), /NoMovement.*"limit":15/);
+  game.combat = null;
+});
+
+test("preMoveToken auto-Dash: a walk past the speed with the action still there spends it as a Dash (the bonus action first with Cunning Action), flags the combatant and tells the table; past twice the speed, with the action gone, already dashing, or with the setting off: refused as before", async () => {
+  game.user.isGM = false;
+  const mk = (id, items = [], economy = null) => { const c = combatant(id, 1, { actor: { id: `act-${id}`, items: items.map((name) => ({ name })), system: { attributes: { movement: { speeds: { walk: 30 } } } } } }); if (economy) c.flags["bg3-flow"].economy = economy; return c; };
+  const fighter = mk("fi"), rogue = mk("ro", ["Cunning Action"]), spent = mk("sp", [], { attacks: 0, action: true, bonus: false, extra: 0 }), far = mk("far"), off = mk("off");
+  game.combat = combat([fighter, rogue, spent, far, off, g1], 0); calls.warn = []; calls.chat = []; calls.flags = []; settings.autoDash = true;
+  assert.equal(onPreMoveToken(tokenDoc(fighter), move({ cost: 20, spent: 20 })), undefined); // 40 of 30: a Dash
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(calls.flags.filter((f) => f[0] === "fi").map((f) => [f[1], f[2]?.action ?? f[2]]), [["economy", true], ["dash", true]]);
+  assert.deepEqual(calls.chat.map((m) => m.content), ['BG3FLOW.Turns.AutoDash:{"name":"tok-fi","cost":"BG3FLOW.Economy.Action"}']);
+  calls.flags = []; calls.chat = [];
+  assert.equal(onPreMoveToken(tokenDoc(rogue), move({ cost: 20, spent: 20 })), undefined);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(calls.flags.filter((f) => f[0] === "ro").map((f) => [f[1], f[2]?.bonus ?? f[2]]), [["economy", true], ["dash", true]]); // Cunning Action: the bonus action
+  assert.deepEqual(calls.chat.map((m) => m.content), ['BG3FLOW.Turns.AutoDash:{"name":"tok-ro","cost":"BG3FLOW.Economy.Bonus"}']);
+  calls.warn = [];
+  assert.equal(onPreMoveToken(tokenDoc(far), move({ cost: 70, spent: 0 })), false); // past twice the speed: no Dash helps
+  assert.equal(onPreMoveToken(tokenDoc(spent), move({ cost: 20, spent: 20 })), false); // the action is gone
+  assert.equal(onPreMoveToken(tokenDoc(fighter), move({ cost: 30, spent: 50 })), false); // already dashing (the flag is set): 80 of 60
+  assert.equal(calls.warn.length, 3); for (const w of calls.warn) assert.match(w, /NoMovement/);
+  settings.autoDash = false; calls.warn = [];
+  assert.equal(onPreMoveToken(tokenDoc(off), move({ cost: 20, spent: 20 })), false);
   game.combat = null;
 });

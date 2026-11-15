@@ -88,6 +88,13 @@ function refuse(c, kind) {
 /** What hiding costs, as in BG3: the action, or the bonus action with Cunning Action. */
 export const hideCost = (actor) => [...(actor?.items ?? [])].some((i) => CUNNING.test(String(i.name ?? "").trim())) ? "bonus" : "action";
 const ledger = (actor) => { if (mode() === "off") return null; const c = actingCombatant(actor); return c ? { c, state: stateOf(c), allowance: allowanceOf(c.actor) } : null; };
+/** What a Dash would cost right now: the bonus action first with Cunning Action, else the action; null when nothing is left to pay with (display mode and off never refuse). */
+export function dashCost(actor) {
+  const l = ledger(actor), can = (cost) => !l || mode() !== "players" || canSpend(l.state, cost, l.allowance).ok;
+  const cunning = [...(actor?.items ?? [])].some((i) => CUNNING.test(String(i.name ?? "").trim()));
+  if (cunning && can("bonus")) return "bonus";
+  return can("action") ? "action" : null;
+}
 /** A use outside Midi (the Hide button) on the actor's turn: false when a player cannot pay (told why); the GM is warned and goes on; display mode never refuses. */
 export function affordAction(actor, cost) {
   const l = ledger(actor);

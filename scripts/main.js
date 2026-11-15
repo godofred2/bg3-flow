@@ -63,6 +63,7 @@ Hooks.once("init", () => {
   reg("askSpellLevel", Boolean, true);
   reg("lightSpells", Boolean, true);
   reg("grappleAction", Boolean, true);
+  reg("autoDash", Boolean, true);
   reg("targetPicker", Boolean, true);
   game.settings.register(MODULE_ID, "actionEconomy", {
     name: L("Settings.actionEconomy.Name"), hint: L("Settings.actionEconomy.Hint"), scope: "world", config: true, type: String, default: "players",

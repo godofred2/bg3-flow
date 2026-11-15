@@ -3,6 +3,7 @@
 import { MODULE_ID, log, safe, safeSync } from "./main.js";
 import { groupBySide, groupOf, jumpTurn, isGroupStart, speedLimit, canMove, isDominated } from "./rules.js";
 import { isHolding } from "./grapple.js";
+import { dashCost, payAction } from "./economy.js";
 
 const L = (key, data) => data ? game.i18n.format(`BG3FLOW.${key}`, data) : game.i18n.localize(`BG3FLOW.${key}`);
 
@@ -181,7 +182,18 @@ export function onPreMoveToken(doc, movement) {
   const spent = movement.history?.cost ?? 0;
   const cost = (movement.passed?.cost ?? 0) + (movement.pending?.cost ?? 0);
   const { ok } = canMove({ spent, cost, limit });
-  if (!ok) { warn(L("Turns.NoMovement", { spent: Math.round(spent), limit })); return false; }
+  if (ok) return;
+  // Past the speed with the action (or Cunning Action's bonus action) still there: a Dash, paid and flagged, as BG3 lets you keep walking.
+  if (game.settings.get(MODULE_ID, "autoDash") !== false && !isDash(combatant)) {
+    const pay = dashCost(doc.actor);
+    if (pay && canMove({ spent, cost, limit: limit * 2 }).ok) {
+      payAction(doc.actor, pay).catch((err) => console.error(`[${MODULE_ID}]`, err));
+      combatant.setFlag(MODULE_ID, "dash", true).catch((err) => console.error(`[${MODULE_ID}]`, err));
+      ChatMessage.create({ content: L("Turns.AutoDash", { name: combatant.token?.name ?? doc.name ?? doc.id, cost: L(pay === "bonus" ? "Economy.Bonus" : "Economy.Action") }) }).catch(() => {});
+      return;
+    }
+  }
+  warn(L("Turns.NoMovement", { spent: Math.round(spent), limit })); return false;
 }
 
 /**

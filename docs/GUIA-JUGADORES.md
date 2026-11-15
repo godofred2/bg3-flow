@@ -20,7 +20,7 @@ Este módulo hace que nuestros combates en Foundry se parezcan a Baldur's Gate 3
 - Sobre tu ficha, un **punto verde** es tu acción y un **triángulo naranja** tu acción adicional, como en BG3. Se vacían al gastarse, y el juego rechaza una segunda acción ("A Rogue no le queda acción este turno"). Ataque extra te sigue dando tus dos golpes; un ataque con la mano torpe gasta la acción adicional (un arma ligera usada cuando ya has hecho tus ataques cuenta como ese golpe de mano torpe, así que elige *Offhand* en el diálogo para que el daño sea el correcto); Acción impetuosa te da otra acción.
 - No puedes mover una ficha cuando no es el turno de tu grupo: Foundry dice "Not your turn".
 - El movimiento se **mide**. Anda tu velocidad y no más; el terreno difícil cuesta el doble, como en el juego. Si intentas ir más lejos, el movimiento se rechaza y el mensaje dice cuánto llevas gastado.
-- **Carrera** (Dash) es una acción de tu ficha: úsala y tu movimiento se dobla ese turno.
+- **Carrera** (Dash): sigue andando. Al pasar tu velocidad, con la acción sin gastar (la acción adicional si tienes Acción Astuta), el módulo la gasta como Carrera y te deja seguir hasta el doble de tu velocidad; el chat lo dice. El ítem Carrera de tu hoja sigue funcionando igual.
 - Cuando el último de vosotros ha terminado, el DM (o el módulo) pasa el turno.
 
 ## 3. Atacar: sin diálogos, dados a la vista

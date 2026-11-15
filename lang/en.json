@@ -74,6 +74,10 @@
         "Name": "New spells arrive prepared",
         "Hint": "A spell of the prepared kind added to a character is marked prepared on creation (imported automations tend to leave it unprepared). Other preparation modes and NPCs are untouched."
       },
+      "autoDash": {
+        "Name": "Dash by walking",
+        "Hint": "Walking past your speed with your action still unspent (or your bonus action, with Cunning Action) spends it as a Dash and lets you go on, up to twice your speed. Off: the walk is refused and Dash must be used from the sheet."
+      },
       "grappleAction": {
         "Name": "Grapple action on every character",
         "Hint": "Chris's Premades' Grapple item (the contest, the Grappled condition, the escape) is added to every player character that lacks it. A grappler walks at half speed and drags what it holds along."
@@ -109,6 +113,8 @@
       "NoAction": "{name} has no action left this turn.",
       "NoBonus": "{name} has no bonus action left this turn.",
       "GmNote": "(GM: going ahead.)",
+      "Action": "the action",
+      "Bonus": "the bonus action",
       "Dropped": "<b>{name}</b> drops {weapons}.",
       "PickUp": "<b>{name}</b> picks up {weapon} (the action)."
     },
@@ -128,6 +134,7 @@
     "Turns": {
       "NotYourTurn": "Not your turn.",
       "NoMovement": "Not enough movement: {spent} of {limit} ft already used.",
+      "AutoDash": "<b>{name}</b> Dashes ({cost}) to keep moving.",
       "Shared": "<strong>Shared turn:</strong> {names}",
       "Waiting": "Your turn is over. Waiting for: {names}.",
       "Dominated": "{name} is dominated: the DM plays it.",

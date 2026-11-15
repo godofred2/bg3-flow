@@ -18,7 +18,7 @@ globalThis.game = {
 };
 globalThis.foundry = { applications: { api: { ApplicationV2: class {}, DialogV2: { wait: async () => null } } }, utils: { escapeHTML: (s) => s } };
 
-const { allowanceOf, costOf, canSpend, spend, FRESH, onPreTargetingEconomy, onRollCompleteEconomy, onPostUseEconomy, resetEconomy, drawEconomy, hideCost, affordAction, payAction, noteWeapon, dropWeapons, droppedWeapons, onPreUpdateItem, onPreDeleteCommandEffect } = await import("../scripts/economy.js");
+const { allowanceOf, costOf, canSpend, spend, FRESH, onPreTargetingEconomy, onRollCompleteEconomy, onPostUseEconomy, resetEconomy, drawEconomy, hideCost, affordAction, payAction, noteWeapon, dropWeapons, droppedWeapons, onPreUpdateItem, onPreDeleteCommandEffect, dashCost } = await import("../scripts/economy.js");
 
 const actor = ({ items = [], fighter = 0, player = true } = {}) => ({ hasPlayerOwner: player, items: items.map((name) => ({ name })), classes: fighter ? { fighter: { system: { levels: fighter } } } : {} });
 function combatant(id, disposition, a = actor()) {
@@ -361,4 +361,23 @@ test("onPreDeleteCommandEffect: a player character under Command \"drop\" drops 
   await onPreDeleteCommandEffect(fx("Drop", m)); // a monster: the autopilot drops on its turn
   assert.deepEqual(calls.items, []);
   game.combat = null;
+});
+
+test("dashCost: what a Dash would cost right now: the action; the bonus action first with Cunning Action; null when neither is left (display mode and off never refuse)", () => {
+  reset();
+  const a = actor(), c = combatant("pc", 1, a); game.combat = combat([c, combatant("g", -1)], 0);
+  assert.equal(dashCost(a), "action");
+  c.flags["bg3-flow"].economy = { ...FRESH, action: true };
+  assert.equal(dashCost(a), null);
+  const r = actor({ items: ["Cunning Action"] }), rc = combatant("rogue", 1, r); game.combat = combat([rc, combatant("g", -1)], 0);
+  assert.equal(dashCost(r), "bonus");
+  rc.flags["bg3-flow"].economy = { ...FRESH, bonus: true };
+  assert.equal(dashCost(r), "action"); // the bonus action is gone: the action then
+  rc.flags["bg3-flow"].economy = { ...FRESH, bonus: true, action: true };
+  assert.equal(dashCost(r), null);
+  settings.actionEconomy = "display";
+  assert.equal(dashCost(r), "bonus"); // nothing is refused in display mode: the first thing Cunning Action would use
+  settings.actionEconomy = "players";
+  game.combat = null;
+  assert.equal(dashCost(a), "action"); // out of combat: no ledger, nothing refused
 });

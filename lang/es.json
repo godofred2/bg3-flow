@@ -74,6 +74,10 @@
         "Name": "Los conjuros nuevos llegan preparados",
         "Hint": "Un conjuro de tipo preparado añadido a un personaje se marca como preparado al crearse (las automatizaciones importadas suelen dejarlo sin preparar). Otros modos de preparación y los PNJ no se tocan."
       },
+      "autoDash": {
+        "Name": "Carrera al caminar",
+        "Hint": "Caminar más allá de tu velocidad con la acción sin gastar (o la acción adicional, con Acción Astuta) la gasta como Carrera y te deja seguir, hasta el doble de tu velocidad. Apagado: el movimiento se rechaza y hay que usar Carrera desde la hoja."
+      },
       "grappleAction": {
         "Name": "Acción de agarrar en todos los personajes",
         "Hint": "El ítem Grapple de Chris's Premades (la disputa, el estado Agarrado, el escape) se añade a todo personaje de jugador que no lo tenga. Quien agarra se mueve a mitad de velocidad y arrastra consigo a quien sujeta."
@@ -109,6 +113,8 @@
       "NoAction": "A {name} no le queda acción este turno.",
       "NoBonus": "A {name} no le queda acción adicional este turno.",
       "GmNote": "(DM: adelante.)",
+      "Action": "la acción",
+      "Bonus": "la acción adicional",
       "Dropped": "<b>{name}</b> suelta {weapons}.",
       "PickUp": "<b>{name}</b> recoge {weapon} (la acción)."
     },
@@ -128,6 +134,7 @@
     "Turns": {
       "NotYourTurn": "No es tu turno.",
       "NoMovement": "No queda movimiento: {spent} de {limit} pies ya usados.",
+      "AutoDash": "<b>{name}</b> usa Carrera ({cost}) para seguir moviéndose.",
       "Shared": "<strong>Turno compartido:</strong> {names}",
       "Waiting": "Tu turno ha terminado. Esperando a: {names}.",
       "Dominated": "{name} está dominado: lo lleva el DM.",

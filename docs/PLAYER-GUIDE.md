@@ -20,7 +20,7 @@ This module makes our Foundry combats feel like Baldur's Gate 3. You do not need
 - Above your token, a **green dot** is your action and an **orange triangle** your bonus action, like in BG3. They go hollow when spent, and the game refuses a second action ("Rogue has no action left this turn"). Extra Attack still gives you your two swings; an off-hand attack takes the bonus action (a light weapon swung once your attacks are done counts as that off-hand swing, so pick *Offhand* in the dialog for the right damage); Action Surge gives you another action.
 - You cannot move a token when it is not your group's turn: Foundry says "Not your turn".
 - Your movement is **measured**. Walk your speed and no more; difficult terrain costs extra, like in the game. If you try to go further, the move is refused and the message tells you how much you used.
-- **Dash** is an action on your sheet: use it and your movement doubles for the turn.
+- **Dash**: just keep walking. Past your speed, with your action still unspent (your bonus action if you have Cunning Action), the module spends it as a Dash and lets you go on up to twice your speed; the chat says so. The Dash item on your sheet still works too.
 - When the last of you has finished, the DM (or the module) passes the turn.
 
 ## 3. Attacking: no dialogs, dice on screen
