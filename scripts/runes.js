@@ -37,6 +37,7 @@ export function cloudRuneReactors(target, attacker, { see = sees, dist = default
     if (d === attacker || !alive(d)) continue;
     const item = cloudRuneOf(d.actor);
     if (!item || globalThis.MidiQOL?.hasUsedReaction?.(d.actor)) continue;
+    if (["blinded", "incapacitated", "unconscious", "paralyzed", "stunned", "petrified"].some((s) => d.actor?.statuses?.has?.(s))) continue; // can't see, or can't react
     if (d !== target && (dist(d, target) > 30 || !see(d, target))) continue;
     out.push({ doc: d, item });
   }
@@ -83,19 +84,26 @@ export async function onRollCompleteGiant(workflow) {
   if (!on() || !workflow || workflow.aborted || !isGiantsMight(workflow.item?.name) || (workflow.item?.effects?.size ?? 0) > 0) return;
   const actor = workflow.actor, token = docOf(workflow.token);
   if (!actor) return;
-  for (const e of [...(actor.effects ?? [])]) if (e.flags?.[MODULE_ID]?.[GM_FLAG]) await e.delete(); // a second use: refresh
-  const grow = token && (token.width ?? 1) < 2;
+  let carried = null; // a second use: the old effect goes without shrinking the token, the new one keeps the original size
+  for (const e of [...(actor.effects ?? [])]) {
+    const f = e.flags?.[MODULE_ID]?.[GM_FLAG];
+    if (!f) continue;
+    carried ??= f.prev ?? null;
+    await e.update?.({ [`flags.${MODULE_ID}.${GM_FLAG}.prev`]: null });
+    await e.delete();
+  }
+  const grow = !carried && token && (token.width ?? 1) < 2;
   await actor.createEmbeddedDocuments("ActiveEffect", [{
     name: workflow.item.name, img: workflow.item.img, origin: workflow.item.uuid, transfer: false, duration: { rounds: 10 },
     changes: [
-      { key: "flags.midi-qol.advantage.ability.check.str", mode: 5, value: "1" },
-      { key: "flags.midi-qol.advantage.ability.save.str", mode: 5, value: "1" },
+      { key: "flags.midi-qol.advantage.check.str", mode: 5, value: "1" }, // Midi 14.6.8's keys (no "ability.")
+      { key: "flags.midi-qol.advantage.save.str", mode: 5, value: "1" },
       { key: "system.traits.size", mode: 5, value: "lg" },
       { ...STRENGTH_TWICE } // the table's rule instead of the book's +1d6
     ],
-    flags: { [MODULE_ID]: { [GM_FLAG]: { prev: grow ? { width: token.width ?? 1, height: token.height ?? 1 } : null } } }
+    flags: { [MODULE_ID]: { [GM_FLAG]: { prev: carried ?? (grow ? { width: token.width ?? 1, height: token.height ?? 1 } : null) } } }
   }]);
-  if (grow) await token.update({ width: 2, height: 2 });
+  if (grow) await token.update({ width: 2, height: 2, x: token.x, y: token.y }); // x and y kept: a size-only update lets Foundry shift the token off the grid
   log(`giant's might: ${actor.name}`);
 }
 
@@ -103,7 +111,7 @@ export async function onRollCompleteGiant(workflow) {
 export async function onDeleteEffectGiant(effect) {
   const prev = effect?.flags?.[MODULE_ID]?.[GM_FLAG]?.prev;
   if (!prev || !game.users.activeGM?.isSelf) return;
-  for (const d of sceneTokens()) if (d.actor === effect.parent) await d.update({ width: prev.width, height: prev.height });
+  for (const d of sceneTokens()) if (d.actor === effect.parent) await d.update({ width: prev.width, height: prev.height, x: d.x, y: d.y });
 }
 
 export function registerRunes() {
