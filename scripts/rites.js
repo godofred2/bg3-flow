@@ -1,7 +1,8 @@
 // Blood Hunter's Crimson Rite (the 2022 class, built on Eldemar as enchantments named "Rite of the ..."). When a rite's enchantment lands
 // on a weapon, the client that applied it pays the blood cost: one roll of the hemocraft die (@scale.blood-hunter.hemocraft-die) as damage
 // nothing reduces (hit points only). Rite of the Dawn also lights its wielder's token (bright 20 ft) until the rite ends, through the
-// light layers of light.js. ponytail: the Dawn's necrotic resistance and extra die against undead stay with the item (a rider, text).
+// light layers of light.js, and gives the wielder resistance to necrotic damage for as long (dnd5e 6.0.6 does not create the enchantment's
+// rider effect). ponytail: the Dawn's extra die against undead stays as text; two Dawn weapons share one light and one resistance.
 import { MODULE_ID, log, safe } from "./main.js";
 import { lightUp, extinguish } from "./light.js";
 import { tokenUpdateAsGm } from "./prompts.js";
@@ -25,7 +26,12 @@ export async function onCreateRite(effect, options, userId) {
   await roll.toMessage({ speaker: ChatMessage.getSpeaker?.({ actor }) ?? {}, flavor: L("Rites.Cost", { name: actor.name, rite: effect.name }) });
   await actor.applyDamage(roll.total, { ignore: true }); // can't be reduced in any way
   log(`crimson rite: ${actor.name} pays ${roll.total} for ${effect.name}`);
-  if (DAWN.test(effect.name)) for (const t of tokensOf(actor)) await lightUp(t, DAWN_LIGHT, { key: "riteDawn", casterUuid: actor.uuid, itemUuid: effect.parent?.uuid ?? "", concentration: false }, tokenUpdateAsGm);
+  if (!DAWN.test(effect.name)) return;
+  for (const t of tokensOf(actor)) await lightUp(t, DAWN_LIGHT, { key: "riteDawn", casterUuid: actor.uuid, itemUuid: effect.parent?.uuid ?? "", concentration: false }, tokenUpdateAsGm);
+  if (![...(actor.effects ?? [])].some((e) => e.flags?.[MODULE_ID]?.riteDawn)) await actor.createEmbeddedDocuments("ActiveEffect", [{
+    name: effect.name, img: effect.img, origin: effect.parent?.uuid, transfer: false,
+    changes: [{ key: "system.traits.dr.value", mode: 2, type: "add", value: "necrotic" }], flags: { [MODULE_ID]: { riteDawn: true } }
+  }]);
 }
 
 /** deleteActiveEffect on the client that ended the rite: the Dawn's light goes. */
@@ -33,6 +39,7 @@ export async function onDeleteRite(effect, options, userId) {
   if (userId !== game.user.id || !isRite(effect) || !DAWN.test(effect.name)) return;
   const actor = actorOf(effect);
   for (const t of tokensOf(actor)) await extinguish(t, dawnLayer(actor));
+  for (const e of [...(actor.effects ?? [])]) if (e.flags?.[MODULE_ID]?.riteDawn) await e.delete();
 }
 
 export function registerRites() {

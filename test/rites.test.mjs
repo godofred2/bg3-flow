@@ -23,7 +23,8 @@ const { isRite, onCreateRite, onDeleteRite, registerRites } = await import("../s
 function hunter({ scale = true } = {}) {
   const actor = { uuid: "Actor.alex", name: "Alexander", isOwner: true,
     getRollData: () => (scale ? { scale: { "blood-hunter": { "hemocraft-die": "1d6" } } } : { scale: {} }),
-    applyDamage: async (v, o) => calls.damage.push([v, o]) };
+    applyDamage: async (v, o) => calls.damage.push([v, o]), effects: [],
+    createEmbeddedDocuments: async (t, data) => { const e = { ...data[0], delete: async () => { actor.effects = actor.effects.filter((x) => x !== e); } }; actor.effects.push(e); return [e]; } };
   const f = { "bg3-flow": {} };
   const token = { id: "t", name: "Alexander", uuid: "Scene.s.Token.t", isOwner: true, actor, flags: f, light: { bright: 0, dim: 0 }, getFlag: (m, k) => f[m]?.[k],
     update: async (u) => { calls.updates.push(u); if (u.light) token.light = u.light; if (u["flags.bg3-flow.light"]) f["bg3-flow"].light = u["flags.bg3-flow.light"]; if ("flags.bg3-flow.-=light" in u) delete f["bg3-flow"].light; } };
@@ -68,8 +69,12 @@ test("Rite of the Dawn lights its wielder's token (bright 20) while the rite las
   await onCreateRite(dawn, {}, "u1");
   assert.deepEqual([token.light.bright, token.light.dim], [20, 20]);
   assert.deepEqual(token.getFlag("bg3-flow", "light").layers.map((l) => [l.key, l.casterUuid]), [["riteDawn", "Actor.alex"]]);
+  const res = token.actor.effects; // dnd5e does not create the enchantment's rider: the necrotic resistance is ours, while the rite lasts
+  assert.deepEqual(res.map((e) => [e.name, e.changes.map((c) => [c.key, c.value]), e.flags["bg3-flow"].riteDawn]), [["Rite of the Dawn", [["system.traits.dr.value", "necrotic"]], true]]);
+  await onCreateRite(rite("Rite of the Dawn", weapon), {}, "u1"); // a second weapon: one resistance effect
+  assert.equal(token.actor.effects.length, 1);
   await onDeleteRite(dawn, {}, "u1");
-  assert.deepEqual([token.light.bright, token.getFlag("bg3-flow", "light")], [0, undefined]);
+  assert.deepEqual([token.light.bright, token.getFlag("bg3-flow", "light"), token.actor.effects.length], [0, undefined, 0]);
   reset();
   await onCreateRite(rite("Rite of the Flame", weapon), {}, "u1");
   assert.equal(calls.updates.length, 0);
