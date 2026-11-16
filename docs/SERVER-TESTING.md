@@ -455,7 +455,9 @@ Setup: on Eldemar (no players, paused), a throwaway copy of Alexander with a tok
 
 Result of the v0.22.0 run (7n on Eldemar, a throwaway copy): B1-B3 pass (the cost paid in full through temp HP and resistance; the Dawn light on and off; the redundant cost activities removed). The Dawn's rider never reached the actor (dnd5e 6.0.6 does not create it): v0.22.1 adds the necrotic resistance itself while the rite lasts.
 
-- [ ] B4 (v0.22.1). Rite of the Dawn on a weapon: the actor shows an effect "Rite of the Dawn" and resistance to necrotic damage; deleting the enchantment removes both.
+Result of the v0.22.1 run: B4 pass (the effect and the resistance come and go with the rite; 10 necrotic lands as 5). Foundry 14 stores the change under the effect's system.changes as { key, type: "add", value, phase: "initial" }; the legacy `mode` is dropped. Round 7n closed on v0.22.1.
+
+- [x] B4 (v0.22.1). Rite of the Dawn on a weapon: the actor shows an effect "Rite of the Dawn" and resistance to necrotic damage; deleting the enchantment removes both.
 
 ## 8. Report template
 
