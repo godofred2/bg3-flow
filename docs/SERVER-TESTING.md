@@ -439,7 +439,9 @@ Result of the v0.21.2 run: G4 pass but the second use: dnd5e's tokenSizeSync shr
 
 Result of the v0.21.3 run: G5 pass but the first use: dnd5e's token size sync resized the token first (size-only, no bg3Resize), which Foundry 14 fires as a move to the same square, and the detection started the encounter. v0.21.4: the detection ignores a "move" whose destination is the token's own square, whoever resizes.
 
-- [ ] G6 (v0.21.4). The first use of Giant's Might next to the marked group: no combat. A real one-square step by the Rune Knight inside the radius still starts it.
+Result of the v0.21.4 run: G6 pass (growing and shrinking in place start no combat; a real one-square step still does). Round 7m closed on v0.21.4: Cloud Rune C1-C3 and Giant's Might G1-G6 green; Eldemar's Marek verified on v0.21.1 and loads v0.21.4 at its next launch.
+
+- [x] G6 (v0.21.4). The first use of Giant's Might next to the marked group: no combat. A real one-square step by the Rune Knight inside the radius still starts it.
 - [ ] G5 (v0.21.3). Giant's Might used twice: the token stays 2x2 the whole time (an update hook sees no width 1); next to a marked encounter group, growing and shrinking start no combat.
 - [ ] G4 (v0.21.2). Giant's Might: a Strength check and a Strength save roll 2d20 with advantage. Use it twice: the token never shrinks in between; deleting the effect puts it back to 1x1 on a whole square. A blinded Rune Knight gets no Cloud Rune dialog.
 
