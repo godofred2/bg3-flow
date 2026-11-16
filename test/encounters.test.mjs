@@ -145,6 +145,12 @@ test("an enemy in radius with line of sight spots an unhidden player and starts 
   assert.equal(calls.chat.length, 1);
 });
 
+test("a resize by bg3-flow (Giant's Might: the update keeps x and y) is not a move: no detection, no encounter", async () => {
+  reset(); scene([enemy("g1"), player("pc")]);
+  await onMoveToken(player("pc"), {}, { bg3Resize: true }, null, deps());
+  assert.deepEqual(started, []);
+});
+
 test("an unhidden player is seen even in darkness: only Hide benefits from obscurity", async () => {
   reset(); scene([enemy("g1"), player("pc")], { darkness: 0.9 });
   await onMoveToken(player("pc"), {}, {}, null, deps());

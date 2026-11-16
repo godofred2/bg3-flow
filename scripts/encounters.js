@@ -144,7 +144,7 @@ export function sees(spotter, target, center = target.getCenterPoint()) {
 /** moveToken: enemies of each group near the moved player token try to spot it (BG3 sight rules). First spotter starts the encounter. */
 export async function onMoveToken(doc, movement, operation, user, deps = {}) {
   const { start = startEncounter } = deps;
-  if (!leadGm() || starting || game.combat?.started || !isPc(doc)) return;
+  if (!leadGm() || starting || game.combat?.started || !isPc(doc) || operation?.bg3Resize) return; // a resize (Giant's Might) is not a move
   if (doc.parent?.id !== canvas?.scene?.id) return; // measured against the GM's canvas: only its scene
   // The hook fires before the document position changes: measure where the token is going.
   const center = doc.getCenterPoint(movement?.destination ?? {});

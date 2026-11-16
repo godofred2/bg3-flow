@@ -84,15 +84,11 @@ export async function onRollCompleteGiant(workflow) {
   if (!on() || !workflow || workflow.aborted || !isGiantsMight(workflow.item?.name) || (workflow.item?.effects?.size ?? 0) > 0) return;
   const actor = workflow.actor, token = docOf(workflow.token);
   if (!actor) return;
-  let carried = null; // a second use: the old effect goes without shrinking the token, the new one keeps the original size
-  for (const e of [...(actor.effects ?? [])]) {
-    const f = e.flags?.[MODULE_ID]?.[GM_FLAG];
-    if (!f) continue;
-    carried ??= f.prev ?? null;
-    await e.update?.({ [`flags.${MODULE_ID}.${GM_FLAG}.prev`]: null });
-    await e.delete();
-  }
-  const grow = !carried && token && (token.width ?? 1) < 2;
+  // A second use: the new effect is created first and the old one deleted after (its stored size cleared), so the actor stays Large
+  // throughout (dnd5e's token size sync never shrinks the token) and the new effect keeps the original size.
+  const olds = [...(actor.effects ?? [])].filter((e) => e.flags?.[MODULE_ID]?.[GM_FLAG]);
+  const carried = olds.map((e) => e.flags[MODULE_ID][GM_FLAG].prev).find(Boolean) ?? null;
+  const grow = !olds.length && token && (token.width ?? 1) < 2;
   await actor.createEmbeddedDocuments("ActiveEffect", [{
     name: workflow.item.name, img: workflow.item.img, origin: workflow.item.uuid, transfer: false, duration: { rounds: 10 },
     changes: [
@@ -103,7 +99,8 @@ export async function onRollCompleteGiant(workflow) {
     ],
     flags: { [MODULE_ID]: { [GM_FLAG]: { prev: carried ?? (grow ? { width: token.width ?? 1, height: token.height ?? 1 } : null) } } }
   }]);
-  if (grow) await token.update({ width: 2, height: 2, x: token.x, y: token.y }); // x and y kept: a size-only update lets Foundry shift the token off the grid
+  for (const e of olds) { await e.update?.({ [`flags.${MODULE_ID}.${GM_FLAG}.prev`]: null }); await e.delete(); }
+  if (grow) await token.update({ width: 2, height: 2, x: token.x, y: token.y }, { bg3Resize: true }); // x and y kept (a size-only update shifts it off the grid); marked so detection ignores it
   log(`giant's might: ${actor.name}`);
 }
 
@@ -111,7 +108,7 @@ export async function onRollCompleteGiant(workflow) {
 export async function onDeleteEffectGiant(effect) {
   const prev = effect?.flags?.[MODULE_ID]?.[GM_FLAG]?.prev;
   if (!prev || !game.users.activeGM?.isSelf) return;
-  for (const d of sceneTokens()) if (d.actor === effect.parent) await d.update({ width: prev.width, height: prev.height, x: d.x, y: d.y });
+  for (const d of sceneTokens()) if (d.actor === effect.parent) await d.update({ width: prev.width, height: prev.height, x: d.x, y: d.y }, { bg3Resize: true });
 }
 
 export function registerRunes() {

@@ -25,7 +25,7 @@ function tok(id, x, { items = [], hp = 10, ac = 12, hidden = false, width = 1 } 
   const actor = { uuid: `Actor.${id}`, name: id, items, effects: [], statuses: new Set(), system: { attributes: { hp: { value: hp }, ac: { value: ac } } },
     createEmbeddedDocuments: async (t, data) => { calls.effects.push([id, ...data]); return data; } };
   const doc = { id, name: id, uuid: `Scene.s.Token.${id}`, x, y: 0, hidden, width, height: width, actor,
-    update: async (u) => { calls.tokens.push([id, u]); Object.assign(doc, u); } };
+    update: async (u, o) => { calls.tokens.push(o ? [id, u, o] : [id, u]); Object.assign(doc, u); } };
   doc.object = { document: doc };
   for (const i of items) i.parent = actor;
   return doc;
@@ -111,13 +111,13 @@ test("Giant's Might: on use, an effect on the Rune Knight (advantage on Strength
   const dmg = fx.changes.find((c) => c.key === "damage"); // the table's "Strength twice" rule instead of the 1d6: Strength weapon attacks add the Strength modifier again
   assert.deepEqual([dmg.type, JSON.parse(dmg.conditions)], ["dnd5e.bonus", [{ k: "roll.attack.classification", v: "weapon", o: "exact" }, { k: "roll.ability", v: "str", o: "exact" }]]);
   assert.deepEqual([fx.origin, fx.duration.rounds, fx.flags["bg3-flow"].giantsMight.prev], ["Actor.marek.Item.gm", 10, { width: 1, height: 1 }]);
-  assert.deepEqual(calls.tokens, [["marek", { width: 2, height: 2, x: 0, y: 0 }]]); // x and y kept: a size-only update lets Foundry shift the token off the grid
+  assert.deepEqual(calls.tokens, [["marek", { width: 2, height: 2, x: 0, y: 0 }, { bg3Resize: true }]]); // marked: the encounter detection ignores it // x and y kept: a size-only update lets Foundry shift the token off the grid
   // a second use while it lasts: the old effect goes without shrinking the token (its stored size cleared first), the new one carries that size
   const old = { flags: { "bg3-flow": { giantsMight: { prev: { width: 1, height: 1 } } } }, parent: marek.actor,
-    update: async (u) => { old.flags["bg3-flow"].giantsMight.prev = u["flags.bg3-flow.giantsMight.prev"]; }, delete: async () => { calls.deleted.push("old"); await onDeleteEffectGiant(old); } };
+    update: async (u) => { old.flags["bg3-flow"].giantsMight.prev = u["flags.bg3-flow.giantsMight.prev"]; }, delete: async () => { calls.deleted.push(`old after ${calls.effects.length} new`); await onDeleteEffectGiant(old); } };
   marek.actor.effects = [old]; calls.tokens = []; calls.effects = [];
   await onRollCompleteGiant({ item, actor: marek.actor, token: marek.object });
-  assert.deepEqual(calls.deleted, ["old"]);
+  assert.deepEqual(calls.deleted, ["old after 1 new"]); // the new effect first: the actor stays Large throughout, so dnd5e's token size sync never shrinks the token
   assert.deepEqual(calls.tokens, []); // no shrink and grow
   assert.deepEqual(calls.effects[0][1].flags["bg3-flow"].giantsMight.prev, { width: 1, height: 1 });
   marek.actor.effects = []; calls.tokens = []; calls.effects = [];
@@ -133,7 +133,7 @@ test("Giant's Might: on use, an effect on the Rune Knight (advantage on Strength
   game.users.activeGM = { isSelf: true };
   marek.x = 600; marek.y = 1500;
   await onDeleteEffectGiant({ flags: { "bg3-flow": { giantsMight: { prev: { width: 1, height: 1 } } } }, parent: marek.actor });
-  assert.deepEqual(calls.tokens, [["marek", { width: 1, height: 1, x: 600, y: 1500 }]]);
+  assert.deepEqual(calls.tokens, [["marek", { width: 1, height: 1, x: 600, y: 1500 }, { bg3Resize: true }]]);
 });
 
 test("registerRunes hooks hitsChecked, RollComplete and deleteActiveEffect; the strings exist in both languages", () => {
