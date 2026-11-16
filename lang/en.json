@@ -74,6 +74,10 @@
         "Name": "New spells arrive prepared",
         "Hint": "A spell of the prepared kind added to a character is marked prepared on creation (imported automations tend to leave it unprepared). Other preparation modes and NPCs are untouched."
       },
+      "crimsonRite": {
+        "Name": "Blood Hunter: Crimson Rite's blood cost and Dawn light",
+        "Hint": "When a rite (an enchantment named Rite of ...) is put on a weapon, the hemocraft die is rolled and taken as damage nothing reduces. Rite of the Dawn also lights the wielder's token (bright 20 ft) while it lasts."
+      },
       "runeFeatures": {
         "Name": "Rune Knight: Cloud Rune and Giant's Might",
         "Hint": "Cloud Rune: whoever has the Rune Knight's feature or an equipped item named Cloud Rune is asked, when a creature within 30 ft is hit, whether to spend the reaction to move the attack to another creature within 30 ft (same roll). Giant's Might: Large for a minute (the token too), advantage on Strength checks and saves, and the table's Strength-twice rule (Strength weapon attacks add the Strength modifier again) instead of +1d6."
@@ -150,6 +154,9 @@
       "Radius": "Detection radius (ft)",
       "NoTokens": "Select the enemy tokens first",
       "Spotted": "<b>{enemy}</b> spotted <b>{name}</b>!"
+    },
+    "Rites": {
+      "Cost": "{name}: blood cost of {rite}"
     },
     "Runes": {
       "Title": "Cloud Rune",

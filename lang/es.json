@@ -74,6 +74,10 @@
         "Name": "Los conjuros nuevos llegan preparados",
         "Hint": "Un conjuro de tipo preparado añadido a un personaje se marca como preparado al crearse (las automatizaciones importadas suelen dejarlo sin preparar). Otros modos de preparación y los PNJ no se tocan."
       },
+      "crimsonRite": {
+        "Name": "Blood Hunter: coste de sangre del Rito carmesí y luz del Alba",
+        "Hint": "Al poner un rito (un encantamiento llamado Rite of ...) en un arma, se tira el dado de hemocraft y se recibe como daño que nada reduce. El Rito del Alba además ilumina la ficha de quien lo empuña (luz brillante 20 pies) mientras dure."
+      },
       "runeFeatures": {
         "Name": "Caballero rúnico: Runa de las nubes y Poder del gigante",
         "Hint": "Runa de las nubes: quien tenga el rasgo del caballero rúnico o un objeto equipado llamado Cloud Rune decide, cuando impactan a una criatura a 30 pies, si gasta su reacción para desviar el ataque a otra criatura a 30 pies (misma tirada). Poder del gigante: Grande durante un minuto (también la ficha), ventaja en pruebas y salvaciones de Fuerza, y la regla de la mesa de Fuerza x2 (los ataques con arma de Fuerza suman otra vez el modificador de Fuerza) en lugar del +1d6."
@@ -150,6 +154,9 @@
       "Radius": "Radio de detección (pies)",
       "NoTokens": "Selecciona antes las fichas enemigas",
       "Spotted": "¡<b>{enemy}</b> ha visto a <b>{name}</b>!"
+    },
+    "Rites": {
+      "Cost": "{name}: coste de sangre de {rite}"
     },
     "Runes": {
       "Title": "Runa de las nubes",

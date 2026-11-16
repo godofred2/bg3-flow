@@ -28,7 +28,7 @@ const sceneTokens = () => canvas?.scene?.tokens?.contents ?? [];
 /** A token update by this client when it may, else by the GM through the socket. */
 const applyUpdate = async (doc, update, asGm) => (game.user.isGM || doc.isOwner ? doc.update(update) : asGm(doc.uuid, update));
 
-async function lightUp(doc, spec, meta, asGm) {
+export async function lightUp(doc, spec, meta, asGm) {
   const f = flagOf(doc);
   const layers = [...(f?.layers ?? []), { ...meta, light: { ...spec.light } }];
   await applyUpdate(doc, { light: { ...spec.light }, [FLAG()]: { prev: f?.prev ?? plain(doc.light), layers } }, asGm); // the token's own light is kept beneath every layer
