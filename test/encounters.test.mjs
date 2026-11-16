@@ -149,6 +149,11 @@ test("a resize by bg3-flow (Giant's Might: the update keeps x and y) is not a mo
   reset(); scene([enemy("g1"), player("pc")]);
   await onMoveToken(player("pc"), {}, { bg3Resize: true }, null, deps());
   assert.deepEqual(started, []);
+  const pc = player("pc"); pc.x = 0; pc.y = 0; pc.elevation = 0; // dnd5e's token size sync: a size-only update, which Foundry 14 fires as a move to the same square
+  await onMoveToken(pc, { destination: { x: pc.x, y: pc.y, elevation: pc.elevation ?? 0 } }, {}, null, deps());
+  assert.deepEqual(started, []);
+  await onMoveToken(pc, { destination: { x: 100, y: 0, elevation: 0 } }, {}, null, deps()); // a real step still counts
+  assert.deepEqual(started, [["scene", "g"]]);
 });
 
 test("an unhidden player is seen even in darkness: only Hide benefits from obscurity", async () => {

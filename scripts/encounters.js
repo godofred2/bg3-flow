@@ -147,7 +147,9 @@ export async function onMoveToken(doc, movement, operation, user, deps = {}) {
   if (!leadGm() || starting || game.combat?.started || !isPc(doc) || operation?.bg3Resize) return; // a resize (Giant's Might) is not a move
   if (doc.parent?.id !== canvas?.scene?.id) return; // measured against the GM's canvas: only its scene
   // The hook fires before the document position changes: measure where the token is going.
-  const center = doc.getCenterPoint(movement?.destination ?? {});
+  const dest = movement?.destination;
+  if (dest && dest.x === doc.x && dest.y === doc.y && (dest.elevation ?? 0) === (doc.elevation ?? 0)) return; // a resize in place (dnd5e's token size sync) is not a move
+  const center = doc.getCenterPoint(dest ?? {});
   for (const [groupId, members] of encounterGroups(canvas.scene.tokens.contents)) {
     const near = members.filter((e) => isLive(e) && withinRadius(distanceFt(e.getCenterPoint(), center), encounterOf(e).radius));
     if (!near.length) continue;
